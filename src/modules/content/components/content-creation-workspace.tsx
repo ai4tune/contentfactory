@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { loadLocalKnowledge, readLocalKnowledgeItem } from "@/modules/knowledge/local-index";
-import type { ContentBrief, ContentProject } from "@/modules/content/types";
+import {
+  channelLabels,
+  contentChannels,
+  type ChannelDraft,
+  type ContentBrief,
+  type ContentChannel,
+  type ContentProject,
+} from "@/modules/content/types";
 import type { LocalKnowledgeItem } from "@/modules/knowledge/types";
 import type { TopicSuggestion } from "@/modules/topics/types";
 
@@ -25,6 +32,9 @@ export function ContentCreationWorkspace() {
   const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
   const [brief, setBrief] = useState<ContentBrief | null>(null);
   const [project, setProject] = useState<ContentProject | null>(null);
+  const [selectedChannels, setSelectedChannels] = useState<ContentChannel[]>([...contentChannels]);
+  const [activeChannel, setActiveChannel] = useState<ContentChannel>(contentChannels[0]);
+  const [generatingChannels, setGeneratingChannels] = useState<ContentChannel[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -151,8 +161,45 @@ export function ContentCreationWorkspace() {
       );
       if (!payload.project) throw new Error("内容项目保存失败。");
       setProject(payload.project);
-      setMessage("内容简报已确认并保存。");
+      setMessage("内容简报已确认并保存，可以进入渠道内容生成。");
     });
+  }
+
+  async function generateChannels() {
+    if (!project || !selectedChannels.length) return;
+    setGeneratingChannels(selectedChannels);
+    await run("channels", async () => {
+      const payload = await postJson<{ project?: ContentProject; error?: string }>(
+        "/api/content/generate",
+        { projectId: project.id, topic, brief: project.brief, channels: selectedChannels, sources: selectedSources },
+      );
+      if (!payload.project) throw new Error("没有生成可用的渠道草稿。");
+      setProject(payload.project);
+      const firstGenerated = payload.project.channelDrafts.find((draft) => draft.status === "generated");
+      setActiveChannel(firstGenerated?.channel ?? payload.project.channelDrafts[0]?.channel ?? contentChannels[0]);
+    });
+    setGeneratingChannels([]);
+  }
+
+  async function retryChannel(channel: ContentChannel) {
+    if (!project) return;
+    setGeneratingChannels((items) => [...items, channel]);
+    await run(`retry:${channel}`, async () => {
+      const payload = await postJson<{ project?: ContentProject; error?: string }>(
+        `/api/content/generate/${channel}`,
+        { projectId: project.id, topic, brief: project.brief, channels: [channel], sources: selectedSources },
+      );
+      if (!payload.project) throw new Error("单渠道重试失败。");
+      setProject(payload.project);
+      setActiveChannel(channel);
+    });
+    setGeneratingChannels((items) => items.filter((item) => item !== channel));
+  }
+
+  function toggleChannel(channel: ContentChannel) {
+    setSelectedChannels((channels) => channels.includes(channel)
+      ? channels.filter((item) => item !== channel)
+      : [...channels, channel]);
   }
 
   async function run(key: string, action: () => Promise<void>) {
@@ -271,13 +318,110 @@ export function ContentCreationWorkspace() {
             </div>
             </fieldset>
             {project ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
-                内容项目已保存。下一步可以基于这份统一简报生成不同渠道的内容。
-              </div>
+              <ChannelGenerationPanel
+                activeChannel={activeChannel}
+                drafts={project.channelDrafts}
+                generatingChannels={generatingChannels}
+                onGenerate={generateChannels}
+                onRetry={retryChannel}
+                onSelect={setActiveChannel}
+                onToggle={toggleChannel}
+                selectedChannels={selectedChannels}
+              />
             ) : null}
           </div>
         ) : <div className="flex min-h-[650px] flex-col items-center justify-center px-6 text-center"><div className="flex size-14 items-center justify-center rounded-2xl bg-[#e9f0ec] text-lg font-semibold text-emerald-900">简</div><h3 className="mt-5 text-base font-semibold text-slate-900">简报会出现在这里</h3><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">它会固定目标受众、核心观点、结构、行动引导和可追溯引用。</p></div>}
       </div>
+    </section>
+  );
+}
+
+function ChannelGenerationPanel({
+  activeChannel,
+  drafts,
+  generatingChannels,
+  onGenerate,
+  onRetry,
+  onSelect,
+  onToggle,
+  selectedChannels,
+}: {
+  activeChannel: ContentChannel;
+  drafts: ChannelDraft[];
+  generatingChannels: ContentChannel[];
+  onGenerate: () => void;
+  onRetry: (channel: ContentChannel) => void;
+  onSelect: (channel: ContentChannel) => void;
+  onToggle: (channel: ContentChannel) => void;
+  selectedChannels: ContentChannel[];
+}) {
+  const activeDraft = drafts.find((draft) => draft.channel === activeChannel) ?? drafts[0];
+  const generating = generatingChannels.length > 0;
+
+  return (
+    <section className="border-t border-slate-200 pt-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">生成渠道内容</h3>
+          <p className="mt-1 text-xs text-slate-500">四套独立 Prompt，共享上方已确认的事实简报。</p>
+        </div>
+        <button className="shrink-0 text-xs font-semibold text-emerald-800" onClick={() => contentChannels.forEach((channel) => {
+          if (!selectedChannels.includes(channel)) onToggle(channel);
+        })} type="button">全选</button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {contentChannels.map((channel) => {
+          const selected = selectedChannels.includes(channel);
+          return (
+            <button
+              aria-pressed={selected}
+              className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold ${selected ? "border-emerald-800 bg-emerald-50 text-emerald-900" : "border-slate-200 text-slate-500"}`}
+              disabled={generating}
+              key={channel}
+              onClick={() => onToggle(channel)}
+              type="button"
+            >
+              {selected ? "✓ " : "○ "}{channelLabels[channel]}
+            </button>
+          );
+        })}
+      </div>
+
+      <button className={`${primaryButtonClass} mt-3 w-full`} disabled={!selectedChannels.length || generating} onClick={onGenerate} type="button">
+        {generating ? `AI 正在生成 ${generatingChannels.length} 个渠道` : selectedChannels.length === contentChannels.length ? "全部生成" : `生成 ${selectedChannels.length} 个渠道`}
+      </button>
+
+      {generating && !drafts.length ? (
+        <div className="mt-4 grid gap-2" aria-live="polite">
+          {generatingChannels.map((channel) => <div className="animate-pulse rounded-xl bg-slate-100 px-3 py-4 text-xs text-slate-500" key={channel}>{channelLabels[channel]} · 生成中</div>)}
+        </div>
+      ) : null}
+
+      {drafts.length ? (
+        <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+          <div className="flex gap-1 overflow-x-auto border-b border-slate-200 p-2">
+            {drafts.map((draft) => (
+              <button className={`shrink-0 rounded-lg px-2.5 py-2 text-[11px] font-semibold ${draft.channel === activeDraft?.channel ? "bg-emerald-900 text-white" : draft.status === "failed" ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"}`} key={draft.channel} onClick={() => onSelect(draft.channel)} type="button">
+                {channelLabels[draft.channel]} · {draft.status === "failed" ? "失败" : "已生成"}
+              </button>
+            ))}
+          </div>
+          {activeDraft ? (
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-slate-800">{channelLabels[activeDraft.channel]}</p>
+                <button className="text-xs font-semibold text-emerald-800 disabled:text-slate-400" disabled={generatingChannels.includes(activeDraft.channel)} onClick={() => onRetry(activeDraft.channel)} type="button">
+                  {generatingChannels.includes(activeDraft.channel) ? "重试中" : "单独重试"}
+                </button>
+              </div>
+              {activeDraft.status === "failed"
+                ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs leading-5 text-red-700">{activeDraft.error || "未知错误"}</p>
+                : <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{activeDraft.content}</div>}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
