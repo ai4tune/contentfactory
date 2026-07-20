@@ -44,8 +44,8 @@ export default function MaterialsPage() {
   }
 
   return (
-    <AppShell active="/materials">
-      <PageHeader eyebrow="KNOWLEDGE & MATERIALS" title="素材库" description="企业事实、产品、案例和观点放在这里。写作时由你选择需要引用的素材。" />
+    <AppShell active="/knowledge">
+      <PageHeader eyebrow="KNOWLEDGE BASE" title="知识库" description="企业事实、产品、案例和观点放在这里。写作时由你选择需要引用的知识。" />
 
       <div className="mt-7 grid gap-5 xl:grid-cols-[0.72fr_1.28fr]">
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -69,4 +69,3 @@ export default function MaterialsPage() {
 
 function sourceName(source: MaterialRecord["source"]) { return source === "feishu" ? "飞书" : source === "base" ? "多维表格" : "本地文件"; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(new Date(value)); }
-

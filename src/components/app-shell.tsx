@@ -2,13 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 const navItems = [
-  { label: "工作台", href: "/", icon: "⌂" },
-  { label: "账号定位", href: "/positioning", icon: "◎" },
-  { label: "选题雷达", href: "/topics", icon: "⌕" },
-  { label: "爆款库", href: "/inspirations", icon: "◇" },
-  { label: "素材库", href: "/materials", icon: "▤" },
-  { label: "内容创作", href: "/workbench", icon: "✎" },
-  { label: "内容库", href: "/articles", icon: "▦" },
+  { label: "内容创作", href: "/", mark: "创" },
+  { label: "当前账号", href: "/positioning", mark: "账" },
+  { label: "知识库", href: "/knowledge", mark: "知" },
+  { label: "草稿历史", href: "/drafts", mark: "稿" },
 ];
 
 export function AppShell({
@@ -45,7 +42,7 @@ export function AppShell({
                   }`}
                 >
                   <span className={`flex size-7 items-center justify-center rounded-lg text-sm ${selected ? "bg-[#f3e8cf]" : "bg-white/8"}`}>
-                    {item.icon}
+                    {item.mark}
                   </span>
                   {item.label}
                 </Link>
@@ -55,7 +52,7 @@ export function AppShell({
 
           <div className="mt-10 hidden rounded-2xl border border-white/10 bg-white/5 p-4 lg:block">
             <p className="text-xs font-semibold tracking-wide text-[#dfb967]">主流程</p>
-            <p className="mt-2 text-xs leading-5 text-white/55">定位账号 → 学习爆款 → 调用素材 → 生成内容 → 记录数据</p>
+            <p className="mt-2 text-xs leading-5 text-white/55">确定选题 → 选择知识 → 生成渠道内容 → 审核发布</p>
           </div>
         </aside>
 
@@ -93,4 +90,3 @@ export const primaryButtonClass =
 
 export const secondaryButtonClass =
   "inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50";
-
