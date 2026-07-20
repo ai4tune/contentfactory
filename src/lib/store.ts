@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { readJsonFile, updateJsonFile } from "./local-store/json-file";
+import type { AccountContext } from "@/modules/positioning/types";
 import type {
   GenerateRequest,
   GenerateResult,
@@ -42,6 +43,7 @@ export type MaterialRecord = KnowledgeSource & {
 };
 
 export type ContentStore = {
+  accountContext: AccountContext | null;
   accountProfiles: Array<StoredRecord<PositioningRequest, PositioningResult>>;
   topicRadars: Array<StoredRecord<TopicRadarRequest, TopicRadarResult>>;
   inspirations: Array<StoredRecord<InspirationRequest, InspirationResult>>;
@@ -52,6 +54,7 @@ export type ContentStore = {
 const storePath = path.join(process.cwd(), "data", "contentfactory.local.json");
 
 const emptyStore: ContentStore = {
+  accountContext: null,
   accountProfiles: [],
   topicRadars: [],
   inspirations: [],
@@ -60,32 +63,20 @@ const emptyStore: ContentStore = {
 };
 
 export async function readStore(): Promise<ContentStore> {
-  try {
-    const content = await readFile(storePath, "utf8");
-    const parsed = JSON.parse(content) as Partial<ContentStore>;
+  const parsed = await readJsonFile<Partial<ContentStore>>(storePath, emptyStore);
 
-    return {
-      accountProfiles: parsed.accountProfiles ?? [],
-      topicRadars: parsed.topicRadars ?? [],
-      inspirations: parsed.inspirations ?? [],
-      materials: parsed.materials ?? [],
-      articles: parsed.articles ?? [],
-    };
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return emptyStore;
-    }
+  return normalizeStore(parsed);
+}
 
-    throw error;
-  }
+export async function updateStore(update: (store: ContentStore) => ContentStore) {
+  return updateJsonFile<Partial<ContentStore>>(storePath, emptyStore, (current) =>
+    update(normalizeStore(current)),
+  ) as Promise<ContentStore>;
 }
 
 export async function saveAccountProfile(input: PositioningRequest, result: PositioningResult) {
-  const store = await readStore();
   const record = createRecord("accountProfiles", input, result);
-
-  store.accountProfiles = [record];
-  await writeStore(store);
+  await updateStore((store) => ({ ...store, accountProfiles: [record] }));
 
   return record;
 }
@@ -109,20 +100,19 @@ export async function saveArticle(input: GenerateRequest, result: GenerateResult
 }
 
 export async function saveMaterial(source: KnowledgeSource) {
-  const store = await readStore();
   const record: MaterialRecord = {
     ...source,
     createdAt: new Date().toISOString(),
   };
-  const existingIndex = store.materials.findIndex((item) => item.id === source.id);
+  await updateStore((store) => {
+    const materials = [...store.materials];
+    const existingIndex = materials.findIndex((item) => item.id === source.id);
 
-  if (existingIndex >= 0) {
-    store.materials[existingIndex] = record;
-  } else {
-    store.materials.push(record);
-  }
+    if (existingIndex >= 0) materials[existingIndex] = record;
+    else materials.push(record);
 
-  await writeStore(store);
+    return { ...store, materials };
+  });
   return record;
 }
 
@@ -130,21 +120,20 @@ export async function updateArticlePublication(
   id: string,
   publication: Omit<NonNullable<ArticleRecord["publication"]>, "status" | "updatedAt">,
 ) {
-  const store = await readStore();
-  const article = store.articles.find((item) => item.id === id);
+  let updatedArticle: ArticleRecord | null = null;
+  await updateStore((store) => ({
+    ...store,
+    articles: store.articles.map((article) => {
+      if (article.id !== id) return article;
+      updatedArticle = {
+        ...article,
+        publication: { ...publication, status: "published", updatedAt: new Date().toISOString() },
+      };
+      return updatedArticle;
+    }),
+  }));
 
-  if (!article) {
-    return null;
-  }
-
-  article.publication = {
-    ...publication,
-    status: "published",
-    updatedAt: new Date().toISOString(),
-  };
-  await writeStore(store);
-
-  return article;
+  return updatedArticle;
 }
 
 export async function getDashboardData() {
@@ -172,11 +161,11 @@ async function appendRecord<
   input: ContentStore[Key][number]["input"],
   result: ContentStore[Key][number]["result"],
 ) {
-  const store = await readStore();
   const record = createRecord(key, input, result);
-
-  store[key] = [...store[key], record] as ContentStore[Key];
-  await writeStore(store);
+  await updateStore((store) => ({
+    ...store,
+    [key]: [...store[key], record],
+  }));
 
   return record;
 }
@@ -194,11 +183,17 @@ function createRecord<Key extends keyof Pick<ContentStore, "accountProfiles" | "
   } as ContentStore[Key][number];
 }
 
-async function writeStore(store: ContentStore) {
-  await mkdir(path.dirname(storePath), { recursive: true });
-  await writeFile(storePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
-}
-
 function createId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeStore(parsed: Partial<ContentStore>): ContentStore {
+  return {
+    accountContext: parsed.accountContext ?? null,
+    accountProfiles: parsed.accountProfiles ?? [],
+    topicRadars: parsed.topicRadars ?? [],
+    inspirations: parsed.inspirations ?? [],
+    materials: parsed.materials ?? [],
+    articles: parsed.articles ?? [],
+  };
 }

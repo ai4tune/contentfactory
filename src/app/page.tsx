@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-shell";
 import { ContentCreationWorkspace } from "@/modules/content/components/content-creation-workspace";
-import { getCurrentAccountProfile } from "@/lib/store";
+import { getCurrentAccountContext } from "@/modules/positioning/repository";
 
 export const dynamic = "force-dynamic";
 
 const steps = ["确定选题", "选择知识", "选择渠道", "生成并审核"];
 
 export default async function ContentCreationPage() {
-  const profile = await getCurrentAccountProfile();
+  const accountContext = await getCurrentAccountContext();
 
   return (
     <AppShell active="/">
@@ -18,7 +18,7 @@ export default async function ContentCreationPage() {
         description="选择真实知识资料和发布渠道，先生成一版可人工审核的内容。"
         actions={
           <Link className={secondaryButtonClass} href="/positioning">
-            {profile ? "查看当前账号" : "先做账号定位"}
+            {accountContext?.status === "confirmed" ? "查看当前账号" : "先做账号定位"}
           </Link>
         }
       />
@@ -40,11 +40,11 @@ export default async function ContentCreationPage() {
         <div>
           <p className="text-xs font-semibold text-emerald-900">当前账号上下文</p>
           <p className="mt-1 text-sm text-slate-600">
-            {profile?.result.accountPosition || "还没有账号定位，可以先直接创作，后续再补充定位。"}
+            {accountContext?.accountPosition || "还没有账号定位，可以先直接创作，后续再补充定位。"}
           </p>
         </div>
         <Link className="shrink-0 text-xs font-semibold text-emerald-900" href="/positioning">
-          {profile ? "更新定位" : "快速定位"} →
+          {accountContext?.status === "confirmed" ? "更新定位" : "快速定位"} →
         </Link>
       </section>
 

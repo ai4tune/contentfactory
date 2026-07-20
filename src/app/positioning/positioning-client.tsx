@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
-import type { PositioningRequest, PositioningResult } from "@/lib/ai";
-import type { StoredRecord } from "@/lib/store";
-
-type Profile = StoredRecord<PositioningRequest, PositioningResult>;
+import type { PositioningRequest } from "@/lib/ai";
+import type { AccountContext, AccountContextDraft } from "@/modules/positioning/types";
 
 const emptyForm: PositioningRequest = {
   accountName: "",
@@ -13,196 +13,129 @@ const emptyForm: PositioningRequest = {
   audience: "",
   offer: "",
   differentiator: "",
-  platforms: "小红书、公众号、视频号",
+  platforms: "小红书、公众号、朋友圈、短视频",
   goal: "获客、信任建设、成交转化",
   currentContent: "",
 };
 
-export function PositioningClient({ initialProfile }: { initialProfile: Profile | null }) {
-  const [profile, setProfile] = useState(initialProfile);
-  const [editing, setEditing] = useState(!initialProfile);
-  const [form, setForm] = useState<PositioningRequest>(initialProfile?.input ?? emptyForm);
-  const [busy, setBusy] = useState(false);
+export function PositioningClient({ initialContext }: { initialContext: AccountContext | null }) {
+  const router = useRouter();
+  const [context, setContext] = useState(initialContext);
+  const [editing, setEditing] = useState(initialContext?.status !== "confirmed");
+  const [form, setForm] = useState<PositioningRequest>(() => formFromContext(initialContext));
+  const [draft, setDraft] = useState<AccountContextDraft | null>(null);
+  const [busy, setBusy] = useState<"analyze" | "confirm" | "skip" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function analyze() {
-    setBusy(true);
+    setBusy("analyze");
     setError(null);
-
     try {
       const response = await fetch("/api/positioning/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const payload = (await response.json()) as { record?: Profile; error?: string };
-
-      if (!response.ok || !payload.record) {
-        throw new Error(payload.error ?? "定位分析失败");
-      }
-
-      setProfile(payload.record);
-      setEditing(false);
+      const payload = (await response.json()) as { draft?: AccountContextDraft; error?: string };
+      if (!response.ok || !payload.draft) throw new Error(payload.error ?? "定位分析失败");
+      setDraft(payload.draft);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "定位分析失败");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
+  }
+
+  async function confirm() {
+    if (!draft) return;
+    setBusy("confirm");
+    setError(null);
+    try {
+      const response = await fetch("/api/positioning/current", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "confirm", draft }),
+      });
+      const payload = (await response.json()) as { context?: AccountContext; error?: string };
+      if (!response.ok || !payload.context) throw new Error(payload.error ?? "定位保存失败");
+      setContext(payload.context);
+      setDraft(null);
+      setEditing(false);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "定位保存失败");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function skip() {
+    setBusy("skip");
+    setError(null);
+    try {
+      const response = await fetch("/api/positioning/current", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "skip" }),
+      });
+      const payload = (await response.json()) as { context?: AccountContext; error?: string };
+      if (!response.ok || !payload.context) throw new Error(payload.error ?? "暂时跳过失败");
+      setContext(payload.context);
+      router.push("/workbench");
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "暂时跳过失败");
+      setBusy(null);
+    }
+  }
+
+  if (context?.status === "confirmed" && !editing) {
+    return (
+      <AppShell active="/positioning">
+        <PageHeader eyebrow="CURRENT ACCOUNT" title="当前账号" description="这份已确认的账号上下文会自动进入选题、简报和内容生成。" actions={<button className={secondaryButtonClass} onClick={() => setEditing(true)}>更新定位</button>} />
+        <div className="mt-7 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+          <section className="rounded-3xl bg-[#173e32] p-6 text-white shadow-sm sm:p-8">
+            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#dfb967] px-3 py-1 text-xs font-semibold text-[#173e32]">已确认 · 当前唯一账号</span><span className="text-xs text-white/50">更新于 {formatDate(context.updatedAt)}</span></div>
+            <h2 className="mt-7 text-2xl font-semibold">{context.accountName || "未命名账号"}</h2>
+            <p className="mt-4 text-lg leading-8 text-white/85">{context.accountPosition}</p>
+            <div className="mt-8 grid gap-3 sm:grid-cols-3"><Stat label="目标客户" value={context.targetAudience.join("、")} /><Stat label="核心产品" value={context.offer} /><Stat label="主要平台" value={context.platforms.join("、")} /></div>
+          </section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><ResultGroup title="品牌语气" items={context.brandVoice} tags /><ResultGroup title="禁用表达" items={context.bannedPhrases} tags /><Link className={`${primaryButtonClass} mt-6`} href="/workbench">带着当前定位去创作 →</Link></section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2"><div className="grid gap-7 lg:grid-cols-2"><ResultGroup title="内容支柱" items={context.contentPillars} /><ResultGroup title="常用表达" items={context.preferredPhrases} tags /><ResultGroup title="下一阶段内容方向" items={context.contentDirections} /><ResultGroup title="推荐首批选题" items={context.recommendedTopics} /><ResultGroup title="分析依据" items={context.analysisEvidence} /><ResultGroup title="待补信息" items={context.informationGaps} /></div></section>
+        </div>
+      </AppShell>
+    );
   }
 
   return (
     <AppShell active="/positioning">
-      <PageHeader
-        eyebrow="ACCOUNT STRATEGY"
-        title={profile ? "当前账号定位" : "建立你的账号定位"}
-        description={
-          profile
-            ? "这份定位是整个内容工厂的共同上下文。选题、爆款拆解和内容生成都会自动使用它。"
-            : "首次完成后系统会记住当前账号，后续无需重复填写。"
-        }
-        actions={
-          profile && !editing ? (
-            <button className={secondaryButtonClass} onClick={() => setEditing(true)}>
-              升级定位
-            </button>
-          ) : undefined
-        }
-      />
-
-      {profile && !editing ? (
-        <div className="mt-7 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-          <section className="rounded-3xl bg-[#173e32] p-6 text-white shadow-sm sm:p-8">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#dfb967] px-3 py-1 text-xs font-semibold text-[#173e32]">当前唯一账号</span>
-              <span className="text-xs text-white/55">更新于 {formatDate(profile.createdAt)}</span>
-            </div>
-            <h2 className="mt-7 text-2xl font-semibold">{profile.input.accountName || "未命名账号"}</h2>
-            <p className="mt-4 text-lg leading-8 text-white/85">{profile.result.accountPosition}</p>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <Stat label="目标客户" value={profile.input.audience} />
-              <Stat label="核心产品" value={profile.input.offer} />
-              <Stat label="主要平台" value={profile.input.platforms || "待确认"} />
-            </div>
-          </section>
-
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700">接下来系统会做什么</p>
-            <ol className="mt-5 space-y-4">
-              {[
-                "用定位生成搜索关键词与选题方向",
-                "判断外部爆款哪些结构适合当前账号",
-                "结合企业素材生成符合定位的内容",
-                "根据发布数据持续校准内容方向",
-              ].map((item, index) => (
-                <li key={item} className="flex gap-3 text-sm leading-6 text-slate-600">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-semibold text-emerald-700">
-                    {index + 1}
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ol>
-          </section>
-
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
-            <div className="grid gap-7 lg:grid-cols-2">
-              <ResultGroup title="内容支柱" items={profile.result.contentPillars} />
-              <ResultGroup title="关键词种子" items={profile.result.keywordSeeds} tags />
-              <ResultGroup title="首批内容角度" items={profile.result.contentAngles} />
-              <ResultGroup title="下一步动作" items={profile.result.nextActions} />
-            </div>
-          </section>
-        </div>
-      ) : (
-        <section className="mt-7 grid gap-5 xl:grid-cols-[1fr_0.72fr]">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm leading-6 text-emerald-900">
-              可以先用浏览器插件采集账号主页，再把采集到的简介、历史内容和表现摘要放到“现有内容”中；当前版本也支持直接补充关键业务信息。
-            </div>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Field label="账号/品牌名" value={form.accountName} onChange={(value) => setForm({ ...form, accountName: value })} placeholder="例如：某某建材" />
-              <Field label="业务类型" required value={form.business} onChange={(value) => setForm({ ...form, business: value })} placeholder="例如：本地建材门店" />
-              <Field label="目标客户" required value={form.audience} onChange={(value) => setForm({ ...form, audience: value })} placeholder="例如：准备装修的本地业主" />
-              <Field label="产品/服务" required value={form.offer} onChange={(value) => setForm({ ...form, offer: value })} placeholder="例如：地板和安装服务" />
-              <Field label="主要平台" value={form.platforms || ""} onChange={(value) => setForm({ ...form, platforms: value })} placeholder="小红书、公众号、视频号" />
-              <Field label="内容目标" value={form.goal || ""} onChange={(value) => setForm({ ...form, goal: value })} placeholder="获客、信任建设、成交转化" />
-            </div>
-            <div className="mt-4 grid gap-4">
-              <TextArea label="差异化优势" value={form.differentiator || ""} onChange={(value) => setForm({ ...form, differentiator: value })} placeholder="真实案例、服务能力、经验和交付保障" rows={3} />
-              <TextArea label="现有内容或插件采集结果" value={form.currentContent || ""} onChange={(value) => setForm({ ...form, currentContent: value })} placeholder="粘贴账号简介、代表性文章、点赞收藏表现和你观察到的问题" rows={7} />
-            </div>
-            {error ? <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button className={primaryButtonClass} onClick={analyze} disabled={busy}>
-                {busy ? "AI 正在建立定位…" : profile ? "重新分析并更新" : "建立账号定位"}
-              </button>
-              {profile ? (
-                <button className={secondaryButtonClass} onClick={() => setEditing(false)}>
-                  取消
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-base font-semibold">为什么只做一个账号</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-500">公司前期最重要的是稳定一个内容方向。定位一旦确定，后续动作就围绕同一目标积累，而不是反复从零开始。</p>
-            <div className="mt-6 space-y-3">
-              {[
-                ["一次建立", "只在方向变化时升级"],
-                ["全程继承", "选题和创作自动调用"],
-                ["数据校准", "发布后用结果修正方向"],
-              ].map(([title, body]) => (
-                <div key={title} className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-sm font-semibold">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{body}</p>
-                </div>
-              ))}
-            </div>
-          </aside>
-        </section>
-      )}
+      <PageHeader eyebrow="QUICK POSITIONING" title={draft ? "确认账号定位" : "快速建立当前账号"} description={draft ? "AI 结果还没有生效。你可以直接修改，确认后才会覆盖当前账号。" : "只填写关键业务信息即可；也可以先跳过，账号定位不会阻止创作。"} />
+      {context?.status === "skipped" && !draft ? <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">你上次选择了暂时跳过。现在可以补充定位，也可以继续直接创作。</div> : null}
+      {draft ? <DraftEditor draft={draft} onChange={setDraft} /> : <PositioningForm form={form} onChange={setForm} />}
+      {error ? <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+      <div className="mt-6 flex flex-wrap gap-3">
+        {draft ? <><button className={primaryButtonClass} disabled={Boolean(busy)} onClick={confirm}>{busy === "confirm" ? "正在保存…" : "确认并设为当前账号"}</button><button className={secondaryButtonClass} disabled={Boolean(busy)} onClick={() => setDraft(null)}>返回修改资料</button></> : <><button className={primaryButtonClass} disabled={Boolean(busy)} onClick={analyze}>{busy === "analyze" ? "AI 正在分析…" : "生成定位预览"}</button>{context?.status === "confirmed" ? <button className={secondaryButtonClass} onClick={() => setEditing(false)}>取消</button> : <button className={secondaryButtonClass} disabled={Boolean(busy)} onClick={skip}>{busy === "skip" ? "正在跳过…" : "先跳过，直接创作"}</button>}</>}
+      </div>
     </AppShell>
   );
 }
 
-function Field({ label, value, onChange, placeholder, required }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; required?: boolean }) {
-  return (
-    <label className="grid gap-2 text-sm font-medium text-slate-700">
-      <span>{label}{required ? <span className="text-rose-600"> *</span> : null}</span>
-      <input className="h-11 rounded-xl border border-slate-200 bg-white px-3 outline-none transition focus:border-emerald-700" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
-    </label>
-  );
+function PositioningForm({ form, onChange }: { form: PositioningRequest; onChange: (form: PositioningRequest) => void }) {
+  return <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><div className="grid gap-4 sm:grid-cols-2"><Field label="账号/品牌名" value={form.accountName} onChange={(accountName) => onChange({ ...form, accountName })} placeholder="例如：某某建材" /><Field label="业务类型" required value={form.business} onChange={(business) => onChange({ ...form, business })} placeholder="例如：本地建材门店" /><Field label="目标客户" required value={form.audience} onChange={(audience) => onChange({ ...form, audience })} placeholder="例如：准备装修的本地业主" /><Field label="产品/服务" required value={form.offer} onChange={(offer) => onChange({ ...form, offer })} placeholder="例如：地板和安装服务" /><Field label="主要平台" value={form.platforms || ""} onChange={(platforms) => onChange({ ...form, platforms })} placeholder="小红书、公众号、朋友圈、短视频" /><Field label="内容目标" value={form.goal || ""} onChange={(goal) => onChange({ ...form, goal })} placeholder="获客、信任建设、成交转化" /></div><div className="mt-4 grid gap-4"><TextArea label="差异化优势" value={form.differentiator || ""} onChange={(differentiator) => onChange({ ...form, differentiator })} placeholder="真实案例、服务能力、经验和交付保障" rows={3} /><TextArea label="现有内容或账号采集结果" value={form.currentContent || ""} onChange={(currentContent) => onChange({ ...form, currentContent })} placeholder="可选：粘贴账号简介、代表内容、表现摘要和已知问题" rows={6} /></div></section>;
 }
 
-function TextArea({ label, value, onChange, placeholder, rows }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; rows: number }) {
-  return (
-    <label className="grid gap-2 text-sm font-medium text-slate-700">
-      <span>{label}</span>
-      <textarea className="resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 leading-6 outline-none transition focus:border-emerald-700" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} />
-    </label>
-  );
+function DraftEditor({ draft, onChange }: { draft: AccountContextDraft; onChange: (draft: AccountContextDraft) => void }) {
+  return <section className="mt-7 grid gap-5 lg:grid-cols-2"><div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><TextArea label="账号定位" value={draft.accountPosition} onChange={(accountPosition) => onChange({ ...draft, accountPosition })} placeholder="账号定位" rows={5} /><div className="mt-4"><ListField label="目标客户" value={draft.targetAudience} onChange={(targetAudience) => onChange({ ...draft, targetAudience })} /></div><div className="mt-4"><ListField label="内容支柱" value={draft.contentPillars} onChange={(contentPillars) => onChange({ ...draft, contentPillars })} /></div><div className="mt-4"><ListField label="品牌语气" value={draft.brandVoice} onChange={(brandVoice) => onChange({ ...draft, brandVoice })} /></div></div><div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><ListField label="常用表达" value={draft.preferredPhrases} onChange={(preferredPhrases) => onChange({ ...draft, preferredPhrases })} /><div className="mt-4"><ListField label="禁用表达" value={draft.bannedPhrases} onChange={(bannedPhrases) => onChange({ ...draft, bannedPhrases })} /></div><div className="mt-4"><ListField label="内容方向" value={draft.contentDirections} onChange={(contentDirections) => onChange({ ...draft, contentDirections })} /></div><div className="mt-4"><ListField label="推荐选题" value={draft.recommendedTopics} onChange={(recommendedTopics) => onChange({ ...draft, recommendedTopics })} /></div></div></section>;
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-2xl bg-white/8 p-4"><p className="text-xs text-white/45">{label}</p><p className="mt-2 text-sm leading-6 text-white/85">{value}</p></div>;
-}
+function Field({ label, value, onChange, placeholder, required }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; required?: boolean }) { return <label className="grid gap-2 text-sm font-medium text-slate-700"><span>{label}{required ? <span className="text-rose-600"> *</span> : null}</span><input className="h-11 rounded-xl border border-slate-200 px-3 outline-none focus:border-emerald-700" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>; }
+function TextArea({ label, value, onChange, placeholder, rows }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; rows: number }) { return <label className="grid gap-2 text-sm font-medium text-slate-700"><span>{label}</span><textarea className="resize-none rounded-xl border border-slate-200 px-3 py-3 leading-6 outline-none focus:border-emerald-700" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={rows} /></label>; }
+function ListField({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string[]) => void }) { return <TextArea label={`${label}（每行一项）`} value={value.join("\n")} onChange={(text) => onChange(text.split("\n").map((item) => item.trim()).filter(Boolean))} placeholder={`填写${label}`} rows={4} />; }
+function Stat({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl bg-white/8 p-4"><p className="text-xs text-white/45">{label}</p><p className="mt-2 text-sm leading-6 text-white/85">{value || "待补充"}</p></div>; }
+function ResultGroup({ title, items, tags }: { title: string; items: string[]; tags?: boolean }) { return <div className="mt-5 first:mt-0"><h3 className="text-sm font-semibold">{title}</h3>{items.length ? tags ? <div className="mt-3 flex flex-wrap gap-2">{items.map((item) => <span key={item} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800">{item}</span>)}</div> : <ul className="mt-3 space-y-2">{items.map((item) => <li key={item} className="flex gap-2 text-sm leading-6 text-slate-600"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-[#dfb967]" />{item}</li>)}</ul> : <p className="mt-2 text-sm text-slate-400">待补充</p>}</div>; }
 
-function ResultGroup({ title, items, tags }: { title: string; items: string[]; tags?: boolean }) {
-  return (
-    <div>
-      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
-      {tags ? (
-        <div className="mt-3 flex flex-wrap gap-2">{items.map((item) => <span key={item} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800">{item}</span>)}</div>
-      ) : (
-        <ul className="mt-3 space-y-2">{items.map((item) => <li key={item} className="flex gap-2 text-sm leading-6 text-slate-600"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-[#dfb967]" />{item}</li>)}</ul>
-      )}
-    </div>
-  );
+function formFromContext(context: AccountContext | null): PositioningRequest {
+  if (!context) return emptyForm;
+  return { accountName: context.accountName, business: context.business, audience: context.targetAudience.join("、"), offer: context.offer, differentiator: context.preferredPhrases.join("、"), platforms: context.platforms.join("、"), goal: context.conversionGoal, currentContent: "" };
 }
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
-}
-
+function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value)); }

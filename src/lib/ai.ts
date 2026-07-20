@@ -1,11 +1,13 @@
 import { requireEnv } from "./config";
 import type { KnowledgeSource } from "./feishu";
+import type { AccountContext } from "@/modules/positioning/types";
 
 export type GenerateRequest = {
   topic: string;
   audience?: string;
   platform?: string;
   accountPosition?: string;
+  accountContext?: AccountContext;
   sources: KnowledgeSource[];
 };
 
@@ -35,6 +37,11 @@ export type PositioningResult = {
   keywordSeeds: string[];
   benchmarkAccounts: string[];
   contentAngles: string[];
+  brandVoice: string[];
+  preferredPhrases: string[];
+  bannedPhrases: string[];
+  recommendedTopics: string[];
+  analysisEvidence: string[];
   questionsToConfirm: string[];
   nextActions: string[];
 };
@@ -47,6 +54,7 @@ export type TopicRadarRequest = {
   keywordSeeds?: string;
   hotSamples?: string;
   contentGoal?: string;
+  accountContext?: AccountContext;
 };
 
 export type TopicRadarResult = {
@@ -105,8 +113,9 @@ export async function generateContent(request: GenerateRequest): Promise<Generat
       role: "user",
       content: [
         `主题: ${request.topic}`,
-        `当前账号定位: ${request.accountPosition || "待补充"}`,
-        `目标人群: ${request.audience || "待补充"}`,
+        formatAccountContext(request.accountContext),
+        `当前账号定位: ${request.accountPosition || request.accountContext?.accountPosition || "待补充"}`,
+        `目标人群补充: ${request.audience || "无"}`,
         `平台: ${request.platform || "小红书/公众号/视频号"}`,
         "请结合资料输出第一版定位、大纲、草稿、审计建议和引用说明。",
         "资料:",
@@ -123,7 +132,7 @@ export async function analyzePositioning(request: PositioningRequest): Promise<P
     {
       role: "system",
       content:
-        "你是内容工厂的账号定位顾问。只输出 JSON，不要 Markdown。JSON 字段必须包含 accountPosition, targetAudience, contentPillars, keywordSeeds, benchmarkAccounts, contentAngles, questionsToConfirm, nextActions。",
+        "你是内容工厂的账号定位顾问。只输出 JSON，不要 Markdown。JSON 字段必须包含 accountPosition, targetAudience, contentPillars, keywordSeeds, benchmarkAccounts, contentAngles, brandVoice, preferredPhrases, bannedPhrases, recommendedTopics, analysisEvidence, questionsToConfirm, nextActions。",
     },
     {
       role: "user",
@@ -154,6 +163,7 @@ export async function analyzeTopicRadar(request: TopicRadarRequest): Promise<Top
     {
       role: "user",
       content: [
+        formatAccountContext(request.accountContext),
         `账号定位: ${request.accountPosition}`,
         `目标人群: ${request.targetAudience || "待补充"}`,
         `产品/服务: ${request.offer || "待补充"}`,
@@ -196,7 +206,7 @@ export async function analyzeInspiration(request: InspirationRequest): Promise<I
   return normalizeInspirationResult(parseJsonObject(content) as Partial<InspirationResult>);
 }
 
-async function chatCompletionJson(messages: Array<{ role: "system" | "user"; content: string }>) {
+export async function chatCompletionJson(messages: Array<{ role: "system" | "user"; content: string }>) {
   const baseUrl = requireEnv("AI_BASE_URL");
   const apiKey = requireEnv("AI_API_KEY");
   const model = requireEnv("AI_MODEL");
@@ -291,9 +301,34 @@ function normalizePositioningResult(value: Partial<PositioningResult>): Position
     keywordSeeds: toStringArray(value.keywordSeeds),
     benchmarkAccounts: toStringArray(value.benchmarkAccounts),
     contentAngles: toStringArray(value.contentAngles),
+    brandVoice: toStringArray(value.brandVoice),
+    preferredPhrases: toStringArray(value.preferredPhrases),
+    bannedPhrases: toStringArray(value.bannedPhrases),
+    recommendedTopics: toStringArray(value.recommendedTopics),
+    analysisEvidence: toStringArray(value.analysisEvidence),
     questionsToConfirm: toStringArray(value.questionsToConfirm),
     nextActions: toStringArray(value.nextActions),
   };
+}
+
+function formatAccountContext(context?: AccountContext) {
+  if (!context) return "当前账号上下文: 未确认（允许继续创作，不要虚构品牌事实）";
+
+  return [
+    "当前账号上下文:",
+    `账号: ${context.accountName || "未命名"}`,
+    `业务: ${context.business || "待补充"}`,
+    `平台: ${context.platforms.join("、") || "待补充"}`,
+    `定位: ${context.accountPosition || "待补充"}`,
+    `目标人群: ${context.targetAudience.join("、") || "待补充"}`,
+    `核心产品/服务: ${context.offer || "待补充"}`,
+    `转化目标: ${context.conversionGoal || "待补充"}`,
+    `内容支柱: ${context.contentPillars.join("、") || "待补充"}`,
+    `品牌语气: ${context.brandVoice.join("、") || "待补充"}`,
+    `常用表达: ${context.preferredPhrases.join("、") || "待补充"}`,
+    `禁用表达: ${context.bannedPhrases.join("、") || "无"}`,
+    `内容方向: ${context.contentDirections.join("、") || "待补充"}`,
+  ].join("\n");
 }
 
 function normalizeTopicRadarResult(value: Partial<TopicRadarResult>): TopicRadarResult {
@@ -366,7 +401,7 @@ function firstStringArray(record: Record<string, unknown>, keys: string[]): stri
   return [];
 }
 
-function parseJsonObject(content: string): unknown {
+export function parseJsonObject(content: string): unknown {
   const trimmed = content.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
 

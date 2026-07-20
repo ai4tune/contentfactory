@@ -1,11 +1,10 @@
 import { PositioningClient } from "./positioning-client";
-import { getCurrentAccountProfile } from "@/lib/store";
+import { getCurrentAccountContext } from "@/modules/positioning/repository";
 
 export const dynamic = "force-dynamic";
 
 export default async function PositioningPage() {
-  const profile = await getCurrentAccountProfile();
+  const context = await getCurrentAccountContext();
 
-  return <PositioningClient initialProfile={profile} />;
+  return <PositioningClient initialContext={context} />;
 }
-
