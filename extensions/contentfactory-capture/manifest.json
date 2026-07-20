@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Content Factory Capture",
+  "version": "0.1.0",
+  "description": "Capture visible hot content from the current page into local Content Factory.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"],
+  "action": {
+    "default_title": "采集到内容工厂",
+    "default_popup": "popup.html"
+  }
+}

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Content Factory Capture</title>
+    <style>
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 14px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #111827;
+        background: #f5f5f4;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+
+      p {
+        margin: 0 0 12px;
+        color: #525252;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      input,
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        border: 1px solid #d4d4d4;
+        padding: 8px;
+        font: inherit;
+        font-weight: 400;
+        background: #fff;
+      }
+
+      textarea {
+        min-height: 64px;
+        resize: vertical;
+      }
+
+      button {
+        width: 100%;
+        border: 0;
+        background: #111827;
+        color: #fff;
+        padding: 10px 12px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        background: #9ca3af;
+      }
+
+      #status {
+        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.6;
+        color: #525252;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>采集到内容工厂</h1>
+    <p>读取当前页面可见内容，发送到本地爆款库。不会读取账号密码。</p>
+    <label>
+      来源关键词
+      <input id="sourceKeyword" placeholder="例如：装修避坑" />
+    </label>
+    <label>
+      账号定位
+      <textarea id="accountPosition" placeholder="可选，粘贴你的账号定位"></textarea>
+    </label>
+    <button id="capture">采集当前页面</button>
+    <div id="status">确保内容工厂正在 http://localhost:3000 运行。</div>
+    <script src="popup.js"></script>
+  </body>
+</html>
