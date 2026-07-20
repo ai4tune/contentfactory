@@ -36,22 +36,26 @@ export default function TopicsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/positioning/analyze")
+    fetch("/api/positioning/current")
       .then((response) => response.json())
       .then((payload: {
-        profile?: {
-          input: { audience?: string; offer?: string; platforms?: string };
-          result: { accountPosition?: string; targetAudience?: string[]; keywordSeeds?: string[] };
+        context?: {
+          status: "confirmed" | "skipped";
+          accountPosition?: string;
+          targetAudience?: string[];
+          offer?: string;
+          platforms?: string[];
+          conversionGoal?: string;
         } | null;
       }) => {
-        if (!payload.profile) return;
+        if (payload.context?.status !== "confirmed") return;
         setForm((current) => ({
           ...current,
-          accountPosition: payload.profile?.result.accountPosition || current.accountPosition,
-          targetAudience: payload.profile?.result.targetAudience?.join("、") || payload.profile?.input.audience || current.targetAudience,
-          offer: payload.profile?.input.offer || current.offer,
-          platforms: payload.profile?.input.platforms || current.platforms,
-          keywordSeeds: payload.profile?.result.keywordSeeds?.join("、") || current.keywordSeeds,
+          accountPosition: payload.context?.accountPosition || current.accountPosition,
+          targetAudience: payload.context?.targetAudience?.join("、") || current.targetAudience,
+          offer: payload.context?.offer || current.offer,
+          platforms: payload.context?.platforms?.join("、") || current.platforms,
+          contentGoal: payload.context?.conversionGoal || current.contentGoal,
         }));
       })
       .catch(() => undefined);

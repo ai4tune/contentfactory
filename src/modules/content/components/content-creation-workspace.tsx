@@ -1,198 +1,167 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
+import { loadLocalKnowledge, readLocalKnowledgeItem } from "@/modules/knowledge/local-index";
+import type { ContentBrief, ContentProject } from "@/modules/content/types";
+import type { LocalKnowledgeItem } from "@/modules/knowledge/types";
+import type { TopicSuggestion } from "@/modules/topics/types";
 
 type KnowledgeSource = {
   id: string;
   title: string;
   url?: string;
-  source: "feishu" | "base" | "upload";
+  path?: string;
+  source: "local" | "feishu" | "base" | "upload";
   text?: string;
 };
-
-type GenerateResult = {
-  positioning: string;
-  outline: string[];
-  draft: string;
-  audit: string[];
-  citations: Array<{ title: string; reason: string }>;
-};
-
-const channelOptions = ["公众号文章", "小红书笔记", "朋友圈文案", "短视频脚本"];
 
 export function ContentCreationWorkspace() {
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [topic, setTopic] = useState("");
-  const [platform, setPlatform] = useState(channelOptions[0]);
   const [searchItems, setSearchItems] = useState<KnowledgeSource[]>([]);
   const [selectedSources, setSelectedSources] = useState<KnowledgeSource[]>([]);
-  const [result, setResult] = useState<GenerateResult | null>(null);
+  const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
+  const [brief, setBrief] = useState<ContentBrief | null>(null);
+  const [project, setProject] = useState<ContentProject | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/materials", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload: { materials?: KnowledgeSource[] }) => setSearchItems(payload.materials ?? []))
+    Promise.all([
+      fetch("/api/materials", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload: { materials?: KnowledgeSource[] }) => payload.materials ?? []),
+      loadLocalKnowledge().then((items) => items.map(localItemToSource)).catch(() => []),
+    ])
+      .then(([remote, local]) => setSearchItems([...local, ...remote]))
       .catch(() => setMessage("知识资料读取失败，请稍后重试。"));
   }, []);
 
-  const canGenerate = topic.trim().length > 0 && selectedSources.length > 0;
+  const hasKnowledge = selectedSources.length > 0;
+  const canCreateBrief = topic.trim().length > 0 && hasKnowledge;
+
+  function changeTopic(value: string) {
+    setTopic(value);
+    setBrief(null);
+    setProject(null);
+  }
 
   async function searchFeishu() {
-    if (!query.trim()) {
-      setMessage("请先输入飞书搜索关键词。");
-      return;
-    }
-
-    setBusy("search");
-    setMessage(null);
-
-    try {
-      const response = await fetch("/api/feishu/search", {
+    if (!query.trim()) return setMessage("请先输入飞书搜索关键词。");
+    await run("search", async () => {
+      const response = await fetch("/api/knowledge/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
       });
       const payload = (await response.json()) as { items?: KnowledgeSource[]; error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "搜索失败");
-      }
-
+      if (!response.ok) throw new Error(payload.error ?? "搜索失败");
       setSearchItems(payload.items ?? []);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "搜索失败");
-    } finally {
-      setBusy(null);
-    }
+    });
   }
 
   async function addKnowledgeSource(source: KnowledgeSource) {
-    if (selectedSources.some((item) => item.id === source.id)) {
-      return;
-    }
-
-    if (source.text) {
-      setSelectedSources((items) => [...items, source]);
-      return;
-    }
-
-    setBusy(`read:${source.id}`);
-    setMessage(null);
-
-    try {
-      const response = await fetch(`/api/feishu/documents/${encodeURIComponent(source.id)}`);
-      const payload = (await response.json()) as { document?: KnowledgeSource; error?: string };
-
-      if (!response.ok || !payload.document) {
-        throw new Error(payload.error ?? "读取文档失败");
+    if (selectedSources.some((item) => item.id === source.id)) return;
+    await run(`read:${source.id}`, async () => {
+      let selected = source;
+      if (source.source === "local") {
+        selected = { ...source, text: await readLocalKnowledgeItem(source.id) };
+      } else if (!source.text) {
+        const response = await fetch(`/api/integrations/feishu/documents/${encodeURIComponent(source.id)}`);
+        const payload = (await response.json()) as { document?: KnowledgeSource; error?: string };
+        if (!response.ok || !payload.document) throw new Error(payload.error ?? "读取文档失败");
+        selected = payload.document;
       }
-
-      setSelectedSources((items) => [...items, payload.document as KnowledgeSource]);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "读取文档失败");
-    } finally {
-      setBusy(null);
-    }
+      setSelectedSources((items) => [...items, selected]);
+      setSuggestions([]);
+      setBrief(null);
+      setProject(null);
+    });
   }
 
   async function addFeishuUrl() {
-    if (!feishuUrl.trim()) {
-      setMessage("请先粘贴飞书文档或多维表格链接。");
-      return;
-    }
-
-    setBusy("resolve");
-    setMessage(null);
-
-    try {
-      const response = await fetch("/api/feishu/resolve", {
+    if (!feishuUrl.trim()) return setMessage("请先粘贴飞书文档或多维表格链接。");
+    await run("resolve", async () => {
+      const response = await fetch("/api/integrations/feishu/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: feishuUrl }),
       });
       const payload = (await response.json()) as { document?: KnowledgeSource; error?: string };
-
-      if (!response.ok || !payload.document) {
-        throw new Error(payload.error ?? "读取飞书链接失败");
-      }
-
-      if (!selectedSources.some((item) => item.id === payload.document?.id)) {
-        setSelectedSources((items) => [...items, payload.document as KnowledgeSource]);
-      }
+      if (!response.ok || !payload.document) throw new Error(payload.error ?? "读取飞书链接失败");
+      setSelectedSources((items) => items.some((item) => item.id === payload.document?.id)
+        ? items
+        : [...items, payload.document as KnowledgeSource]);
       setFeishuUrl("");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "读取飞书链接失败");
-    } finally {
-      setBusy(null);
-    }
+      setSuggestions([]);
+      setBrief(null);
+      setProject(null);
+    });
   }
 
   async function uploadFiles(files: FileList | null) {
-    if (!files?.length) {
-      return;
-    }
-
+    if (!files?.length) return;
     const form = new FormData();
     Array.from(files).forEach((file) => form.append("files", file));
-    setBusy("upload");
-    setMessage(null);
-
-    try {
-      const response = await fetch("/api/uploads", {
-        method: "POST",
-        body: form,
-      });
+    await run("upload", async () => {
+      const response = await fetch("/api/uploads", { method: "POST", body: form });
       const payload = (await response.json()) as { sources?: KnowledgeSource[]; error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "上传失败");
-      }
-
+      if (!response.ok) throw new Error(payload.error ?? "上传失败");
       const sources = payload.sources ?? [];
-      setSelectedSources((items) => [
-        ...items,
-        ...sources.filter((source) => !items.some((item) => item.id === source.id)),
-      ]);
-      setSearchItems((items) => [
-        ...sources,
-        ...items.filter((item) => !sources.some((source) => source.id === item.id)),
-      ]);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "上传失败");
-    } finally {
-      setBusy(null);
-    }
+      setSelectedSources((items) => [...items, ...sources.filter((source) => !items.some((item) => item.id === source.id))]);
+      setSearchItems((items) => [...sources, ...items.filter((item) => !sources.some((source) => source.id === item.id))]);
+      setSuggestions([]);
+      setBrief(null);
+      setProject(null);
+    });
   }
 
-  async function generate() {
-    if (!canGenerate) {
-      setMessage("需要填写选题并至少选择 1 份资料。");
-      return;
-    }
+  async function recommendTopics() {
+    if (!hasKnowledge) return setMessage("请先选择至少 1 份知识资料，再推荐选题。");
+    await run("suggest", async () => {
+      const payload = await postJson<{ suggestions?: TopicSuggestion[]; error?: string }>(
+        "/api/topics/suggest",
+        { sources: selectedSources },
+      );
+      setSuggestions(payload.suggestions ?? []);
+    });
+  }
 
-    setBusy("generate");
+  async function generateBrief() {
+    if (!canCreateBrief) return setMessage("需要填写选题并至少选择 1 份资料。");
+    await run("brief", async () => {
+      const payload = await postJson<{ brief?: ContentBrief; error?: string }>(
+        "/api/content/brief",
+        { topic, sources: selectedSources },
+      );
+      if (!payload.brief) throw new Error("没有生成可用的内容简报。");
+      setBrief(payload.brief);
+      setProject(null);
+    });
+  }
+
+  async function confirmBrief() {
+    if (!brief) return;
+    await run("confirm", async () => {
+      const payload = await postJson<{ project?: ContentProject; error?: string }>(
+        "/api/content/projects",
+        { topic, brief },
+      );
+      if (!payload.project) throw new Error("内容项目保存失败。");
+      setProject(payload.project);
+      setMessage("内容简报已确认并保存。");
+    });
+  }
+
+  async function run(key: string, action: () => Promise<void>) {
+    setBusy(key);
     setMessage(null);
-    setResult(null);
-
     try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, platform, sources: selectedSources }),
-      });
-      const payload = (await response.json()) as { result?: GenerateResult; error?: string };
-
-      if (!response.ok || !payload.result) {
-        throw new Error(payload.error ?? "生成失败");
-      }
-
-      setResult(payload.result);
+      await action();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "生成失败");
+      setMessage(error instanceof Error ? error.message : "操作失败");
     } finally {
       setBusy(null);
     }
@@ -203,283 +172,147 @@ export function ContentCreationWorkspace() {
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-950">创作输入</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">先把选题和事实依据准备好，再让 AI 开始写。</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">先确定选题和事实依据，再生成统一内容简报。</p>
         </div>
 
         <InputSection title="确定选题">
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             <span>这次想写什么</span>
             <textarea
-              className="min-h-24 resize-none rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
-              onChange={(event) => setTopic(event.target.value)}
+              className="min-h-24 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
+              onChange={(event) => changeTopic(event.target.value)}
               placeholder="例如：装修选地板时，怎么避免只看价格的误区？"
               value={topic}
             />
           </label>
+          <button className={`${secondaryButtonClass} mt-3 w-full`} disabled={!hasKnowledge || busy === "suggest"} onClick={recommendTopics} type="button">
+            {busy === "suggest" ? "正在结合账号与知识推荐" : "根据账号与已选知识推荐"}
+          </button>
+          {suggestions.length ? (
+            <div className="mt-3 grid gap-2">
+              {suggestions.map((suggestion) => (
+                <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700 hover:bg-emerald-50/50" key={suggestion.title} onClick={() => changeTopic(suggestion.title)} type="button">
+                  <span className="block text-xs font-semibold text-slate-800">{suggestion.title}</span>
+                  <span className="mt-1 block text-[11px] leading-5 text-slate-500">{suggestion.angle} · {suggestion.rationale}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </InputSection>
 
         <InputSection title="选择知识" meta={`${selectedSources.length} 份已选`}>
           <div className="grid gap-3">
-            <div>
-              <label className="text-xs font-medium text-slate-600" htmlFor="feishu-search">
-                搜索飞书知识
-              </label>
-              <div className="mt-2 flex gap-2">
-                <input
-                  className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
-                  id="feishu-search"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="产品、案例或观点"
-                  value={query}
-                />
-                <button
-                  className={`${secondaryButtonClass} shrink-0`}
-                  disabled={busy === "search"}
-                  onClick={searchFeishu}
-                  type="button"
-                >
-                  {busy === "search" ? "搜索中" : "搜索"}
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-emerald-800" onChange={(event) => setQuery(event.target.value)} placeholder="搜索飞书知识" value={query} />
+              <button className={secondaryButtonClass} disabled={busy === "search"} onClick={searchFeishu} type="button">{busy === "search" ? "搜索中" : "搜索"}</button>
             </div>
-
             <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
               <summary className="cursor-pointer text-xs font-semibold text-slate-700">其他添加方式</summary>
               <div className="mt-3 grid gap-3">
-                <label className="grid gap-2 text-xs font-medium text-slate-600" htmlFor="feishu-url">
-                  <span>飞书文档或多维表格链接</span>
-                  <div className="flex gap-2">
-                    <input
-                      className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-800"
-                      id="feishu-url"
-                      onChange={(event) => setFeishuUrl(event.target.value)}
-                      placeholder="https://..."
-                      value={feishuUrl}
-                    />
-                    <button
-                      className={secondaryButtonClass}
-                      disabled={busy === "resolve"}
-                      onClick={addFeishuUrl}
-                      type="button"
-                    >
-                      {busy === "resolve" ? "读取中" : "读取"}
-                    </button>
-                  </div>
-                </label>
-                <label className="flex cursor-pointer items-center justify-between rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs font-medium text-slate-600 transition hover:border-emerald-800">
-                  <span>{busy === "upload" ? "正在读取文件" : "上传 TXT / MD / CSV"}</span>
-                  <span>选择文件</span>
-                  <input
-                    accept=".txt,.md,.csv,text/plain,text/markdown,text/csv"
-                    className="sr-only"
-                    multiple
-                    onChange={(event) => uploadFiles(event.target.files)}
-                    type="file"
-                  />
+                <div className="flex gap-2">
+                  <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" onChange={(event) => setFeishuUrl(event.target.value)} placeholder="飞书文档链接" value={feishuUrl} />
+                  <button className={secondaryButtonClass} disabled={busy === "resolve"} onClick={addFeishuUrl} type="button">读取</button>
+                </div>
+                <label className="flex cursor-pointer justify-between rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs font-medium text-slate-600">
+                  <span>{busy === "upload" ? "正在读取文件" : "兼容入口：上传 TXT / MD / CSV"}</span><span>选择</span>
+                  <input accept=".txt,.md,.csv,text/plain,text/markdown,text/csv" className="sr-only" multiple onChange={(event) => uploadFiles(event.target.files)} type="file" />
                 </label>
               </div>
             </details>
 
-            {searchItems.length > 0 ? (
+            {searchItems.length ? (
               <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200">
-                {searchItems.slice(0, 10).map((item) => {
+                {searchItems.slice(0, 12).map((item) => {
                   const selected = selectedSources.some((source) => source.id === item.id);
-                  return (
-                    <button
-                      className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-slate-50 disabled:cursor-default disabled:bg-emerald-50/50"
-                      disabled={selected || busy === `read:${item.id}`}
-                      key={item.id}
-                      onClick={() => addKnowledgeSource(item)}
-                      type="button"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-xs font-semibold text-slate-700">{item.title}</span>
-                        <span className="mt-0.5 block text-[11px] text-slate-400">{sourceLabel(item.source)}</span>
-                      </span>
-                      <span className="shrink-0 text-xs font-semibold text-emerald-800">
-                        {busy === `read:${item.id}` ? "读取中" : selected ? "已选" : "选择"}
-                      </span>
-                    </button>
-                  );
+                  return <button className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-slate-50 disabled:bg-emerald-50/50" disabled={selected || busy === `read:${item.id}`} key={item.id} onClick={() => addKnowledgeSource(item)} type="button">
+                    <span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-700">{item.title}</span><span className="text-[11px] text-slate-400">{sourceLabel(item.source)}</span></span>
+                    <span className="shrink-0 text-xs font-semibold text-emerald-800">{selected ? "已选" : busy === `read:${item.id}` ? "读取中" : "选择"}</span>
+                  </button>;
                 })}
               </div>
-            ) : (
-              <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
-                尚未找到可用资料。可以搜索飞书，或从其他方式添加。
-              </p>
-            )}
+            ) : <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">暂无资料。可先去知识库连接本地文件夹，或搜索飞书。</p>}
 
-            {selectedSources.length > 0 ? (
-              <div className="grid gap-2">
-                {selectedSources.map((source) => (
-                  <div className="flex items-start justify-between gap-3 rounded-xl bg-[#e9f0ec] px-3 py-2.5" key={source.id}>
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-slate-800">{source.title}</p>
-                      <p className="mt-0.5 text-[11px] text-slate-500">{sourceLabel(source.source)}</p>
-                    </div>
-                    <button
-                      className="shrink-0 text-xs text-slate-500 hover:text-slate-900"
-                      onClick={() => setSelectedSources((items) => items.filter((item) => item.id !== source.id))}
-                      type="button"
-                    >
-                      移除
-                    </button>
-                  </div>
-                ))}
+            {selectedSources.map((source) => (
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-[#e9f0ec] px-3 py-2.5" key={source.id}>
+                <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{source.title}</p><p className="text-[11px] text-slate-500">{sourceLabel(source.source)}</p></div>
+                <button className="text-xs text-slate-500" onClick={() => { setSelectedSources((items) => items.filter((item) => item.id !== source.id)); setSuggestions([]); setBrief(null); setProject(null); }} type="button">移除</button>
               </div>
-            ) : null}
+            ))}
           </div>
         </InputSection>
 
-        <InputSection title="选择渠道">
-          <label className="grid gap-2 text-sm font-medium text-slate-700" htmlFor="content-channel">
-            <span>本次发布渠道</span>
-            <select
-              className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
-              id="content-channel"
-              onChange={(event) => setPlatform(event.target.value)}
-              value={platform}
-            >
-              {channelOptions.map((channel) => (
-                <option key={channel}>{channel}</option>
-              ))}
-            </select>
-          </label>
-          <p className="mt-2 text-xs leading-5 text-slate-500">当前一次生成一个渠道，草稿会自动保存。</p>
-        </InputSection>
-
-        {message ? (
-          <p className="mx-5 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status">
-            {message}
-          </p>
-        ) : null}
-
+        {message ? <p className="mx-5 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status">{message}</p> : null}
         <div className="border-t border-slate-200 px-5 py-4">
-          <button
-            className={`${primaryButtonClass} w-full active:translate-y-px`}
-            disabled={!canGenerate || busy === "generate"}
-            onClick={generate}
-            type="button"
-          >
-            {busy === "generate" ? "AI 正在生成第一版" : "生成第一版"}
+          <button className={`${primaryButtonClass} w-full`} disabled={!canCreateBrief || busy === "brief"} onClick={generateBrief} type="button">
+            {busy === "brief" ? "AI 正在生成内容简报" : brief ? "重新生成内容简报" : "生成内容简报"}
           </button>
-          {!canGenerate ? (
-            <p className="mt-2 text-center text-[11px] leading-5 text-slate-400">填写选题并选择至少 1 份资料后可开始生成。</p>
-          ) : null}
+          {!canCreateBrief ? <p className="mt-2 text-center text-[11px] text-slate-400">填写选题并选择至少 1 份资料后可生成。</p> : null}
         </div>
       </div>
 
       <div className="min-h-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div>
-            <h2 className="text-base font-semibold text-slate-950">内容结果</h2>
-            <p className="mt-1 text-xs text-slate-500">{result ? `${platform} 第一版` : "等待创作输入"}</p>
-          </div>
-          {result ? <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800">已生成</span> : null}
+          <div><h2 className="text-base font-semibold text-slate-950">统一内容简报</h2><p className="mt-1 text-xs text-slate-500">确认后，后续所有渠道都以这份简报为准</p></div>
+          {project ? <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800">已确认</span> : brief ? <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800">待确认</span> : null}
         </div>
-
-        {busy === "generate" ? (
-          <div className="grid gap-5 p-6" aria-live="polite">
-            <div className="h-5 w-36 animate-pulse rounded-md bg-slate-200" />
-            <div className="grid gap-3">
-              <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
-              <div className="h-3 w-11/12 animate-pulse rounded bg-slate-100" />
-              <div className="h-3 w-4/5 animate-pulse rounded bg-slate-100" />
+        {busy === "brief" ? <BriefSkeleton /> : brief ? (
+          <div className="grid gap-5 p-5 sm:p-6">
+            <fieldset className="grid gap-5" disabled={Boolean(project)}>
+            <BriefField label="目标受众" value={brief.targetAudience} onChange={(value) => updateBrief(setBrief, "targetAudience", value)} />
+            <BriefField label="内容目标" value={brief.contentGoal} onChange={(value) => updateBrief(setBrief, "contentGoal", value)} />
+            <BriefField label="核心观点" value={brief.coreMessage} onChange={(value) => updateBrief(setBrief, "coreMessage", value)} multiline />
+            <BriefListField label="关键论点" value={brief.keyPoints} onChange={(value) => updateBrief(setBrief, "keyPoints", value)} />
+            <BriefListField label="内容结构" value={brief.outline} onChange={(value) => updateBrief(setBrief, "outline", value)} />
+            <BriefField label="行动引导" value={brief.callToAction} onChange={(value) => updateBrief(setBrief, "callToAction", value)} />
+            <div><h3 className="text-xs font-semibold text-slate-700">知识引用</h3><div className="mt-2 grid gap-2">{brief.citations.map((citation) => <div className="rounded-xl border border-slate-200 bg-slate-50 p-3" key={`${citation.sourceId}:${citation.excerpt}`}><p className="text-xs font-semibold text-slate-800">{citation.sourceTitle} <span className="font-normal text-slate-400">· {citation.sourceId}</span></p><p className="mt-2 text-xs leading-5 text-slate-600">“{citation.excerpt}”</p><input className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs" onChange={(event) => setBrief((current) => current ? { ...current, citations: current.citations.map((item) => item === citation ? { ...item, purpose: event.target.value } : item) } : current)} value={citation.purpose} /></div>)}</div></div>
+            <BriefListField label="待确认信息" value={brief.openQuestions} onChange={(value) => updateBrief(setBrief, "openQuestions", value)} />
+            <div className="border-t border-slate-200 pt-5">
+              <button className={`${primaryButtonClass} w-full`} disabled={Boolean(project) || busy === "confirm"} onClick={confirmBrief} type="button">{busy === "confirm" ? "正在原子保存" : project ? `已保存项目 ${project.id}` : "确认简报并创建内容项目"}</button>
             </div>
-            <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+            </fieldset>
+            {project ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
+                内容项目已保存。下一步可以基于这份统一简报生成不同渠道的内容。
+              </div>
+            ) : null}
           </div>
-        ) : result ? (
-          <div className="grid gap-0 divide-y divide-slate-100">
-            <ResultBlock title="本稿定位" body={result.positioning} />
-            <ResultList title="内容大纲" items={result.outline} numbered />
-            <ResultBlock title="内容初稿" body={result.draft} prominent />
-            <ResultList title="审核建议" items={result.audit} />
-            <ResultList
-              title="知识引用"
-              items={result.citations.map((item) => `${item.title}：${item.reason}`)}
-            />
-          </div>
-        ) : (
-          <div className="flex min-h-[650px] flex-col items-center justify-center px-6 text-center">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-[#e9f0ec] text-lg font-semibold text-emerald-900">稿</div>
-            <h3 className="mt-5 text-base font-semibold text-slate-900">结果会出现在这里</h3>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
-              完成左侧的选题、知识和渠道选择，AI 会生成大纲、初稿、审核建议和引用说明。
-            </p>
-          </div>
-        )}
+        ) : <div className="flex min-h-[650px] flex-col items-center justify-center px-6 text-center"><div className="flex size-14 items-center justify-center rounded-2xl bg-[#e9f0ec] text-lg font-semibold text-emerald-900">简</div><h3 className="mt-5 text-base font-semibold text-slate-900">简报会出现在这里</h3><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">它会固定目标受众、核心观点、结构、行动引导和可追溯引用。</p></div>}
       </div>
     </section>
   );
 }
 
-function InputSection({
-  title,
-  meta,
-  children,
-}: {
-  title: string;
-  meta?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="border-b border-slate-200 px-5 py-5 last:border-b-0">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {meta ? <span className="text-xs font-medium text-emerald-800">{meta}</span> : null}
-      </div>
-      {children}
-    </section>
-  );
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const payload = (await response.json()) as T & { error?: string };
+  if (!response.ok) throw new Error(payload.error ?? "请求失败");
+  return payload;
 }
 
-function ResultBlock({
-  title,
-  body,
-  prominent,
-}: {
-  title: string;
-  body: string;
-  prominent?: boolean;
-}) {
-  return (
-    <section className="p-5 sm:p-6">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      <div className={`mt-3 whitespace-pre-wrap text-sm leading-7 ${prominent ? "text-slate-800" : "text-slate-600"}`}>
-        {body || "暂无内容"}
-      </div>
-    </section>
-  );
+function localItemToSource(item: LocalKnowledgeItem): KnowledgeSource {
+  return { id: item.id, title: item.title, path: item.path, source: "local" };
 }
 
-function ResultList({
-  title,
-  items,
-  numbered,
-}: {
-  title: string;
-  items: string[];
-  numbered?: boolean;
-}) {
-  return (
-    <section className="p-5 sm:p-6">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      {items.length > 0 ? (
-        <ol className="mt-3 grid gap-2">
-          {items.map((item, index) => (
-            <li className="flex gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-sm leading-6 text-slate-600" key={`${title}-${index}`}>
-              <span className="font-mono text-xs font-semibold text-emerald-800">{numbered ? index + 1 : "•"}</span>
-              <span>{item}</span>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="mt-3 text-sm text-slate-400">暂无</p>
-      )}
-    </section>
-  );
+function updateBrief<K extends keyof ContentBrief>(setBrief: React.Dispatch<React.SetStateAction<ContentBrief | null>>, key: K, value: ContentBrief[K]) {
+  setBrief((current) => current ? { ...current, [key]: value } : current);
+}
+
+function BriefField({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
+  return <label className="grid gap-2 text-xs font-semibold text-slate-700"><span>{label}</span>{multiline ? <textarea className="min-h-20 rounded-xl border border-slate-300 px-3 py-2 text-sm font-normal leading-6" onChange={(event) => onChange(event.target.value)} value={value} /> : <input className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-normal" onChange={(event) => onChange(event.target.value)} value={value} />}</label>;
+}
+
+function BriefListField({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string[]) => void }) {
+  return <label className="grid gap-2 text-xs font-semibold text-slate-700"><span>{label} <span className="font-normal text-slate-400">（每行一项）</span></span><textarea className="min-h-24 rounded-xl border border-slate-300 px-3 py-2 text-sm font-normal leading-6" onChange={(event) => onChange(event.target.value.split("\n").map((item) => item.trim()).filter(Boolean))} value={value.join("\n")} /></label>;
+}
+
+function BriefSkeleton() {
+  return <div className="grid gap-5 p-6" aria-live="polite"><div className="h-10 animate-pulse rounded-xl bg-slate-100" /><div className="h-10 animate-pulse rounded-xl bg-slate-100" /><div className="h-24 animate-pulse rounded-xl bg-slate-100" /><div className="h-48 animate-pulse rounded-xl bg-slate-100" /></div>;
+}
+
+function InputSection({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
+  return <div className="border-b border-slate-100 px-5 py-5"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-slate-900">{title}</h3>{meta ? <span className="text-xs text-slate-400">{meta}</span> : null}</div>{children}</div>;
 }
 
 function sourceLabel(source: KnowledgeSource["source"]) {
-  return source === "feishu" ? "飞书文档" : source === "base" ? "飞书多维表格" : "上传文件";
+  return { local: "本地文件夹", feishu: "飞书文档", base: "飞书多维表格", upload: "兼容上传" }[source];
 }
