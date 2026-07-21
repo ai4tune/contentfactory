@@ -30,13 +30,51 @@ export type ContentBrief = {
   openQuestions: string[];
 };
 
+export const contentChannels = [
+  "wechat_article",
+  "xiaohongshu_note",
+  "moments_post",
+  "short_video_script",
+] as const;
+
+export type ContentChannel = (typeof contentChannels)[number];
+
+export const channelLabels: Record<ContentChannel, string> = {
+  wechat_article: "公众号文章",
+  xiaohongshu_note: "小红书笔记",
+  moments_post: "朋友圈文案",
+  short_video_script: "短视频脚本",
+};
+
+export type ChannelDraft = {
+  channel: ContentChannel;
+  content: string;
+  status: "generated" | "failed";
+  error?: string;
+  updatedAt: string;
+};
+
 export type ContentProject = {
   id: string;
   topic: string;
   accountSnapshot: AccountContext | null;
   selectedKnowledgeRefs: ContentCitation[];
   brief: ContentBrief;
-  status: "brief_confirmed";
+  channels: ContentChannel[];
+  channelDrafts: ChannelDraft[];
+  status: "brief_confirmed" | "generated" | "partially_failed" | "failed";
   createdAt: string;
   updatedAt: string;
 };
+
+export type GenerateChannelsRequest = {
+  topic: string;
+  channels: ContentChannel[];
+  brief: ContentBrief;
+  sources: BriefKnowledgeSource[];
+  projectId?: string;
+};
+
+export function isContentChannel(value: unknown): value is ContentChannel {
+  return typeof value === "string" && contentChannels.includes(value as ContentChannel);
+}
