@@ -1,54 +1,86 @@
 import Link from "next/link";
 import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-shell";
+import { getConfigStatus } from "@/lib/config";
 import { ContentCreationWorkspace } from "@/modules/content/components/content-creation-workspace";
 import { getCurrentAccountContext } from "@/modules/positioning/repository";
 
 export const dynamic = "force-dynamic";
 
-const steps = ["确定选题", "选择知识", "选择渠道", "生成并审核"];
+const creationSteps = [
+  { title: "确定选题", description: "说清这次要解决的问题" },
+  { title: "选择知识", description: "加入可以支撑内容的真实资料" },
+  { title: "生成简报", description: "统一受众、观点、结构和引用" },
+  { title: "人工确认", description: "确认后创建本次内容项目" },
+];
 
 export default async function ContentCreationPage() {
-  const accountContext = await getCurrentAccountContext();
+  const [accountContext, status] = await Promise.all([
+    getCurrentAccountContext(),
+    Promise.resolve(getConfigStatus()),
+  ]);
 
   return (
     <AppShell active="/">
       <PageHeader
-        eyebrow="CONTENT CREATION"
         title="从一个选题，开始今天的内容创作"
-        description="选择真实知识资料和发布渠道，先生成一版可人工审核的内容。"
+        description="选择真实资料，先把各渠道共用的内容简报确认下来。"
         actions={
           <Link className={secondaryButtonClass} href="/positioning">
-            {accountContext?.status === "confirmed" ? "查看当前账号" : "先做账号定位"}
+            {accountContext?.status === "confirmed" ? "查看当前账号" : "快速建立账号定位"}
           </Link>
         }
       />
 
-      <section className="mt-7 rounded-2xl border border-slate-200 bg-white px-4 py-4 sm:px-5">
-        <div className="grid gap-2 sm:grid-cols-4">
-          {steps.map((step, index) => (
-            <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3" key={step}>
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#173e32] text-xs font-semibold text-white">
-                {index + 1}
-              </span>
-              <span className="text-xs font-semibold text-slate-700">{step}</span>
+      <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="grid gap-px bg-slate-200 md:grid-cols-4">
+          {creationSteps.map((step, index) => (
+            <div className="bg-white px-5 py-4" key={step.title}>
+              <div className="flex items-start gap-3">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 font-mono text-xs font-semibold text-emerald-800">
+                  {index + 1}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{step.description}</p>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#d9e5de] bg-[#eef4f0] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div>
-          <p className="text-xs font-semibold text-emerald-900">当前账号上下文</p>
-          <p className="mt-1 text-sm text-slate-600">
-            {accountContext?.accountPosition || "还没有账号定位，可以先直接创作，后续再补充定位。"}
+      <section className="mt-5 flex flex-col gap-4 rounded-2xl border border-emerald-900/10 bg-[#e9f0ec] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-emerald-800">当前创作上下文</p>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-900">
+            {accountContext?.status === "confirmed" ? accountContext.accountName || "当前账号" : "暂未确认账号定位"}
+          </p>
+          <p className="mt-1 line-clamp-1 text-xs text-slate-600">
+            {accountContext?.status === "confirmed" ? accountContext.accountPosition : "你可以先跳过定位开始创作，稍后再补充。"}
           </p>
         </div>
-        <Link className="shrink-0 text-xs font-semibold text-emerald-900" href="/positioning">
-          {accountContext?.status === "confirmed" ? "更新定位" : "快速定位"} →
-        </Link>
+        <div className="flex shrink-0 flex-wrap gap-2 text-xs">
+          <StatusLabel label="AI" ready={status.aiConfigured} />
+          <StatusLabel label="飞书" ready={status.feishuConfigured} />
+          <StatusLabel label="文件" ready={status.uploadEnabled} />
+        </div>
       </section>
 
       <ContentCreationWorkspace />
     </AppShell>
+  );
+}
+
+function StatusLabel({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <span
+      className={`rounded-lg border px-2.5 py-1.5 font-medium ${
+        ready
+          ? "border-emerald-800/15 bg-white text-emerald-800"
+          : "border-slate-200 bg-slate-50 text-slate-500"
+      }`}
+    >
+      {label} {ready ? "已就绪" : "待配置"}
+    </span>
   );
 }
