@@ -1,10 +1,17 @@
 import { analyzePositioning, type PositioningRequest } from "@/lib/ai";
-import { getCurrentAccountContext } from "./repository";
-import { createAccountContextDraft } from "./types";
+import { confirmAccountContext, getCurrentAccountContext } from "./repository";
+import { createAccountContextDraft, type AccountContextDraft } from "./types";
 
-export async function analyzeAccountContext(input: PositioningRequest) {
+export async function analyzeAccountContext(
+  input: PositioningRequest,
+  source: AccountContextDraft["source"] = "manual",
+) {
   const result = await analyzePositioning(input);
-  return createAccountContextDraft(input, result);
+  return createAccountContextDraft(input, result, source);
+}
+
+export async function confirmCapturedAccountContext(draft: AccountContextDraft) {
+  return confirmAccountContext({ ...draft, source: "capture" });
 }
 
 export async function getActiveAccountContext() {

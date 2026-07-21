@@ -15,7 +15,7 @@ type CapturePayload = {
 };
 
 export async function OPTIONS() {
-  return withCors(new NextResponse(null, { status: 204 }));
+  return new NextResponse(null, { status: 405, headers: { Allow: "POST" } });
 }
 
 export async function POST(request: Request) {
@@ -32,29 +32,19 @@ export async function POST(request: Request) {
     };
 
     if (!input.content.trim()) {
-      return withCors(NextResponse.json({ error: "Captured content is empty" }, { status: 400 }));
+      return NextResponse.json({ error: "Captured content is empty" }, { status: 400 });
     }
 
     const result = await analyzeInspiration(input);
     const record = await saveInspiration(input, result);
 
-    return withCors(NextResponse.json({ result, record }));
+    return NextResponse.json({ result, record });
   } catch (error) {
-    return withCors(
-      NextResponse.json(
-        { error: error instanceof Error ? error.message : "Capture import failed" },
-        { status: 500 },
-      ),
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Capture import failed" },
+      { status: 500 },
     );
   }
-}
-
-function withCors(response: NextResponse) {
-  response.headers.set("Access-Control-Allow-Origin", "*");
-  response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-
-  return response;
 }
 
 function inferPlatform(url?: string) {

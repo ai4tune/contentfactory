@@ -41,6 +41,10 @@ AI_API_KEY=
 AI_MODEL=
 
 UPLOADS_ENABLED=true
+
+# 远程账号采集可选：精确扩展 Origin，或访问码
+CAPTURE_ALLOWED_ORIGINS=
+CONTENT_FACTORY_CAPTURE_TOKEN=
 ```
 
 Feishu should use a self-built enterprise app, not a personal password. The app needs cloud document search/read permissions and visibility to the target docs/wiki.
@@ -61,7 +65,7 @@ The current code still reflects the pre-realignment prototype and is being migra
 5. Convert hot sample insights into owned topic candidates.
 6. Combine Feishu/local knowledge sources to generate outlines, drafts, audit notes, and citations.
 
-Chrome extension or browser automation is treated as an import method. It fills the same hot sample fields as manual entry and does not change the core workflow.
+Chrome 扩展是账号定位的可选采集入口：只读取用户主动打开页面中的可见账号信息，先预览采集结果，再生成可编辑的 AI 定位，只有用户最后确认才会覆盖当前账号。
 
 The first Chrome extension prototype lives in:
 
@@ -96,5 +100,5 @@ Local knowledge uses a separate privacy boundary:
 - Feishu endpoint compatibility must be verified with real app permissions.
 - Generated drafts use the legacy single-channel record and will be migrated to the P0 content-project model.
 - Local folder access requires desktop Chrome or Edge with the File System Access API.
-- The capture extension currently imports single content pages into the inspiration library; P0 will repurpose it for account-page capture.
-- Access control is not implemented yet; keep this local or behind a trusted deployment boundary until the next phase.
+- 扩展对平台 DOM 结构的识别是启发式的；平台改版后可能需要更新选择器。
+- 远程部署的 `/api/capture/account` 必须配置精确扩展 Origin 或访问码；只有本地回环地址默认允许 Chrome 扩展调用。
