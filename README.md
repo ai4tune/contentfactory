@@ -84,11 +84,17 @@ The local data file is ignored by Git:
 data/contentfactory.local.json
 ```
 
+Local knowledge uses a separate privacy boundary:
+
+- The selected directory handle and Markdown/TXT lightweight index stay in browser IndexedDB.
+- Local text is read in the browser to build a capped search index; the complete current text is read again only for preview or later explicit use.
+- Connected Feishu sources save identifiers and timestamps to `data/knowledge-sources.local.json`; full local directories are never copied to the server.
+
 ## Known limits
 
 - Word/PDF parsing is intentionally not included in this spike.
 - Feishu endpoint compatibility must be verified with real app permissions.
 - Generated drafts use the legacy single-channel record and will be migrated to the P0 content-project model.
-- Browser-based local folder access is not implemented yet.
+- Local folder access requires desktop Chrome or Edge with the File System Access API.
 - The capture extension currently imports single content pages into the inspiration library; P0 will repurpose it for account-page capture.
 - Access control is not implemented yet; keep this local or behind a trusted deployment boundary until the next phase.
