@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { analyzeInspiration, type InspirationRequest } from "@/lib/ai";
-import { getCurrentAccountProfile, saveInspiration } from "@/lib/store";
+import { saveInspiration } from "@/lib/store";
+import { getActiveAccountContext } from "@/modules/positioning/service";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as InspirationRequest;
-    const profile = await getCurrentAccountProfile();
+    const accountContext = await getActiveAccountContext();
 
     if (!body.platform?.trim() || !body.title?.trim() || !body.content?.trim()) {
       return NextResponse.json(
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
       metrics: body.metrics,
       sourceKeyword: body.sourceKeyword,
       content: body.content,
-      accountPosition: body.accountPosition || profile?.result.accountPosition,
+      accountPosition: body.accountPosition || accountContext?.accountPosition,
     };
     const result = await analyzeInspiration(input);
     const record = await saveInspiration(input, result);

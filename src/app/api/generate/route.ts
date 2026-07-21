@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { generateContent, type GenerateRequest } from "@/lib/ai";
-import { getCurrentAccountProfile, saveArticle } from "@/lib/store";
+import { saveArticle } from "@/lib/store";
+import { getActiveAccountContext } from "@/modules/positioning/service";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as GenerateRequest;
-    const profile = await getCurrentAccountProfile();
+    const accountContext = await getActiveAccountContext();
 
     if (!body.topic?.trim()) {
       return NextResponse.json({ error: "Topic is required" }, { status: 400 });
@@ -17,7 +18,8 @@ export async function POST(request: Request) {
       topic: body.topic,
       audience: body.audience,
       platform: body.platform,
-      accountPosition: body.accountPosition || profile?.result.accountPosition,
+      accountPosition: body.accountPosition || accountContext?.accountPosition,
+      accountContext: accountContext ?? undefined,
       sources: Array.isArray(body.sources) ? body.sources : [],
     };
     const result = await generateContent(input);

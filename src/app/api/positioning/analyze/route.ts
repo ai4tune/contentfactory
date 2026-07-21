@@ -1,15 +1,8 @@
 import { NextResponse } from "next/server";
-import { analyzePositioning, type PositioningRequest } from "@/lib/ai";
-import { saveAccountProfile } from "@/lib/store";
-import { getCurrentAccountProfile } from "@/lib/store";
+import type { PositioningRequest } from "@/lib/ai";
+import { analyzeAccountContext } from "@/modules/positioning/service";
 
 export const runtime = "nodejs";
-
-export async function GET() {
-  const profile = await getCurrentAccountProfile();
-
-  return NextResponse.json({ profile });
-}
 
 export async function POST(request: Request) {
   try {
@@ -32,10 +25,9 @@ export async function POST(request: Request) {
       goal: body.goal,
       currentContent: body.currentContent,
     };
-    const result = await analyzePositioning(input);
-    const record = await saveAccountProfile(input, result);
+    const draft = await analyzeAccountContext(input);
 
-    return NextResponse.json({ result, record });
+    return NextResponse.json({ draft });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Positioning analysis failed" },
