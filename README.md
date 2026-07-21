@@ -65,7 +65,7 @@ The current code still reflects the pre-realignment prototype and is being migra
 5. Convert hot sample insights into owned topic candidates.
 6. Combine Feishu/local knowledge sources to generate outlines, drafts, audit notes, and citations.
 
-Chrome 扩展是账号定位的可选采集入口：只读取用户主动打开页面中的可见账号信息，先预览采集结果，再生成可编辑的 AI 定位，只有用户最后确认才会覆盖当前账号。
+Chrome 扩展是账号定位的可选采集入口：只读取用户主动打开页面中的可见账号和作品信息，先预览采集结果，再生成可编辑的 AI 定位，只有用户最后确认才会覆盖当前账号。小红书账号与作品指标会作为带时间的本地快照保留，公开页未展示的阅读/曝光不会被推测或替代。
 
 The first Chrome extension prototype lives in:
 

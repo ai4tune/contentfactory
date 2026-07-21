@@ -1,3 +1,5 @@
+import { captureVisibleAccountPage } from "./capture-page.js";
+
 const DEFAULT_BASE_URL = "http://localhost:3000";
 
 const elements = {
@@ -8,6 +10,7 @@ const elements = {
   bio: document.getElementById("bio"),
   capture: document.getElementById("capture"),
   captureMeta: document.getElementById("captureMeta"),
+  captureMetrics: document.getElementById("captureMetrics"),
   capturePreview: document.getElementById("capturePreview"),
   confirm: document.getElementById("confirm"),
   contentList: document.getElementById("contentList"),
@@ -60,7 +63,7 @@ async function saveSettings() {
 
 async function captureCurrentPage() {
   setBusy(elements.capture, true, "正在读取可见信息…");
-  showStatus("正在采集当前页面可见的账号信息…");
+  showStatus("正在采集当前页面可见的账号与作品信息…");
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error("没有找到当前标签页");
@@ -68,7 +71,7 @@ async function captureCurrentPage() {
       target: { tabId: tab.id },
       func: captureVisibleAccountPage,
     });
-    if (!result?.accountName) throw new Error("未识别到账号名称，请确认当前打开的是账号页");
+    if (!result?.accountName) throw new Error("未识别到账号名称，请确认当前打开的是账号页或作品详情");
     capturedAccount = result;
     positioningDraft = null;
     renderCapture(result);
@@ -77,7 +80,7 @@ async function captureCurrentPage() {
   } catch (error) {
     showError(error);
   } finally {
-    setBusy(elements.capture, false, "采集当前账号页");
+    setBusy(elements.capture, false, "采集当前页面");
   }
 }
 
@@ -152,10 +155,13 @@ function renderCapture(capture) {
   elements.accountName.value = capture.accountName;
   elements.bio.value = capture.bio;
   elements.followerCount.value = capture.followerCount;
-  elements.captureMeta.textContent = `${capture.platform} · ${pageTypeLabel(capture.pageType)}\n${capture.sourceUrl}\n互动摘要：${capture.interactionSummary || "未识别"}`;
+  elements.captureMeta.textContent = `${capture.platform} · ${pageTypeLabel(capture.pageType)}\n${capture.sourceUrl}`;
+  elements.captureMetrics.replaceChildren(...metricRows(capture));
   elements.contentList.replaceChildren(...capture.contents.slice(0, 12).map((item) => {
     const row = document.createElement("li");
-    row.textContent = `${item.title}${item.metrics ? ` · ${item.metrics}` : ""}`;
+    const detail = [item.type === "video" ? "视频" : item.type === "image" ? "图文" : "", item.metricSummary]
+      .filter(Boolean).join(" · ");
+    row.textContent = `${item.title}${detail ? ` · ${detail}` : ""}`;
     return row;
   }));
   if (!capture.contents.length) {
@@ -164,6 +170,28 @@ function renderCapture(capture) {
     elements.contentList.append(row);
   }
   elements.capturePreview.hidden = false;
+}
+
+function metricRows(capture) {
+  const rows = [
+    ["关注", capture.accountMetrics?.following],
+    ["粉丝", capture.accountMetrics?.followers],
+    ["获赞与收藏", capture.accountMetrics?.likesAndCollects],
+    ["阅读/播放", capture.operationalMetrics?.views],
+    ["曝光", capture.operationalMetrics?.impressions],
+    ["主页访问", capture.operationalMetrics?.profileVisits],
+    ["新增粉丝", capture.operationalMetrics?.followerGrowth],
+  ];
+  return rows.map(([label, value]) => {
+    const item = document.createElement("div");
+    const name = document.createElement("span");
+    const number = document.createElement("strong");
+    name.textContent = label;
+    number.textContent = value?.raw || "当前页面未公开";
+    if (!value) item.className = "missing";
+    item.append(name, number);
+    return item;
+  });
 }
 
 function renderDraft(draft) {
@@ -210,83 +238,4 @@ function showError(error) {
 
 function pageTypeLabel(type) {
   return { account: "账号主页", creator_backend: "创作者后台", content: "内容页", unknown: "未知页面" }[type] || "未知页面";
-}
-
-function captureVisibleAccountPage() {
-  const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
-  const visibleText = (node) => clean(node?.innerText || node?.textContent || "");
-  const firstText = (selectors) => {
-    for (const selector of selectors) {
-      const value = visibleText(document.querySelector(selector));
-      if (value) return value;
-    }
-    return "";
-  };
-  const meta = (name) => clean(document.querySelector(`meta[property="${name}"]`)?.content || document.querySelector(`meta[name="${name}"]`)?.content);
-  const hostname = location.hostname.toLowerCase();
-  const platform = hostname.includes("xiaohongshu") ? "小红书"
-    : hostname.includes("weixin.qq.com") ? "公众号"
-      : hostname.includes("douyin") ? "抖音"
-        : hostname.includes("weibo") ? "微博"
-          : hostname.includes("bilibili") ? "B站" : hostname;
-  const accountSelectors = hostname.includes("xiaohongshu")
-    ? [".user-name", ".username", "[class*='user-name']", "[class*='userName']", "h1"]
-    : hostname.includes("weixin.qq.com")
-      ? ["#js_name", ".profile_nickname", ".account_nickname", "h1"]
-      : ["[class*='nickname']", "[class*='user-name']", "[class*='username']", "h1"];
-  const bioSelectors = hostname.includes("xiaohongshu")
-    ? [".user-desc", ".user-bio", "[class*='user-desc']", "[class*='userDesc']"]
-    : ["[class*='signature']", "[class*='description']", "[class*='profile-desc']"];
-  const accountName = clean(
-    hostname.includes("weixin.qq.com") ? meta("og:article:author") : "",
-  ) || firstText(accountSelectors) || meta("og:site_name") || clean(document.title).split(/[|–-]/)[0];
-  const bio = firstText(bioSelectors) || meta("description") || meta("og:description");
-  const bodyText = visibleText(document.body).slice(0, 100_000);
-  const followerPatterns = [
-    /(?:粉丝|关注者)[\s:：]*([\d,.]+\s*(?:万|w|W|k|K)?)/,
-    /([\d,.]+\s*(?:万|w|W|k|K)?)\s*(?:粉丝|关注者)/,
-  ];
-  const followerMatch = followerPatterns.map((pattern) => bodyText.match(pattern)).find(Boolean);
-  const followerCount = followerMatch ? clean(followerMatch[0]) : "";
-  const metricMatches = bodyText.match(/(?:获赞与收藏|获赞|点赞|收藏|评论|阅读|转发|分享|播放)[\s:：]*[\d,.]+\s*(?:万|w|W|k|K)?/g) || [];
-  const interactionSummary = [...new Set(metricMatches.map(clean))].slice(0, 16).join("，");
-  const contentSelectors = hostname.includes("xiaohongshu")
-    ? ["a[href*='/explore/']", "a[href*='/discovery/item/']"]
-    : hostname.includes("weixin.qq.com")
-      ? ["a[href*='mp.weixin.qq.com/s']", "article a[href]"]
-      : ["article a[href]", "main a[href]", "[class*='content'] a[href]", "[class*='note'] a[href]"];
-  const links = [...document.querySelectorAll(contentSelectors.join(","))];
-  const seen = new Set();
-  const contents = [];
-  for (const link of links) {
-    const container = link.closest("article,li,[class*='card'],[class*='item'],[class*='note']") || link;
-    const rawTitle = clean(link.getAttribute("title")) || visibleText(link.querySelector("h1,h2,h3,[class*='title']")) || visibleText(link);
-    const title = rawTitle.split("\n").map(clean).find((line) => line.length >= 4 && line.length <= 180 && !/^(\d|\u70b9\u8d5e|\u6536\u85cf|\u8bc4\u8bba)/.test(line));
-    if (!title || seen.has(title)) continue;
-    seen.add(title);
-    const cardText = visibleText(container);
-    const metrics = (cardText.match(/(?:点赞|赞|收藏|评论|阅读|播放)?[\s:：]*[\d,.]+\s*(?:万|w|W|k|K)?/g) || []).map(clean).filter(Boolean).slice(0, 4).join("，");
-    contents.push({ title, url: new URL(link.href, location.href).href, metrics });
-    if (contents.length >= 20) break;
-  }
-  if (!contents.length && (meta("og:title") || document.querySelector("h1"))) {
-    const title = meta("og:title") || firstText(["h1"]);
-    if (title) contents.push({ title, url: location.href, metrics: interactionSummary });
-  }
-  const path = location.pathname.toLowerCase();
-  const pageType = /creator|dashboard|platform|admin/.test(path) ? "creator_backend"
-    : contents.length > 1 || /user|profile|account/.test(path) ? "account"
-      : /article|explore|discovery|video|note/.test(path) ? "content" : "unknown";
-
-  return {
-    platform,
-    pageType,
-    sourceUrl: location.href,
-    accountName: accountName.slice(0, 160),
-    bio: bio.slice(0, 2_000),
-    followerCount: followerCount.slice(0, 100),
-    contents,
-    interactionSummary: interactionSummary.slice(0, 2_000),
-    capturedAt: new Date().toISOString(),
-  };
 }

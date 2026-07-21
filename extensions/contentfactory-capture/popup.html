@@ -20,6 +20,11 @@
       button.secondary { border: 1px solid #b9c8c1; color: #315f4d; background: #fff; }
       button:disabled { cursor: not-allowed; opacity: .55; }
       .meta { margin-top: 8px; color: #6a746f; font-size: 11px; line-height: 1.5; word-break: break-all; }
+      .metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+      .metric-grid div { display: grid; gap: 2px; padding: 7px 8px; border-radius: 7px; background: #f4f7f5; }
+      .metric-grid span { color: #66706b; font-size: 10px; }
+      .metric-grid strong { color: #26352f; font-size: 12px; }
+      .metric-grid .missing strong { color: #8a938f; font-size: 10px; font-weight: 500; }
       .content-list { display: grid; gap: 6px; margin: 9px 0 0; padding: 0; list-style: none; }
       .content-list li { padding: 7px 8px; border-radius: 7px; color: #4d5853; background: #f4f7f5; font-size: 11px; line-height: 1.45; }
       #status { margin-top: 12px; padding: 9px 10px; border-radius: 8px; color: #52605a; background: #e9efec; font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
@@ -45,7 +50,7 @@
       <button class="secondary" id="saveSettings" type="button">保存并授权该地址</button>
     </details>
 
-    <button id="capture" type="button">采集当前账号页</button>
+    <button id="capture" type="button">采集当前页面</button>
 
     <section class="card" id="capturePreview" hidden>
       <h2>1. 确认采集信息</h2>
@@ -53,6 +58,7 @@
       <label>账号简介<textarea id="bio"></textarea></label>
       <label>可见粉丝数<input id="followerCount" /></label>
       <p class="meta" id="captureMeta"></p>
+      <div class="metric-grid" id="captureMetrics"></div>
       <ul class="content-list" id="contentList"></ul>
       <button id="analyze" type="button">确认采集并生成 AI 定位预览</button>
     </section>
@@ -71,6 +77,6 @@
     </section>
 
     <div id="status">请先打开小红书、公众号等账号页，再主动点击采集。</div>
-    <script src="popup.js"></script>
+    <script type="module" src="popup.js"></script>
   </body>
 </html>

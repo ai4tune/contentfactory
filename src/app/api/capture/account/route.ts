@@ -9,6 +9,7 @@ import {
   analyzeAccountContext,
   confirmCapturedAccountContext,
 } from "@/modules/positioning/service";
+import { saveAccountCapture } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
           { status: 400, headers: access.corsHeaders },
         );
       }
+      await saveAccountCapture(capture);
       const draft = await analyzeAccountContext(captureToPositioningRequest(capture), "capture");
       return NextResponse.json({ capture, draft }, { headers: access.corsHeaders });
     }
