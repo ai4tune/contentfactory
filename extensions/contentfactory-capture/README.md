@@ -1,24 +1,40 @@
-# Content Factory Capture
+# 内容工厂账号采集助手
 
-Chrome extension prototype for importing the visible current page into local Content Factory.
+Manifest V3 Chrome 扩展，用于主动采集当前已打开账号页或作品页中的可见信息，生成 AI 账号定位预览，并在用户确认后覆盖内容工厂的当前账号。
 
-## Install locally
+小红书使用专用解析器：账号主页读取账号简介、关注、粉丝、获赞与收藏及最多 20 篇可见作品；作品详情读取标题、正文、标签、图片和公开互动指标。每次提交 AI 分析时，结构化采集快照会保存在本地，供后续运营趋势使用。
 
-1. Open Chrome and visit `chrome://extensions`.
-2. Enable Developer mode.
-3. Click "Load unpacked".
-4. Select this folder:
+## 安装
 
-```text
-extensions/contentfactory-capture
-```
+1. 在 Chrome 打开 `chrome://extensions`。
+2. 开启“开发者模式”。
+3. 点击“加载已解压的扩展程序”。
+4. 选择 `extensions/contentfactory-capture`。
 
-## Use
+## 使用
 
-1. Start Content Factory at `http://localhost:3000`.
-2. Open a Xiaohongshu, WeChat article, Douyin, or other content page.
-3. Click the extension.
-4. Optionally enter the source keyword and account positioning.
-5. Click "采集当前页面".
+1. 启动内容工厂，默认地址为 `http://localhost:3000`。
+2. 打开已登录后能看到的小红书账号主页、作品详情、创作者后台，或其他平台账号页。
+3. 点击扩展的“采集当前页面”。
+4. 检查账号名称、简介、粉丝数、内容列表和互动摘要。
+5. 确认采集结果后生成 AI 定位预览。
+6. 修改定位预览，再确认覆盖当前账号。
 
-The extension only reads visible page text from the current browser tab. It does not store account passwords and does not bypass platform permissions.
+扩展只读取当前页面 DOM 中已经可见的文本和链接，不会读取密码、绕过登录、解决验证码或在后台批量爬取。
+
+## 小红书指标边界
+
+- 账号公开页：关注、粉丝、获赞与收藏；
+- 作品公开页：点赞、收藏、评论，页面有值时读取分享；
+- 创作后台：页面可见时读取阅读/播放、曝光、主页访问和新增粉丝；
+- 公开页没有展示的阅读或曝光会明确标记为“当前页面未公开”，不会用点赞数代替；
+- 采集结果不保存 Cookie、`xsec_token` 或其他临时访问参数。
+
+## 连接独立部署
+
+在扩展的“连接设置”中填写内容工厂地址，点击“保存并授权该地址”。远程部署还必须选择一种服务端授权方式：
+
+- 在 `CAPTURE_ALLOWED_ORIGINS` 中配置扩展的精确 Origin，例如 `chrome-extension://abcdefghijklmnopabcdefghijklmnop`；
+- 或设置 `CONTENT_FACTORY_CAPTURE_TOKEN`，并将同一访问码填入扩展。
+
+多个允许的 Origin 使用英文逗号分隔。服务端不使用通配 CORS Origin。

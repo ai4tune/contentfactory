@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readJsonFile, updateJsonFile } from "./local-store/json-file";
 import type { AccountContext } from "@/modules/positioning/types";
+import type { AccountCapture } from "@/modules/positioning/capture";
 import type {
   GenerateRequest,
   GenerateResult,
@@ -44,6 +45,7 @@ export type MaterialRecord = KnowledgeSource & {
 
 export type ContentStore = {
   accountContext: AccountContext | null;
+  accountCaptures: AccountCapture[];
   accountProfiles: Array<StoredRecord<PositioningRequest, PositioningResult>>;
   topicRadars: Array<StoredRecord<TopicRadarRequest, TopicRadarResult>>;
   inspirations: Array<StoredRecord<InspirationRequest, InspirationResult>>;
@@ -55,6 +57,7 @@ const storePath = path.join(process.cwd(), "data", "contentfactory.local.json");
 
 const emptyStore: ContentStore = {
   accountContext: null,
+  accountCaptures: [],
   accountProfiles: [],
   topicRadars: [],
   inspirations: [],
@@ -79,6 +82,14 @@ export async function saveAccountProfile(input: PositioningRequest, result: Posi
   await updateStore((store) => ({ ...store, accountProfiles: [record] }));
 
   return record;
+}
+
+export async function saveAccountCapture(capture: AccountCapture) {
+  await updateStore((store) => ({
+    ...store,
+    accountCaptures: [...store.accountCaptures, capture].slice(-100),
+  }));
+  return capture;
 }
 
 export async function getCurrentAccountProfile() {
@@ -190,6 +201,7 @@ function createId(prefix: string) {
 function normalizeStore(parsed: Partial<ContentStore>): ContentStore {
   return {
     accountContext: parsed.accountContext ?? null,
+    accountCaptures: parsed.accountCaptures ?? [],
     accountProfiles: parsed.accountProfiles ?? [],
     topicRadars: parsed.topicRadars ?? [],
     inspirations: parsed.inspirations ?? [],
