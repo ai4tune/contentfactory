@@ -62,7 +62,7 @@ export type ContentProject = {
   brief: ContentBrief;
   channels: ContentChannel[];
   channelDrafts: ChannelDraft[];
-  status: "brief_confirmed" | "generated" | "partially_failed";
+  status: "brief_confirmed" | "generated" | "partially_failed" | "failed";
   createdAt: string;
   updatedAt: string;
 };

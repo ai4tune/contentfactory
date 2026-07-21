@@ -421,8 +421,8 @@ function ChannelGenerationPanel({
             <div className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold text-slate-800">{channelLabels[activeDraft.channel]}</p>
-                <button className="text-xs font-semibold text-emerald-800 disabled:text-slate-400" disabled={generatingChannels.includes(activeDraft.channel)} onClick={() => onRetry(activeDraft.channel)} type="button">
-                  {generatingChannels.includes(activeDraft.channel) ? "重试中" : "单独重试"}
+                <button className="text-xs font-semibold text-emerald-800 disabled:text-slate-400" disabled={generating} onClick={() => onRetry(activeDraft.channel)} type="button">
+                  {generatingChannels.includes(activeDraft.channel) ? "重试中" : generating ? "生成中" : "单独重试"}
                 </button>
               </div>
               {activeDraft.status === "failed"

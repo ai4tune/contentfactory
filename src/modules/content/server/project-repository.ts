@@ -1,5 +1,5 @@
 import path from "node:path";
-import { updateJsonFile } from "@/lib/local-store/json-file";
+import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import type { AccountContext } from "@/modules/positioning/types";
 import type { ChannelDraft, ContentBrief, ContentChannel, ContentProject } from "../types";
 
@@ -7,6 +7,11 @@ type ProjectStore = { projects: ContentProject[] };
 
 const projectStorePath = path.join(process.cwd(), "data", "content-projects.local.json");
 const emptyStore: ProjectStore = { projects: [] };
+
+export async function getContentProject(projectId: string) {
+  const store = await readJsonFile<ProjectStore>(projectStorePath, emptyStore);
+  return (store.projects ?? []).find((project) => project.id === projectId) ?? null;
+}
 
 export async function saveContentProject(input: {
   topic: string;
@@ -87,5 +92,6 @@ export async function saveChannelDrafts(
 
 function getProjectStatus(drafts: ChannelDraft[]): ContentProject["status"] {
   if (!drafts.length) return "brief_confirmed";
+  if (drafts.every((draft) => draft.status === "failed")) return "failed";
   return drafts.some((draft) => draft.status === "failed") ? "partially_failed" : "generated";
 }

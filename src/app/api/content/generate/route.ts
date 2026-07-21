@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { generateChannelDraft } from "@/modules/content/channel-service";
-import { saveChannelDrafts, saveContentProject } from "@/modules/content/server/project-repository";
+import {
+  getContentProject,
+  saveChannelDrafts,
+  saveContentProject,
+} from "@/modules/content/server/project-repository";
 import { normalizeContentBrief, normalizeKnowledgeSources } from "@/modules/content/server/request";
 import {
   isContentChannel,
@@ -14,10 +18,18 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as GenerateChannelsRequest;
-    const topic = body.topic?.trim();
+    const requestedTopic = body.topic?.trim();
     const channels = Array.from(new Set(Array.isArray(body.channels) ? body.channels : []));
-    const brief = normalizeContentBrief(body.brief);
+    const requestedBrief = normalizeContentBrief(body.brief);
     const sources = normalizeKnowledgeSources(body.sources);
+    const existingProject = body.projectId ? await getContentProject(body.projectId) : null;
+
+    if (body.projectId && !existingProject) {
+      return NextResponse.json({ error: "Content project not found" }, { status: 404 });
+    }
+
+    const topic = existingProject?.topic ?? requestedTopic;
+    const brief = existingProject?.brief ?? requestedBrief;
 
     if (!topic) return NextResponse.json({ error: "Topic is required" }, { status: 400 });
     if (!channels.length || !channels.every(isContentChannel)) {
@@ -26,8 +38,11 @@ export async function POST(request: Request) {
     if (!brief) {
       return NextResponse.json({ error: "A content brief for the current topic is required" }, { status: 400 });
     }
+    if (!hasRequiredKnowledge(brief, sources)) {
+      return NextResponse.json({ error: "The knowledge sources used by this brief are required" }, { status: 400 });
+    }
 
-    const accountContext = await getActiveAccountContext();
+    const accountContext = existingProject?.accountSnapshot ?? await getActiveAccountContext();
     const settled = await Promise.allSettled(
       channels.map((channel) =>
         generateChannelDraft({ channel, brief, sources, accountContext }),
@@ -58,4 +73,12 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+function hasRequiredKnowledge(
+  brief: NonNullable<ReturnType<typeof normalizeContentBrief>>,
+  sources: ReturnType<typeof normalizeKnowledgeSources>,
+) {
+  const sourceIds = new Set(sources.map((source) => source.id));
+  return sources.length > 0 && brief.citations.every((citation) => sourceIds.has(citation.sourceId));
 }

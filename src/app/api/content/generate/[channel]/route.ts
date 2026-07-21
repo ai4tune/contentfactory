@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { generateChannelDraft } from "@/modules/content/channel-service";
-import { replaceChannelDraft } from "@/modules/content/server/project-repository";
+import {
+  getContentProject,
+  replaceChannelDraft,
+} from "@/modules/content/server/project-repository";
 import { normalizeContentBrief, normalizeKnowledgeSources } from "@/modules/content/server/request";
 import { isContentChannel, type GenerateChannelsRequest } from "@/modules/content/types";
 import { getActiveAccountContext } from "@/modules/positioning/service";
@@ -14,8 +17,13 @@ export async function POST(
   try {
     const { channel } = await context.params;
     const body = (await request.json()) as GenerateChannelsRequest;
-    const topic = body.topic?.trim();
-    const brief = normalizeContentBrief(body.brief);
+    const existingProject = body.projectId ? await getContentProject(body.projectId) : null;
+    if (body.projectId && !existingProject) {
+      return NextResponse.json({ error: "Content project not found" }, { status: 404 });
+    }
+
+    const topic = existingProject?.topic ?? body.topic?.trim();
+    const brief = existingProject?.brief ?? normalizeContentBrief(body.brief);
 
     if (!isContentChannel(channel)) {
       return NextResponse.json({ error: "Unknown content channel" }, { status: 400 });
@@ -26,7 +34,12 @@ export async function POST(
     }
 
     const sources = normalizeKnowledgeSources(body.sources);
-    const accountContext = await getActiveAccountContext();
+    const sourceIds = new Set(sources.map((source) => source.id));
+    if (!sources.length || !brief.citations.every((citation) => sourceIds.has(citation.sourceId))) {
+      return NextResponse.json({ error: "The knowledge sources used by this brief are required" }, { status: 400 });
+    }
+
+    const accountContext = existingProject?.accountSnapshot ?? await getActiveAccountContext();
     const draft = await generateChannelDraft({ channel, brief, sources, accountContext });
 
     if (body.projectId) {
