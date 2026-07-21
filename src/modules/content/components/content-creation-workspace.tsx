@@ -43,9 +43,12 @@ export function ContentCreationWorkspace() {
       fetch("/api/materials", { cache: "no-store" })
         .then((response) => response.json())
         .then((payload: { materials?: KnowledgeSource[] }) => payload.materials ?? []),
+      fetch("/api/knowledge-sources", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload: { sources?: KnowledgeSource[] }) => payload.sources ?? []),
       loadLocalKnowledge().then((items) => items.map(localItemToSource)).catch(() => []),
     ])
-      .then(([remote, local]) => setSearchItems([...local, ...remote]))
+      .then(([legacy, remote, local]) => setSearchItems(uniqueSources([...local, ...remote, ...legacy])))
       .catch(() => setMessage("知识资料读取失败，请稍后重试。"));
   }, []);
 
@@ -79,7 +82,13 @@ export function ContentCreationWorkspace() {
       if (source.source === "local") {
         selected = { ...source, text: await readLocalKnowledgeItem(source.id) };
       } else if (!source.text) {
-        const response = await fetch(`/api/integrations/feishu/documents/${encodeURIComponent(source.id)}`);
+        const response = source.source === "base" && source.url
+          ? await fetch("/api/integrations/feishu/resolve", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: source.url }),
+            })
+          : await fetch(`/api/integrations/feishu/documents/${encodeURIComponent(source.id)}`);
         const payload = (await response.json()) as { document?: KnowledgeSource; error?: string };
         if (!response.ok || !payload.document) throw new Error(payload.error ?? "读取文档失败");
         selected = payload.document;
@@ -227,18 +236,19 @@ export function ContentCreationWorkspace() {
             <span>这次想写什么</span>
             <textarea
               className="min-h-24 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
+              disabled={busy !== null}
               onChange={(event) => changeTopic(event.target.value)}
               placeholder="例如：装修选地板时，怎么避免只看价格的误区？"
               value={topic}
             />
           </label>
-          <button className={`${secondaryButtonClass} mt-3 w-full`} disabled={!hasKnowledge || busy === "suggest"} onClick={recommendTopics} type="button">
+          <button className={`${secondaryButtonClass} mt-3 w-full`} disabled={!hasKnowledge || busy !== null} onClick={recommendTopics} type="button">
             {busy === "suggest" ? "正在结合账号与知识推荐" : "根据账号与已选知识推荐"}
           </button>
           {suggestions.length ? (
             <div className="mt-3 grid gap-2">
               {suggestions.map((suggestion) => (
-                <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700 hover:bg-emerald-50/50" key={suggestion.title} onClick={() => changeTopic(suggestion.title)} type="button">
+                <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700 hover:bg-emerald-50/50 disabled:cursor-not-allowed disabled:opacity-50" disabled={busy !== null} key={suggestion.title} onClick={() => changeTopic(suggestion.title)} type="button">
                   <span className="block text-xs font-semibold text-slate-800">{suggestion.title}</span>
                   <span className="mt-1 block text-[11px] leading-5 text-slate-500">{suggestion.angle} · {suggestion.rationale}</span>
                 </button>
@@ -250,19 +260,19 @@ export function ContentCreationWorkspace() {
         <InputSection title="选择知识" meta={`${selectedSources.length} 份已选`}>
           <div className="grid gap-3">
             <div className="flex gap-2">
-              <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-emerald-800" onChange={(event) => setQuery(event.target.value)} placeholder="搜索飞书知识" value={query} />
-              <button className={secondaryButtonClass} disabled={busy === "search"} onClick={searchFeishu} type="button">{busy === "search" ? "搜索中" : "搜索"}</button>
+              <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-emerald-800" disabled={busy !== null} onChange={(event) => setQuery(event.target.value)} placeholder="搜索飞书知识" value={query} />
+              <button className={secondaryButtonClass} disabled={busy !== null} onClick={searchFeishu} type="button">{busy === "search" ? "搜索中" : "搜索"}</button>
             </div>
             <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
               <summary className="cursor-pointer text-xs font-semibold text-slate-700">其他添加方式</summary>
               <div className="mt-3 grid gap-3">
                 <div className="flex gap-2">
-                  <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" onChange={(event) => setFeishuUrl(event.target.value)} placeholder="飞书文档链接" value={feishuUrl} />
-                  <button className={secondaryButtonClass} disabled={busy === "resolve"} onClick={addFeishuUrl} type="button">读取</button>
+                  <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" disabled={busy !== null} onChange={(event) => setFeishuUrl(event.target.value)} placeholder="飞书文档链接" value={feishuUrl} />
+                  <button className={secondaryButtonClass} disabled={busy !== null} onClick={addFeishuUrl} type="button">读取</button>
                 </div>
                 <label className="flex cursor-pointer justify-between rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs font-medium text-slate-600">
                   <span>{busy === "upload" ? "正在读取文件" : "兼容入口：上传 TXT / MD / CSV"}</span><span>选择</span>
-                  <input accept=".txt,.md,.csv,text/plain,text/markdown,text/csv" className="sr-only" multiple onChange={(event) => uploadFiles(event.target.files)} type="file" />
+                  <input accept=".txt,.md,.csv,text/plain,text/markdown,text/csv" className="sr-only" disabled={busy !== null} multiple onChange={(event) => uploadFiles(event.target.files)} type="file" />
                 </label>
               </div>
             </details>
@@ -271,7 +281,7 @@ export function ContentCreationWorkspace() {
               <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200">
                 {searchItems.slice(0, 12).map((item) => {
                   const selected = selectedSources.some((source) => source.id === item.id);
-                  return <button className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-slate-50 disabled:bg-emerald-50/50" disabled={selected || busy === `read:${item.id}`} key={item.id} onClick={() => addKnowledgeSource(item)} type="button">
+                  return <button className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-slate-50 disabled:bg-emerald-50/50" disabled={selected || busy !== null} key={item.id} onClick={() => addKnowledgeSource(item)} type="button">
                     <span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-700">{item.title}</span><span className="text-[11px] text-slate-400">{sourceLabel(item.source)}</span></span>
                     <span className="shrink-0 text-xs font-semibold text-emerald-800">{selected ? "已选" : busy === `read:${item.id}` ? "读取中" : "选择"}</span>
                   </button>;
@@ -282,7 +292,7 @@ export function ContentCreationWorkspace() {
             {selectedSources.map((source) => (
               <div className="flex items-start justify-between gap-3 rounded-xl bg-[#e9f0ec] px-3 py-2.5" key={source.id}>
                 <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{source.title}</p><p className="text-[11px] text-slate-500">{sourceLabel(source.source)}</p></div>
-                <button className="text-xs text-slate-500" onClick={() => { setSelectedSources((items) => items.filter((item) => item.id !== source.id)); setSuggestions([]); setBrief(null); setProject(null); }} type="button">移除</button>
+                <button className="text-xs text-slate-500 disabled:cursor-not-allowed disabled:opacity-50" disabled={busy !== null} onClick={() => { setSelectedSources((items) => items.filter((item) => item.id !== source.id)); setSuggestions([]); setBrief(null); setProject(null); }} type="button">移除</button>
               </div>
             ))}
           </div>
@@ -290,7 +300,7 @@ export function ContentCreationWorkspace() {
 
         {message ? <p className="mx-5 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status">{message}</p> : null}
         <div className="border-t border-slate-200 px-5 py-4">
-          <button className={`${primaryButtonClass} w-full`} disabled={!canCreateBrief || busy === "brief"} onClick={generateBrief} type="button">
+          <button className={`${primaryButtonClass} w-full`} disabled={!canCreateBrief || busy !== null} onClick={generateBrief} type="button">
             {busy === "brief" ? "AI 正在生成内容简报" : brief ? "重新生成内容简报" : "生成内容简报"}
           </button>
           {!canCreateBrief ? <p className="mt-2 text-center text-[11px] text-slate-400">填写选题并选择至少 1 份资料后可生成。</p> : null}
@@ -304,7 +314,7 @@ export function ContentCreationWorkspace() {
         </div>
         {busy === "brief" ? <BriefSkeleton /> : brief ? (
           <div className="grid gap-5 p-5 sm:p-6">
-            <fieldset className="grid gap-5" disabled={Boolean(project)}>
+            <fieldset className="grid gap-5" disabled={Boolean(project) || busy === "confirm"}>
             <BriefField label="目标受众" value={brief.targetAudience} onChange={(value) => updateBrief(setBrief, "targetAudience", value)} />
             <BriefField label="内容目标" value={brief.contentGoal} onChange={(value) => updateBrief(setBrief, "contentGoal", value)} />
             <BriefField label="核心观点" value={brief.coreMessage} onChange={(value) => updateBrief(setBrief, "coreMessage", value)} multiline />
@@ -435,6 +445,10 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 
 function localItemToSource(item: LocalKnowledgeItem): KnowledgeSource {
   return { id: item.id, title: item.title, path: item.path, source: "local" };
+}
+
+function uniqueSources(sources: KnowledgeSource[]) {
+  return [...new Map(sources.map((source) => [`${source.source}:${source.id}`, source])).values()];
 }
 
 function updateBrief<K extends keyof ContentBrief>(setBrief: React.Dispatch<React.SetStateAction<ContentBrief | null>>, key: K, value: ContentBrief[K]) {

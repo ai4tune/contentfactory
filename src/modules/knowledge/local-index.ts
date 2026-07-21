@@ -5,6 +5,7 @@ const DATABASE_VERSION = 1;
 const HANDLE_STORE = "handles";
 const INDEX_STORE = "local-index";
 const ROOT_HANDLE_KEY = "root-directory";
+const MAX_INDEX_BYTES = 128_000;
 const MAX_SEARCH_CHARACTERS = 12_000;
 const SUPPORTED_EXTENSIONS = new Set(["md", "txt"]);
 
@@ -182,7 +183,7 @@ async function collectFiles(root: IterableDirectoryHandle) {
       }
 
       const file = await handle.getFile();
-      const text = await file.text();
+      const text = await file.slice(0, MAX_INDEX_BYTES).text();
       const frontMatter = readFrontMatter(text);
       const title = frontMatter.title ?? readMarkdownTitle(text) ?? name.replace(/\.(md|txt)$/i, "");
       const normalized = text.replace(/\s+/g, " ").trim();
