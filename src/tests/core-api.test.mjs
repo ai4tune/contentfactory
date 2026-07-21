@@ -1,0 +1,364 @@
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+import { spawn } from "node:child_process";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const testDirectory = path.dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = path.resolve(testDirectory, "../..");
+const appPort = Number(process.env.ACCEPTANCE_APP_PORT || 4319);
+const aiPort = Number(process.env.MOCK_AI_PORT || 4320);
+const baseUrl = `http://127.0.0.1:${appPort}`;
+const dataFiles = [
+  "data/contentfactory.local.json",
+  "data/content-projects.local.json",
+  "data/knowledge-sources.local.json",
+];
+const backups = new Map();
+const processes = [];
+let serverOutput = "";
+
+before(async () => {
+  await backupDataFiles();
+  const mock = spawn(process.execPath, [path.join(testDirectory, "mock-ai-gateway.mjs")], {
+    cwd: repositoryRoot,
+    env: { ...process.env, MOCK_AI_PORT: String(aiPort) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processes.push(mock);
+  await waitForUrl(`http://127.0.0.1:${aiPort}/health`, 10_000);
+
+  const nextBinary = process.env.NEXT_BIN || path.join(repositoryRoot, "node_modules/.bin/next");
+  const app = spawn(nextBinary, ["dev", "--webpack", "--hostname", "127.0.0.1", "--port", String(appPort)], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      AI_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
+      AI_API_KEY: "acceptance-test-key",
+      AI_MODEL: "acceptance-mock",
+      FEISHU_APP_ID: "",
+      FEISHU_APP_SECRET: "",
+      UPLOADS_ENABLED: "true",
+      CONTENT_FACTORY_CAPTURE_TOKEN: "acceptance-capture-token",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  app.stdout.on("data", (chunk) => { serverOutput += chunk; });
+  app.stderr.on("data", (chunk) => { serverOutput += chunk; });
+  processes.push(app);
+  await waitForUrl(`${baseUrl}/api/health`, 30_000);
+});
+
+after(async () => {
+  for (const child of processes.reverse()) child.kill("SIGTERM");
+  await Promise.all(processes.map(waitForExit));
+  await restoreDataFiles();
+});
+
+test("P0 core API flow: account → knowledge → brief → four channels", async (context) => {
+  const source = await loadAcceptanceSource();
+  let draft;
+  let brief;
+  let project;
+
+  await context.test("health and validation errors are explicit", async () => {
+    const health = await requestJson("/api/health");
+    assert.equal(health.response.status, 200);
+
+    const positioningError = await requestJson("/api/positioning/analyze", {
+      method: "POST",
+      body: {},
+    });
+    assert.equal(positioningError.response.status, 400);
+
+    const knowledgeError = await requestJson("/api/knowledge/search", {
+      method: "POST",
+      body: { query: "" },
+    });
+    assert.equal(knowledgeError.response.status, 400);
+
+    const briefError = await requestJson("/api/content/brief", {
+      method: "POST",
+      body: { topic: "", sources: [] },
+    });
+    assert.equal(briefError.response.status, 400);
+  });
+
+  await context.test("account positioning is analyzed, confirmed, and reused", async () => {
+    const analyzed = await requestJson("/api/positioning/analyze", {
+      method: "POST",
+      body: {
+        accountName: process.env.ACCEPTANCE_ACCOUNT_NAME || "杏仁内容工厂验收账号",
+        business: "建材内容与企业 AI 服务",
+        audience: "第一次装修的家庭与建材企业经营者",
+        offer: "知识整理与四渠道内容交付",
+        platforms: "公众号、小红书、朋友圈、短视频",
+        goal: "建立信任并获得咨询",
+      },
+    });
+    assert.equal(analyzed.response.status, 200);
+    draft = analyzed.body.draft;
+    assert.equal(draft.accountPosition, "面向装修家庭的建材决策顾问");
+
+    const confirmed = await requestJson("/api/positioning/current", {
+      method: "PATCH",
+      body: { action: "confirm", draft },
+    });
+    assert.equal(confirmed.response.status, 200);
+    assert.equal(confirmed.body.context.status, "confirmed");
+
+    const current = await requestJson("/api/positioning/current");
+    assert.equal(current.body.context.accountPosition, draft.accountPosition);
+  });
+
+  await context.test("knowledge source API responds without copying a local directory", async () => {
+    const result = await requestJson("/api/knowledge-sources");
+    assert.equal(result.response.status, 200);
+    assert.ok(Array.isArray(result.body.sources));
+    assert.equal(result.body.sources.some((item) => "text" in item), false);
+  });
+
+  await context.test("topic suggestions use the selected knowledge source", async () => {
+    const result = await requestJson("/api/topics/suggest", {
+      method: "POST",
+      body: { sources: [source] },
+    });
+    assert.equal(result.response.status, 200);
+    assert.ok(result.body.suggestions.length > 0);
+    assert.deepEqual(result.body.suggestions[0].sourceIds, [source.id]);
+  });
+
+  await context.test("content brief preserves a traceable source excerpt", async () => {
+    const result = await requestJson("/api/content/brief", {
+      method: "POST",
+      body: { topic: acceptanceTopic(), sources: [source] },
+    });
+    assert.equal(result.response.status, 200);
+    brief = result.body.brief;
+    assert.equal(brief.citations[0].sourceId, source.id);
+    assert.ok(source.text.includes(brief.citations[0].excerpt));
+  });
+
+  await context.test("confirmed brief is saved as one atomic content project", async () => {
+    const result = await requestJson("/api/content/projects", {
+      method: "POST",
+      body: { topic: acceptanceTopic(), brief },
+    });
+    assert.equal(result.response.status, 201);
+    project = result.body.project;
+    assert.equal(project.status, "brief_confirmed");
+    assert.equal(project.accountSnapshot.status, "confirmed");
+  });
+
+  await context.test("one project generates four structurally distinct channel drafts", async () => {
+    const channels = ["wechat_article", "xiaohongshu_note", "moments_post", "short_video_script"];
+    const result = await requestJson("/api/content/generate", {
+      method: "POST",
+      body: { projectId: project.id, topic: acceptanceTopic(), brief, sources: [source], channels },
+    });
+    assert.equal(result.response.status, 200, serverOutput);
+    project = result.body.project;
+    assert.equal(project.channelDrafts.length, 4);
+    assert.equal(project.channelDrafts.every((item) => item.status === "generated"), true);
+    assert.equal(new Set(project.channelDrafts.map((item) => item.content)).size, 4);
+    assert.match(project.channelDrafts.find((item) => item.channel === "wechat_article").content, /摘要|一、/);
+    assert.match(project.channelDrafts.find((item) => item.channel === "xiaohongshu_note").content, /前三行|#/);
+    assert.match(project.channelDrafts.find((item) => item.channel === "moments_post").content, /朋友|一起看/);
+    assert.match(project.channelDrafts.find((item) => item.channel === "short_video_script").content, /前三秒|画面|口播/);
+  });
+
+  await context.test("a single channel can be retried without losing the project", async () => {
+    const result = await requestJson("/api/content/generate/short_video_script", {
+      method: "POST",
+      body: { projectId: project.id, topic: acceptanceTopic(), brief, sources: [source], channels: ["short_video_script"] },
+    });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body.project.id, project.id);
+    assert.equal(result.body.draft.channel, "short_video_script");
+  });
+
+  await context.test("AI review separates fact, style, and platform issues", async () => {
+    const result = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article/review`, {
+      method: "POST",
+      body: {},
+    });
+    assert.equal(result.response.status, 200);
+    project = result.body.project;
+    assert.deepEqual(
+      new Set(result.body.review.issues.map((issue) => issue.category)),
+      new Set(["fact", "style", "platform"]),
+    );
+    assert.equal(result.body.review.issues.some((issue) => issue.autoFixable), true);
+  });
+
+  await context.test("one safe review suggestion can be applied and the draft can be edited", async () => {
+    const reviewedDraft = project.channelDrafts.find((item) => item.channel === "wechat_article");
+    const issue = reviewedDraft.review.issues.find((item) => item.autoFixable);
+    const applied = await requestJson(
+      `/api/content/projects/${project.id}/channels/wechat_article/review/issues/${issue.id}/apply`,
+      { method: "POST", body: {} },
+    );
+    assert.equal(applied.response.status, 200);
+    assert.match(
+      applied.body.project.channelDrafts.find((item) => item.channel === "wechat_article").content,
+      /单价比较误区/,
+    );
+
+    const editedContent = "公众号人工编辑终稿\n\n保留可追溯事实，并补充人工确认后的表达。";
+    const edited = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article`, {
+      method: "PATCH",
+      body: { content: editedContent },
+    });
+    assert.equal(edited.response.status, 200);
+    assert.equal(
+      edited.body.project.channelDrafts.find((item) => item.channel === "wechat_article").content,
+      editedContent,
+    );
+    project = edited.body.project;
+  });
+
+  await context.test("draft history survives reload, versions edits, and exports Markdown", async () => {
+    const list = await requestJson(`/api/content-drafts?query=${encodeURIComponent(acceptanceTopic())}`);
+    assert.equal(list.response.status, 200);
+    assert.equal(list.body.drafts.some((item) => item.id === project.id), true);
+
+    const detail = await requestJson(`/api/content-drafts/${project.id}`);
+    assert.equal(detail.response.status, 200);
+    assert.equal(detail.body.draft.channelDrafts.length, 4);
+
+    const editedContent = "朋友圈人工修改版本：先核对空间、基层、安装与售后。";
+    const edited = await requestJson(`/api/content-drafts/${project.id}`, {
+      method: "PATCH",
+      body: { channel: "moments_post", content: editedContent },
+    });
+    assert.equal(edited.response.status, 200);
+    assert.equal(edited.body.draft.reviewStatus, "editing");
+    assert.ok(edited.body.draft.versions.length > 0);
+
+    const exportResponse = await fetch(`${baseUrl}/api/content-drafts/${project.id}/export?channel=moments_post`);
+    const markdown = await exportResponse.text();
+    assert.equal(exportResponse.status, 200);
+    assert.match(exportResponse.headers.get("content-type") ?? "", /text\/markdown/);
+    assert.match(markdown, /朋友圈文案/);
+    assert.match(markdown, /朋友圈人工修改版本/);
+  });
+
+  await context.test("account capture rejects unknown callers, then supports preview and confirm", async () => {
+    const rejected = await requestJson("/api/capture/account", {
+      method: "POST",
+      body: { action: "analyze" },
+    });
+    assert.equal(rejected.response.status, 403);
+
+    const captured = await requestJson("/api/capture/account", {
+      method: "POST",
+      headers: { Authorization: "Bearer acceptance-capture-token", Origin: baseUrl },
+      body: {
+        action: "analyze",
+        capture: {
+          platform: "小红书",
+          pageType: "account",
+          sourceUrl: "https://www.xiaohongshu.com/user/profile/acceptance",
+          accountName: "崔总建材账号",
+          bio: "分享 SPC 地板、安装和装修选购知识",
+          followerCount: "页面可见 1200",
+          contents: [{ title: "装修选地板的三个误区", metrics: "页面可见 88 赞" }],
+          interactionSummary: "选购避坑内容互动较高",
+          capturedAt: "2026-07-21T00:00:00.000Z",
+        },
+      },
+    });
+    assert.equal(captured.response.status, 200);
+    assert.equal(captured.body.capture.accountName, "崔总建材账号");
+    assert.equal(captured.body.draft.source, "capture");
+
+    const confirmed = await requestJson("/api/capture/account", {
+      method: "POST",
+      headers: { Authorization: "Bearer acceptance-capture-token", Origin: baseUrl },
+      body: { action: "confirm", draft: captured.body.draft },
+    });
+    assert.equal(confirmed.response.status, 200);
+    assert.equal(confirmed.body.context.source, "capture");
+    assert.equal(confirmed.body.context.status, "confirmed");
+  });
+});
+
+async function loadAcceptanceSource() {
+  const configuredPath = process.env.ACCEPTANCE_KNOWLEDGE_FILE;
+  const sourcePath = configuredPath
+    ? path.resolve(configuredPath)
+    : path.join(testDirectory, "fixtures/local-knowledge.md");
+  const text = await readFile(sourcePath, "utf8");
+  const scenario = configuredPath ? "customer" : "local-fixture";
+  return {
+    id: `local:acceptance/${scenario}/${path.basename(sourcePath)}`,
+    title: path.basename(sourcePath, path.extname(sourcePath)),
+    source: "local",
+    path: sourcePath,
+    text,
+  };
+}
+
+function acceptanceTopic() {
+  return process.env.ACCEPTANCE_TOPIC || "SPC 地板选购为什么不能只看价格？";
+}
+
+async function requestJson(route, options = {}) {
+  const response = await fetch(`${baseUrl}${route}`, {
+    method: options.method || "GET",
+    headers: options.body === undefined
+      ? options.headers
+      : { "Content-Type": "application/json", ...options.headers },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const body = await response.json();
+  return { response, body };
+}
+
+async function waitForUrl(url, timeout) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeout) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error(`Timed out waiting for ${url}\n${serverOutput}`);
+}
+
+async function backupDataFiles() {
+  for (const relativePath of dataFiles) {
+    const filePath = path.join(repositoryRoot, relativePath);
+    try {
+      await access(filePath);
+      backups.set(relativePath, await readFile(filePath));
+    } catch {
+      backups.set(relativePath, null);
+    }
+  }
+}
+
+async function restoreDataFiles() {
+  for (const [relativePath, content] of backups) {
+    const filePath = path.join(repositoryRoot, relativePath);
+    if (content === null) {
+      await rm(filePath, { force: true });
+    } else {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, content);
+    }
+  }
+}
+
+function waitForExit(child) {
+  if (child.exitCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    child.once("exit", resolve);
+    setTimeout(() => {
+      if (child.exitCode === null) child.kill("SIGKILL");
+      resolve();
+    }, 5_000).unref();
+  });
+}
