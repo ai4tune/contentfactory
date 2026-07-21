@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:api": "node --test src/tests/core-api.test.mjs",
+    "test:acceptance": "npm run lint && npm run test:api && npm run build"
   },
   "dependencies": {
     "next": "16.2.10",

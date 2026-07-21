@@ -59,7 +59,7 @@ function normalizeCitations(
     const requestedExcerpt = String(citation.excerpt ?? "").trim();
     const excerpt = requestedExcerpt && source.text.includes(requestedExcerpt)
       ? requestedExcerpt
-      : source.text.replace(/\s+/g, " ").trim().slice(0, 260);
+      : source.text.trim().slice(0, 260);
 
     return [{
       sourceId: source.id,
@@ -78,7 +78,7 @@ function normalizeCitations(
     sourceId: source.id,
     sourceTitle: source.title,
     sourceType: source.source,
-    excerpt: source.text.replace(/\s+/g, " ").trim().slice(0, 260),
+    excerpt: source.text.trim().slice(0, 260),
     purpose: "作为本次内容的事实依据",
     url: source.url,
     path: source.path,
