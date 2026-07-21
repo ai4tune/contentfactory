@@ -12,6 +12,7 @@ import {
   type ContentProject,
 } from "@/modules/content/types";
 import type { LocalKnowledgeItem } from "@/modules/knowledge/types";
+import type { ReviewIssue, ReviewIssueCategory, ReviewRiskLevel } from "@/modules/reviews/types";
 import type { TopicSuggestion } from "@/modules/topics/types";
 
 type KnowledgeSource = {
@@ -205,6 +206,45 @@ export function ContentCreationWorkspace() {
     setGeneratingChannels((items) => items.filter((item) => item !== channel));
   }
 
+  async function saveChannel(channel: ContentChannel, content: string) {
+    if (!project) return false;
+    return run(`save:${channel}`, async () => {
+      const payload = await requestJson<{ project?: ContentProject; error?: string }>(
+        `/api/content/projects/${encodeURIComponent(project.id)}/channels/${channel}`,
+        { method: "PATCH", body: { content } },
+      );
+      if (!payload.project) throw new Error("稿件保存失败。");
+      setProject(payload.project);
+      setMessage(`${channelLabels[channel]}已保存。`);
+    });
+  }
+
+  async function reviewChannel(channel: ContentChannel) {
+    if (!project) return false;
+    return run(`review:${channel}`, async () => {
+      const payload = await postJson<{ project?: ContentProject; error?: string }>(
+        `/api/content/projects/${encodeURIComponent(project.id)}/channels/${channel}/review`,
+        {},
+      );
+      if (!payload.project) throw new Error("AI 审核没有返回结果。");
+      setProject(payload.project);
+      setMessage(`${channelLabels[channel]}审核完成。`);
+    });
+  }
+
+  async function applyIssue(channel: ContentChannel, issueId: string) {
+    if (!project) return false;
+    return run(`apply:${issueId}`, async () => {
+      const payload = await postJson<{ project?: ContentProject; error?: string }>(
+        `/api/content/projects/${encodeURIComponent(project.id)}/channels/${channel}/review/issues/${encodeURIComponent(issueId)}/apply`,
+        {},
+      );
+      if (!payload.project) throw new Error("审核建议应用失败。");
+      setProject(payload.project);
+      setMessage("建议已应用到稿件，可继续处理或重新审核。");
+    });
+  }
+
   function toggleChannel(channel: ContentChannel) {
     setSelectedChannels((channels) => channels.includes(channel)
       ? channels.filter((item) => item !== channel)
@@ -216,8 +256,10 @@ export function ContentCreationWorkspace() {
     setMessage(null);
     try {
       await action();
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "操作失败");
+      return false;
     } finally {
       setBusy(null);
     }
@@ -330,13 +372,18 @@ export function ContentCreationWorkspace() {
             {project ? (
               <ChannelGenerationPanel
                 activeChannel={activeChannel}
+                busy={busy}
                 drafts={project.channelDrafts}
                 generatingChannels={generatingChannels}
+                onApplyIssue={applyIssue}
                 onGenerate={generateChannels}
+                onReview={reviewChannel}
                 onRetry={retryChannel}
+                onSave={saveChannel}
                 onSelect={setActiveChannel}
                 onToggle={toggleChannel}
                 selectedChannels={selectedChannels}
+                topic={project.topic}
               />
             ) : null}
           </div>
@@ -348,25 +395,92 @@ export function ContentCreationWorkspace() {
 
 function ChannelGenerationPanel({
   activeChannel,
+  busy,
   drafts,
   generatingChannels,
+  onApplyIssue,
   onGenerate,
+  onReview,
   onRetry,
+  onSave,
   onSelect,
   onToggle,
   selectedChannels,
+  topic,
 }: {
   activeChannel: ContentChannel;
+  busy: string | null;
   drafts: ChannelDraft[];
   generatingChannels: ContentChannel[];
+  onApplyIssue: (channel: ContentChannel, issueId: string) => Promise<boolean>;
   onGenerate: () => void;
+  onReview: (channel: ContentChannel) => Promise<boolean>;
   onRetry: (channel: ContentChannel) => void;
+  onSave: (channel: ContentChannel, content: string) => Promise<boolean>;
   onSelect: (channel: ContentChannel) => void;
   onToggle: (channel: ContentChannel) => void;
   selectedChannels: ContentChannel[];
+  topic: string;
 }) {
+  const [editorContents, setEditorContents] = useState<Partial<Record<ContentChannel, string>>>({});
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const activeDraft = drafts.find((draft) => draft.channel === activeChannel) ?? drafts[0];
   const generating = generatingChannels.length > 0;
+  const locked = busy !== null || generating;
+  const editorContent = activeDraft
+    ? editorContents[activeDraft.channel] ?? activeDraft.content
+    : "";
+  const dirty = Boolean(activeDraft && editorContent !== activeDraft.content);
+  const hasUnsavedEdits = drafts.some((draft) => {
+    const editedContent = editorContents[draft.channel];
+    return editedContent !== undefined && editedContent !== draft.content;
+  });
+
+  function clearEditorOverride(channel: ContentChannel) {
+    setEditorContents((current) => {
+      const next = { ...current };
+      delete next[channel];
+      return next;
+    });
+  }
+
+  async function saveActiveDraft() {
+    if (!activeDraft) return;
+    if (await onSave(activeDraft.channel, editorContent)) {
+      clearEditorOverride(activeDraft.channel);
+      setActionNotice("修改已保存");
+    }
+  }
+
+  async function applyActiveIssue(issue: ReviewIssue) {
+    if (!activeDraft) return;
+    if (await onApplyIssue(activeDraft.channel, issue.id)) {
+      clearEditorOverride(activeDraft.channel);
+      setActionNotice("建议已应用");
+    }
+  }
+
+  async function copyActiveDraft() {
+    if (!editorContent) return;
+    try {
+      await navigator.clipboard.writeText(editorContent);
+      setActionNotice("已复制当前渠道内容");
+    } catch {
+      setActionNotice("复制失败，请在编辑框中手动复制");
+    }
+  }
+
+  function downloadActiveDraft() {
+    if (!activeDraft || !editorContent) return;
+    const markdown = `# ${topic}\n\n## ${channelLabels[activeDraft.channel]}\n\n${editorContent}\n`;
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilename(topic)}-${channelLabels[activeDraft.channel]}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setActionNotice("Markdown 已下载");
+  }
 
   return (
     <section className="border-t border-slate-200 pt-5">
@@ -375,7 +489,7 @@ function ChannelGenerationPanel({
           <h3 className="text-sm font-semibold text-slate-900">生成渠道内容</h3>
           <p className="mt-1 text-xs text-slate-500">四套独立 Prompt，共享上方已确认的事实简报。</p>
         </div>
-        <button className="shrink-0 text-xs font-semibold text-emerald-800" onClick={() => contentChannels.forEach((channel) => {
+        <button className="shrink-0 text-xs font-semibold text-emerald-800 disabled:text-slate-400" disabled={locked} onClick={() => contentChannels.forEach((channel) => {
           if (!selectedChannels.includes(channel)) onToggle(channel);
         })} type="button">全选</button>
       </div>
@@ -387,7 +501,7 @@ function ChannelGenerationPanel({
             <button
               aria-pressed={selected}
               className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold ${selected ? "border-emerald-800 bg-emerald-50 text-emerald-900" : "border-slate-200 text-slate-500"}`}
-              disabled={generating}
+              disabled={locked}
               key={channel}
               onClick={() => onToggle(channel)}
               type="button"
@@ -398,7 +512,7 @@ function ChannelGenerationPanel({
         })}
       </div>
 
-      <button className={`${primaryButtonClass} mt-3 w-full`} disabled={!selectedChannels.length || generating} onClick={onGenerate} type="button">
+      <button className={`${primaryButtonClass} mt-3 w-full`} disabled={!selectedChannels.length || locked || hasUnsavedEdits} onClick={onGenerate} type="button">
         {generating ? `AI 正在生成 ${generatingChannels.length} 个渠道` : selectedChannels.length === contentChannels.length ? "全部生成" : `生成 ${selectedChannels.length} 个渠道`}
       </button>
 
@@ -421,13 +535,50 @@ function ChannelGenerationPanel({
             <div className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold text-slate-800">{channelLabels[activeDraft.channel]}</p>
-                <button className="text-xs font-semibold text-emerald-800 disabled:text-slate-400" disabled={generating} onClick={() => onRetry(activeDraft.channel)} type="button">
-                  {generatingChannels.includes(activeDraft.channel) ? "重试中" : generating ? "生成中" : "单独重试"}
+                <button className="text-xs font-semibold text-emerald-800 disabled:text-slate-400" disabled={locked || dirty} onClick={() => { clearEditorOverride(activeDraft.channel); onRetry(activeDraft.channel); }} type="button">
+                  {dirty ? "先保存修改" : generatingChannels.includes(activeDraft.channel) ? "重试中" : generating ? "生成中" : "单独重试"}
                 </button>
               </div>
               {activeDraft.status === "failed"
                 ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs leading-5 text-red-700">{activeDraft.error || "未知错误"}</p>
-                : <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{activeDraft.content}</div>}
+                : (
+                  <div className="mt-3 grid gap-4">
+                    <label className="grid gap-2">
+                      <span className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                        <span>人工编辑稿</span>
+                        <span className={dirty ? "text-amber-700" : "text-slate-400"}>{dirty ? "有未保存修改" : "已保存"}</span>
+                      </span>
+                      <textarea
+                        className="min-h-96 w-full resize-y rounded-xl border border-slate-300 px-3 py-3 text-sm leading-7 text-slate-800 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10 disabled:bg-slate-50"
+                        disabled={locked}
+                        onChange={(event) => {
+                          setEditorContents((current) => ({ ...current, [activeDraft.channel]: event.target.value }));
+                          setActionNotice(null);
+                        }}
+                        value={editorContent}
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <button className={primaryButtonClass} disabled={!dirty || locked || !editorContent.trim()} onClick={saveActiveDraft} type="button">
+                        {busy === `save:${activeDraft.channel}` ? "保存中" : "保存修改"}
+                      </button>
+                      <button className={secondaryButtonClass} disabled={dirty || locked} onClick={() => onReview(activeDraft.channel)} type="button">
+                        {busy === `review:${activeDraft.channel}` ? "审核中" : activeDraft.review ? "重新审核" : "AI 审核"}
+                      </button>
+                      <button className={secondaryButtonClass} disabled={!editorContent} onClick={copyActiveDraft} type="button">复制</button>
+                      <button className={secondaryButtonClass} disabled={!editorContent} onClick={downloadActiveDraft} type="button">下载 Markdown</button>
+                    </div>
+                    {actionNotice ? <p className="text-xs text-emerald-800" role="status">{actionNotice}</p> : null}
+
+                    <ReviewResult
+                      busy={busy}
+                      dirty={dirty}
+                      draft={activeDraft}
+                      onApply={applyActiveIssue}
+                    />
+                  </div>
+                )}
             </div>
           ) : null}
         </div>
@@ -436,8 +587,85 @@ function ChannelGenerationPanel({
   );
 }
 
+function ReviewResult({
+  busy,
+  dirty,
+  draft,
+  onApply,
+}: {
+  busy: string | null;
+  dirty: boolean;
+  draft: ChannelDraft;
+  onApply: (issue: ReviewIssue) => void;
+}) {
+  const review = draft.review;
+  if (!review) {
+    return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-700">待 AI 审核</p><p className="mt-1 text-xs leading-5 text-slate-500">保存人工修改后，独立检查事实、账号风格和平台风险。</p></div>;
+  }
+
+  const stale = review.reviewedContent !== draft.content;
+  const openIssues = review.issues.filter((issue) => issue.status === "open");
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 p-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-slate-900">AI 审核结果</h4>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${riskClass(review.riskLevel)}`}>{riskLabel(review.riskLevel)}</span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-600">{review.conclusion}</p>
+        </div>
+        <span className={`text-[11px] font-semibold ${stale || dirty ? "text-amber-700" : "text-emerald-800"}`}>
+          {dirty ? "请先保存再复核" : stale ? "内容已修改，需重新审核" : `${openIssues.length} 项待处理`}
+        </span>
+      </div>
+
+      {review.issues.length ? (
+        <div className="divide-y divide-slate-100">
+          {review.issues.map((issue) => (
+            <article className={issue.status === "applied" ? "bg-emerald-50/40 p-4" : "p-4"} key={issue.id}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{reviewCategoryLabel(issue.category)}</span>
+                <span className={`text-[10px] font-semibold ${riskTextClass(issue.severity)}`}>{riskLabel(issue.severity)}</span>
+                {issue.requiresConfirmation ? <span className="text-[10px] font-semibold text-amber-700">需人工确认</span> : null}
+                {issue.status === "applied" ? <span className="text-[10px] font-semibold text-emerald-800">已应用</span> : null}
+              </div>
+              <h5 className="mt-2 text-xs font-semibold text-slate-800">{issue.title}</h5>
+              <p className="mt-1 text-xs leading-5 text-slate-600">{issue.description}</p>
+              {issue.originalText ? <blockquote className="mt-2 rounded-lg border-l-2 border-slate-300 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">原文：{issue.originalText}</blockquote> : null}
+              {issue.suggestedText ? <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-900">建议：{issue.suggestedText}</p> : null}
+              {issue.autoFixable && issue.status === "open" ? (
+                <button
+                  className={`${secondaryButtonClass} mt-3`}
+                  disabled={busy !== null || dirty || stale}
+                  onClick={() => onApply(issue)}
+                  type="button"
+                >
+                  {busy === `apply:${issue.id}` ? "应用中" : "应用这条建议"}
+                </button>
+              ) : issue.status === "open" ? <p className="mt-2 text-[11px] text-slate-400">请在上方编辑框中人工调整。</p> : null}
+            </article>
+          ))}
+        </div>
+      ) : <p className="p-4 text-xs leading-5 text-emerald-800">未发现需要修改的问题，可以进入人工确认。</p>}
+    </section>
+  );
+}
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return requestJson<T>(url, { method: "POST", body });
+}
+
+async function requestJson<T>(
+  url: string,
+  options: { method: "POST" | "PATCH"; body: unknown },
+): Promise<T> {
+  const response = await fetch(url, {
+    method: options.method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options.body),
+  });
   const payload = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error ?? "请求失败");
   return payload;
@@ -473,4 +701,34 @@ function InputSection({ title, meta, children }: { title: string; meta?: string;
 
 function sourceLabel(source: KnowledgeSource["source"]) {
   return { local: "本地文件夹", feishu: "飞书文档", base: "飞书多维表格", upload: "兼容上传" }[source];
+}
+
+function reviewCategoryLabel(category: ReviewIssueCategory) {
+  return { fact: "事实", style: "风格", platform: "平台" }[category];
+}
+
+function riskLabel(risk: ReviewRiskLevel) {
+  return { low: "低风险", medium: "中风险", high: "高风险", blocked: "禁止发布" }[risk];
+}
+
+function riskClass(risk: ReviewRiskLevel) {
+  return {
+    low: "bg-emerald-100 text-emerald-800",
+    medium: "bg-amber-100 text-amber-800",
+    high: "bg-orange-100 text-orange-800",
+    blocked: "bg-red-100 text-red-800",
+  }[risk];
+}
+
+function riskTextClass(risk: ReviewRiskLevel) {
+  return {
+    low: "text-emerald-700",
+    medium: "text-amber-700",
+    high: "text-orange-700",
+    blocked: "text-red-700",
+  }[risk];
+}
+
+function safeFilename(value: string) {
+  return value.trim().replace(/[\\/:*?"<>|]/g, "-").slice(0, 60) || "内容稿件";
 }

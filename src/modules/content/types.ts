@@ -1,4 +1,5 @@
 import type { AccountContext } from "@/modules/positioning/types";
+import type { ChannelReview } from "@/modules/reviews/types";
 
 export type BriefKnowledgeSource = {
   id: string;
@@ -51,6 +52,7 @@ export type ChannelDraft = {
   content: string;
   status: "generated" | "failed";
   error?: string;
+  review?: ChannelReview;
   updatedAt: string;
 };
 
