@@ -169,10 +169,6 @@ function CaptureExtensionCard({
   const [probeAttempt, setProbeAttempt] = useState(0);
 
   useEffect(() => {
-    function detectFromPage() {
-      const version = document.documentElement.dataset.contentFactoryCaptureVersion;
-      if (version) setExtensionVersion(version);
-    }
     function handleMessage(event: MessageEvent) {
       if (
         event.source === window
@@ -183,16 +179,15 @@ function CaptureExtensionCard({
       }
     }
     function probe() {
-      detectFromPage();
       window.postMessage(
         { source: "contentfactory-positioning-page", type: "probe" },
         window.location.origin,
       );
     }
 
-    probe();
     window.addEventListener("message", handleMessage);
     window.addEventListener("focus", probe);
+    probe();
     const interval = window.setInterval(probe, 500);
     const timeout = window.setTimeout(() => window.clearInterval(interval), 5_000);
     return () => {
