@@ -72,6 +72,9 @@ async function captureCurrentPage() {
       func: captureVisibleAccountPage,
     });
     if (!result?.accountName) throw new Error("未识别到账号名称，请确认当前打开的是账号页或作品详情");
+    if (result.platform === "小红书" && result.pageType !== "account") {
+      throw new Error("请先点击小红书左侧“我”，进入自己的账号主页后再采集");
+    }
     capturedAccount = result;
     positioningDraft = null;
     renderCapture(result);

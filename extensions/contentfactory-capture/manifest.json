@@ -1,18 +1,26 @@
 {
   "manifest_version": 3,
   "name": "内容工厂账号采集助手",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Capture structured account and content metrics, preview AI positioning, and confirm it in Content Factory.",
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://www.xiaohongshu.com/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "content_scripts": [
     {
       "matches": ["http://localhost/*", "http://127.0.0.1/*"],
       "js": ["bridge.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.xiaohongshu.com/*"],
+      "js": ["xiaohongshu-assistant.js"],
+      "run_at": "document_idle"
     }
   ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
   "action": {
     "default_title": "采集账号到内容工厂",
     "default_popup": "popup.html"

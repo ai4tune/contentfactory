@@ -262,8 +262,20 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
           sourceUrl: "https://www.xiaohongshu.com/user/profile/acceptance",
           accountName: "崔总建材账号",
           bio: "分享 SPC 地板、安装和装修选购知识",
-          followerCount: "页面可见 1200",
-          contents: [{ title: "装修选地板的三个误区", metrics: "页面可见 88 赞" }],
+          followerCount: "1200",
+          accountMetrics: {
+            following: { raw: "20", value: 20, visibility: "public" },
+            followers: { raw: "1200", value: 1200, visibility: "public" },
+            likesAndCollects: { raw: "332", value: 332, visibility: "public" },
+          },
+          contents: [{
+            title: "装修选地板的三个误区",
+            url: "https://www.xiaohongshu.com/explore/acceptance-note",
+            metrics: {
+              likes: { raw: "88", value: 88, visibility: "public" },
+            },
+            metricSummary: "点赞 88",
+          }],
           interactionSummary: "选购避坑内容互动较高",
           capturedAt: "2026-07-21T00:00:00.000Z",
         },
@@ -271,12 +283,22 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(captured.response.status, 200);
     assert.equal(captured.body.capture.accountName, "崔总建材账号");
+    assert.equal(captured.body.capture.accountMetrics.followers.value, 1200);
+    assert.equal(captured.body.capture.contents[0].metrics.likes.value, 88);
     assert.equal(captured.body.draft.source, "capture");
+
+    const refreshed = await requestJson("/api/positioning/refresh-capture", {
+      method: "POST",
+      body: {},
+    });
+    assert.equal(refreshed.response.status, 200);
+    assert.equal(refreshed.body.capture.contents[0].title, "装修选地板的三个误区");
+    assert.equal(refreshed.body.draft.source, "capture");
 
     const confirmed = await requestJson("/api/capture/account", {
       method: "POST",
       headers: { Authorization: "Bearer acceptance-capture-token", Origin: baseUrl },
-      body: { action: "confirm", draft: captured.body.draft },
+      body: { action: "confirm", draft: refreshed.body.draft },
     });
     assert.equal(confirmed.response.status, 200);
     assert.equal(confirmed.body.context.source, "capture");

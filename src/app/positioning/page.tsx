@@ -12,5 +12,7 @@ export default async function PositioningPage() {
   ]);
   const extensionPath = path.join(process.cwd(), "extensions", "contentfactory-capture");
 
-  return <PositioningClient initialContext={context} initialCapture={capture} extensionPath={extensionPath} />;
+  const stateKey = `${context?.updatedAt ?? "no-context"}:${capture?.capturedAt ?? "no-capture"}`;
+
+  return <PositioningClient key={stateKey} initialContext={context} initialCapture={capture} extensionPath={extensionPath} />;
 }
