@@ -92,7 +92,7 @@ export default function TopicsPage() {
         eyebrow="TOPIC RADAR"
         title="选题雷达"
         description="系统已自动读取当前账号定位。用关键词和爆款样本生成一批值得验证的内容方向。"
-        actions={<Link className={primaryButtonClass} href="/workbench">去写文章</Link>}
+        actions={<Link className={primaryButtonClass} href="/create">去写文章</Link>}
       />
 
         <section className="mt-7 grid gap-5 lg:grid-cols-[0.86fr_1.14fr]">

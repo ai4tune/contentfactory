@@ -99,7 +99,7 @@ export function DraftList({ initialDrafts }: { initialDrafts: DraftListItem[] })
 }
 
 function EmptyDrafts() {
-  return <section className="mt-7 flex min-h-80 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 text-center"><span className="flex size-14 items-center justify-center rounded-2xl bg-[#e9f0ec] text-lg font-semibold text-emerald-900">稿</span><h2 className="mt-5 text-base font-semibold">还没有草稿</h2><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">确认内容简报并生成渠道内容后，可以从这里重新打开。</p><Link className="mt-5 text-sm font-semibold text-emerald-800" href="/">开始写第一篇 →</Link></section>;
+  return <section className="mt-7 flex min-h-80 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 text-center"><span className="flex size-14 items-center justify-center rounded-2xl bg-[#e9f0ec] text-lg font-semibold text-emerald-900">稿</span><h2 className="mt-5 text-base font-semibold">还没有草稿</h2><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">确认内容简报并生成渠道内容后，可以从这里重新打开。</p><Link className="mt-5 text-sm font-semibold text-emerald-800" href="/create">开始写第一篇 →</Link></section>;
 }
 
 function statusClass(status: DraftReviewStatus) {

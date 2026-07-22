@@ -90,7 +90,8 @@ src/modules/<module>/
 
 | 路由 | 用途 | 代码所有者 |
 |---|---|---|
-| `/` | 内容创作默认首页 | `modules/content` 负责主体，`app/page.tsx` 只组装 |
+| `/` | 轻量内容经营首页 | `modules/dashboard` 负责聚合，`app/page.tsx` 只组装 |
+| `/create` | 内容创作 | `modules/content` 负责主体，`app/create/page.tsx` 只组装 |
 | `/positioning` | 当前唯一账号 | `modules/positioning` |
 | `/knowledge` | 本地文件夹和飞书知识 | `modules/knowledge` |
 | `/drafts` | 草稿历史 | `modules/drafts` |
@@ -182,4 +183,3 @@ main
 6. PR 中列出“本次未改”的相邻模块，防止范围溢出。
 
 如必须并行开发，只并行模块内部代码，不并行修改共享入口。
-
