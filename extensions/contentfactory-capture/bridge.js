@@ -1,16 +1,15 @@
 (() => {
   const SOURCE = "contentfactory-capture-extension";
   const version = chrome.runtime.getManifest().version;
-  const bridgeMarker = "contentFactoryCaptureBridgeVersion";
+  const bridgeMarker = "__contentFactoryCaptureBridgeVersion";
 
   function announceReady() {
-    document.documentElement.dataset.contentFactoryCaptureVersion = version;
     window.postMessage({ source: SOURCE, type: "ready", version }, window.location.origin);
   }
 
   announceReady();
-  if (document.documentElement.dataset[bridgeMarker] === version) return;
-  document.documentElement.dataset[bridgeMarker] = version;
+  if (globalThis[bridgeMarker] === version) return;
+  globalThis[bridgeMarker] = version;
 
   window.addEventListener("message", (event) => {
     if (
