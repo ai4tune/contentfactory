@@ -92,6 +92,11 @@ export async function saveAccountCapture(capture: AccountCapture) {
   return capture;
 }
 
+export async function getLatestAccountCapture() {
+  const store = await readStore();
+  return store.accountCaptures.at(-1) ?? null;
+}
+
 export async function getCurrentAccountProfile() {
   const store = await readStore();
 
