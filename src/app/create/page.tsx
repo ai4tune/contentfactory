@@ -7,8 +7,8 @@ import { getCurrentAccountContext } from "@/modules/positioning/repository";
 export const dynamic = "force-dynamic";
 
 const creationSteps = [
-  { title: "确定选题", description: "说清这次要解决的问题" },
   { title: "选择知识", description: "加入可以支撑内容的真实资料" },
+  { title: "确定选题", description: "结合账号定位和知识选择主题" },
   { title: "生成简报", description: "统一受众、观点、结构和引用" },
   { title: "人工确认", description: "确认后创建本次内容项目" },
 ];
@@ -22,8 +22,8 @@ export default async function ContentCreationPage() {
   return (
     <AppShell active="/create">
       <PageHeader
-        title="从一个选题，开始今天的内容创作"
-        description="选择真实资料，先把各渠道共用的内容简报确认下来。"
+        title="从资料和选题，开始今天的内容创作"
+        description="先选择真实资料，再结合账号定位确定选题和统一内容简报。"
         actions={
           <Link className={secondaryButtonClass} href="/positioning">
             {accountContext?.status === "confirmed" ? "查看当前账号" : "快速建立账号定位"}
@@ -66,7 +66,9 @@ export default async function ContentCreationPage() {
         </div>
       </section>
 
-      <ContentCreationWorkspace />
+      <ContentCreationWorkspace
+        recommendedTopics={accountContext?.status === "confirmed" ? accountContext.recommendedTopics : []}
+      />
     </AppShell>
   );
 }

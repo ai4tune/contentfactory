@@ -1,4 +1,5 @@
 import type { BriefKnowledgeSource, ContentBrief } from "../types";
+import { normalizeBriefList } from "./normalize-brief-list";
 
 const sourceTypes = new Set<BriefKnowledgeSource["source"]>([
   "local",
@@ -58,11 +59,11 @@ export function normalizeContentBrief(value: unknown): ContentBrief | null {
     targetAudience: String(record.targetAudience ?? "").trim(),
     contentGoal: String(record.contentGoal ?? "").trim(),
     coreMessage: String(record.coreMessage ?? "").trim(),
-    keyPoints: toStrings(record.keyPoints),
-    outline: toStrings(record.outline),
+    keyPoints: normalizeBriefList(record.keyPoints),
+    outline: normalizeBriefList(record.outline),
     callToAction: String(record.callToAction ?? "").trim(),
     citations,
-    openQuestions: toStrings(record.openQuestions),
+    openQuestions: normalizeBriefList(record.openQuestions),
   };
 
   return brief.targetAudience && brief.contentGoal && brief.coreMessage && brief.outline.length && citations.length
@@ -73,8 +74,4 @@ export function normalizeContentBrief(value: unknown): ContentBrief | null {
 function optionalString(value: unknown) {
   const normalized = String(value ?? "").trim();
   return normalized || undefined;
-}
-
-function toStrings(value: unknown) {
-  return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
 }

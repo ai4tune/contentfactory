@@ -138,6 +138,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     brief = result.body.brief;
     assert.equal(brief.citations[0].sourceId, source.id);
     assert.ok(source.text.includes(brief.citations[0].excerpt));
+    assert.equal(brief.outline.some((item) => item.includes("[object Object]")), false);
+    assert.match(brief.outline[0], /价格误区/);
   });
 
   await context.test("confirmed brief is saved as one atomic content project", async () => {
