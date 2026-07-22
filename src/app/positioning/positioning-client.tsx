@@ -81,7 +81,7 @@ export function PositioningClient({ initialContext }: { initialContext: AccountC
       const payload = (await response.json()) as { context?: AccountContext; error?: string };
       if (!response.ok || !payload.context) throw new Error(payload.error ?? "暂时跳过失败");
       setContext(payload.context);
-      router.push("/workbench");
+      router.push("/create");
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "暂时跳过失败");
@@ -100,7 +100,7 @@ export function PositioningClient({ initialContext }: { initialContext: AccountC
             <p className="mt-4 text-lg leading-8 text-white/85">{context.accountPosition}</p>
             <div className="mt-8 grid gap-3 sm:grid-cols-3"><Stat label="目标客户" value={context.targetAudience.join("、")} /><Stat label="核心产品" value={context.offer} /><Stat label="主要平台" value={context.platforms.join("、")} /></div>
           </section>
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><ResultGroup title="品牌语气" items={context.brandVoice} tags /><ResultGroup title="禁用表达" items={context.bannedPhrases} tags /><Link className={`${primaryButtonClass} mt-6`} href="/workbench">带着当前定位去创作 →</Link></section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><ResultGroup title="品牌语气" items={context.brandVoice} tags /><ResultGroup title="禁用表达" items={context.bannedPhrases} tags /><Link className={`${primaryButtonClass} mt-6`} href="/create">带着当前定位去创作 →</Link></section>
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2"><div className="grid gap-7 lg:grid-cols-2"><ResultGroup title="内容支柱" items={context.contentPillars} /><ResultGroup title="常用表达" items={context.preferredPhrases} tags /><ResultGroup title="下一阶段内容方向" items={context.contentDirections} /><ResultGroup title="推荐首批选题" items={context.recommendedTopics} /><ResultGroup title="分析依据" items={context.analysisEvidence} /><ResultGroup title="待补信息" items={context.informationGaps} /></div></section>
         </div>
       </AppShell>

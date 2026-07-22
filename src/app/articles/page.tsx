@@ -14,10 +14,10 @@ export default function ArticlesPage() {
 
   return (
     <AppShell active="/articles">
-      <PageHeader eyebrow="CONTENT LIBRARY" title="内容库" description="草稿、已发布内容和平台表现都在一个列表中。发布后补充数据，系统才能知道什么内容真正有效。" actions={<Link className={primaryButtonClass} href="/workbench">＋ 写一篇内容</Link>} />
+      <PageHeader eyebrow="CONTENT LIBRARY" title="内容库" description="草稿、已发布内容和平台表现都在一个列表中。发布后补充数据，系统才能知道什么内容真正有效。" actions={<Link className={primaryButtonClass} href="/create">＋ 写一篇内容</Link>} />
       <section className="mt-7 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="hidden grid-cols-[minmax(280px,1fr)_90px_repeat(5,72px)_104px] gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3 text-[11px] font-semibold text-slate-400 xl:grid"><span>内容</span><span>状态</span><span>阅读</span><span>点赞</span><span>收藏</span><span>评论</span><span>回复</span><span>操作</span></div>
-        {loading ? <div className="p-10 text-center text-sm text-slate-400">正在读取内容…</div> : articles.length ? <div className="divide-y divide-slate-100">{articles.map((article) => <ArticleRow key={article.id} article={article} editing={editingId === article.id} onEdit={() => setEditingId(editingId === article.id ? null : article.id)} onSaved={(updated) => { setArticles((items) => items.map((item) => item.id === updated.id ? updated : item)); setEditingId(null); }} />)}</div> : <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center"><span className="flex size-14 items-center justify-center rounded-2xl bg-emerald-50 text-2xl text-emerald-700">✎</span><h3 className="mt-5 text-base font-semibold">还没有内容</h3><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">从素材库选择资料，生成第一篇草稿。发布后再回来记录阅读和互动数据。</p><Link className={`${primaryButtonClass} mt-5`} href="/workbench">开始写第一篇</Link></div>}
+        {loading ? <div className="p-10 text-center text-sm text-slate-400">正在读取内容…</div> : articles.length ? <div className="divide-y divide-slate-100">{articles.map((article) => <ArticleRow key={article.id} article={article} editing={editingId === article.id} onEdit={() => setEditingId(editingId === article.id ? null : article.id)} onSaved={(updated) => { setArticles((items) => items.map((item) => item.id === updated.id ? updated : item)); setEditingId(null); }} />)}</div> : <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center"><span className="flex size-14 items-center justify-center rounded-2xl bg-emerald-50 text-2xl text-emerald-700">✎</span><h3 className="mt-5 text-base font-semibold">还没有内容</h3><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">从素材库选择资料，生成第一篇草稿。发布后再回来记录阅读和互动数据。</p><Link className={`${primaryButtonClass} mt-5`} href="/create">开始写第一篇</Link></div>}
       </section>
     </AppShell>
   );
@@ -32,4 +32,3 @@ function ArticleRow({ article, editing, onEdit, onSaved }: { article: ArticleRec
 function Metric({ label, value }: { label: string; value?: number }) { return <div><p className="text-[10px] text-slate-400 xl:hidden">{label}</p><p className="mt-0.5 font-mono text-sm font-semibold text-slate-700">{value === undefined ? "—" : formatNumber(value)}</p></div>; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 function formatNumber(value: number) { return new Intl.NumberFormat("zh-CN", { notation: value >= 10000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value); }
-

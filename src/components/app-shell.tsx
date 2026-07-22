@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 const navItems = [
-  { label: "内容创作", href: "/", mark: "创" },
+  { label: "首页", href: "/", mark: "首" },
+  { label: "内容创作", href: "/create", mark: "创" },
   { label: "当前账号", href: "/positioning", mark: "账" },
   { label: "知识库", href: "/knowledge", mark: "知" },
   { label: "草稿历史", href: "/drafts", mark: "稿" },
@@ -18,7 +19,7 @@ export function AppShell({
   return (
     <main className="min-h-screen bg-[#f5f6f3] text-slate-950">
       <div className="mx-auto grid min-h-screen w-full max-w-[1480px] lg:grid-cols-[248px_1fr]">
-        <aside className="border-b border-slate-200 bg-[#12231d] px-5 py-5 text-white lg:min-h-screen lg:border-b-0 lg:border-r lg:border-white/10 lg:px-6 lg:py-7">
+        <aside className="min-w-0 border-b border-slate-200 bg-[#12231d] px-5 py-5 text-white lg:min-h-screen lg:border-b-0 lg:border-r lg:border-white/10 lg:px-6 lg:py-7">
           <Link className="flex items-center gap-3" href="/">
             <span className="flex size-10 items-center justify-center rounded-2xl bg-[#dfb967] text-lg font-bold text-[#12231d]">C</span>
             <span>

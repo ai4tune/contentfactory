@@ -15,7 +15,7 @@ export default async function DraftsPage() {
         title="草稿历史"
         description="找回统一简报和各渠道内容，继续修改后再复制或下载。"
         actions={
-          <Link className={primaryButtonClass} href="/">
+          <Link className={primaryButtonClass} href="/create">
             写一篇新内容
           </Link>
         }
