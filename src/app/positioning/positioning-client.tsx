@@ -98,11 +98,33 @@ export function PositioningClient({
     }
   }
 
+  async function refreshCapture() {
+    setBusy("analyze");
+    setError(null);
+    try {
+      const response = await fetch("/api/positioning/refresh-capture", { method: "POST" });
+      const payload = (await response.json()) as {
+        draft?: AccountContextDraft;
+        error?: string;
+      };
+      if (!response.ok || !payload.draft) {
+        throw new Error(payload.error ?? "重新分析采集结果失败");
+      }
+      setDraft(payload.draft);
+      setForm(payload.draft.input);
+      setEditing(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "重新分析采集结果失败");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (context?.status === "confirmed" && !editing) {
     return (
       <AppShell active="/positioning">
         <PageHeader eyebrow="CURRENT ACCOUNT" title="当前账号" description="这份已确认的账号上下文会自动进入选题、简报和内容生成。" actions={<button className={secondaryButtonClass} onClick={() => setEditing(true)}>更新定位</button>} />
-        <CaptureExtensionCard capture={initialCapture} extensionPath={extensionPath} onRefresh={() => router.refresh()} />
+        <CaptureExtensionCard capture={initialCapture} extensionPath={extensionPath} refreshing={busy === "analyze"} onRefresh={refreshCapture} />
         <div className="mt-7 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
           <section className="rounded-3xl bg-[#173e32] p-6 text-white shadow-sm sm:p-8">
             <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#dfb967] px-3 py-1 text-xs font-semibold text-[#173e32]">已确认 · 当前唯一账号</span><span className="text-xs text-white/50">更新于 {formatDate(context.updatedAt)}</span></div>
@@ -120,7 +142,7 @@ export function PositioningClient({
   return (
     <AppShell active="/positioning">
       <PageHeader eyebrow="QUICK POSITIONING" title={draft ? "确认账号定位" : "快速建立当前账号"} description={draft ? "AI 结果还没有生效。你可以直接修改，确认后才会覆盖当前账号。" : "只填写关键业务信息即可；也可以先跳过，账号定位不会阻止创作。"} />
-      {!draft ? <CaptureExtensionCard capture={initialCapture} extensionPath={extensionPath} onRefresh={() => router.refresh()} /> : null}
+      {!draft ? <CaptureExtensionCard capture={initialCapture} extensionPath={extensionPath} refreshing={busy === "analyze"} onRefresh={refreshCapture} /> : null}
       {context?.status === "skipped" && !draft ? <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">你上次选择了暂时跳过。现在可以补充定位，也可以继续直接创作。</div> : null}
       {draft ? <DraftEditor draft={draft} onChange={setDraft} /> : <PositioningForm form={form} onChange={setForm} />}
       {error ? <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
@@ -134,14 +156,17 @@ export function PositioningClient({
 function CaptureExtensionCard({
   capture,
   extensionPath,
+  refreshing,
   onRefresh,
 }: {
   capture: AccountCapture | null;
   extensionPath: string;
-  onRefresh: () => void;
+  refreshing: boolean;
+  onRefresh: () => Promise<void>;
 }) {
   const [extensionVersion, setExtensionVersion] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [probeAttempt, setProbeAttempt] = useState(0);
 
   useEffect(() => {
     function detectFromPage() {
@@ -157,14 +182,26 @@ function CaptureExtensionCard({
         setExtensionVersion(String(event.data.version || "已连接"));
       }
     }
-    detectFromPage();
+    function probe() {
+      detectFromPage();
+      window.postMessage(
+        { source: "contentfactory-positioning-page", type: "probe" },
+        window.location.origin,
+      );
+    }
+
+    probe();
     window.addEventListener("message", handleMessage);
-    window.postMessage(
-      { source: "contentfactory-positioning-page", type: "probe" },
-      window.location.origin,
-    );
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+    window.addEventListener("focus", probe);
+    const interval = window.setInterval(probe, 500);
+    const timeout = window.setTimeout(() => window.clearInterval(interval), 5_000);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      window.removeEventListener("focus", probe);
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [probeAttempt]);
 
   async function copyPath() {
     try {
@@ -204,15 +241,16 @@ function CaptureExtensionCard({
           <div className="mt-5 flex flex-wrap gap-3">
             <a className={primaryButtonClass} href="https://www.xiaohongshu.com/explore" target="_blank" rel="noreferrer">打开并登录小红书 →</a>
             <button className={secondaryButtonClass} type="button" onClick={copyPath}>{copied ? "插件目录已复制" : "复制本地插件目录"}</button>
-            <button className={secondaryButtonClass} type="button" onClick={onRefresh}>刷新采集结果</button>
+            <button className={secondaryButtonClass} type="button" onClick={() => { setExtensionVersion(null); setProbeAttempt((value) => value + 1); }}>重新检测插件</button>
+            <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在重新分析…" : "基于最新采集重新定位"}</button>
           </div>
           {!extensionVersion ? <p className="mt-4 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-xs leading-5 text-amber-900">首次使用：打开 <code>chrome://extensions</code>，开启开发者模式，选择“加载已解压的扩展程序”，粘贴刚复制的目录。已经安装过时，请点击扩展卡片上的“重新加载”，然后刷新本页。</p> : null}
           {!extensionVersion ? <code className="mt-3 block overflow-x-auto rounded-xl bg-slate-950 px-4 py-3 text-xs text-emerald-200">{extensionPath}</code> : null}
         </div>
         <ol className="grid gap-3 text-sm text-slate-700">
           <CaptureStep number="1" title="登录账号" detail="打开小红书，登录后点击左侧“我”，进入自己的账号主页。" />
-          <CaptureStep number="2" title="采集当前页面" detail="点击 Chrome 右上角的“内容工厂账号采集助手”，再点击“采集当前页面”。" />
-          <CaptureStep number="3" title="确认 AI 定位" detail="核对账号与作品指标，生成定位预览；修改确认后回到本页刷新。" />
+          <CaptureStep number="2" title="采集当前账号" detail="进入“我”之后，点击页面右下角“采集当前账号”，无需再寻找 Chrome 工具栏入口。" />
+          <CaptureStep number="3" title="确认 AI 定位" detail="核对账号、粉丝和作品点赞，再生成定位预览；也可以回到这里基于最新采集重新分析。" />
         </ol>
       </div>
       <div className="border-t border-emerald-100 bg-white/75 px-6 py-5 lg:px-7">

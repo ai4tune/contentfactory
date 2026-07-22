@@ -37,9 +37,45 @@ export function captureVisibleAccountPage() {
     }
     return null;
   };
+  const metricNearLabel = (labels, visibility = "public") => {
+    const labelNodes = [...document.querySelectorAll("span,div,p")]
+      .filter((node) => labels.includes(visibleText(node)));
+
+    for (const labelNode of labelNodes) {
+      let container = labelNode.parentElement;
+      for (let depth = 0; container && depth < 3; depth += 1) {
+        const text = visibleText(container);
+        const withoutLabel = labels.reduce(
+          (value, label) => value.replaceAll(label, " "),
+          text,
+        );
+        const numbers = withoutLabel.match(/-?[\d,.]+\s*(?:万|w|W|k|K)?/g) || [];
+        if (numbers.length === 1 && text.length <= 80) return metric(numbers[0], visibility);
+        container = container.parentElement;
+      }
+    }
+
+    const containers = document.querySelectorAll([
+      ".user-interactions > *",
+      "[class*='user-interactions'] > *",
+      "[class*='interaction']",
+      "[class*='data-info'] > *",
+    ].join(","));
+    for (const container of containers) {
+      const text = visibleText(container);
+      if (!labels.some((label) => text.includes(label)) || text.length > 80) continue;
+      const withoutLabel = labels.reduce(
+        (value, label) => value.replaceAll(label, " "),
+        text,
+      );
+      const numbers = withoutLabel.match(/-?[\d,.]+\s*(?:万|w|W|k|K)?/g) || [];
+      if (numbers.length === 1) return metric(numbers[0], visibility);
+    }
+    return null;
+  };
   const imageUrl = (image) => {
     if (!image || typeof image !== "object") return "";
-    return image.urlDefault || image.url || image.urlPre
+    return image.currentSrc || image.src || image.urlDefault || image.url || image.urlPre
       || image.infoList?.find((item) => item?.url)?.url || "";
   };
   const parseInitialState = () => {
@@ -172,6 +208,64 @@ export function captureVisibleAccountPage() {
       metricSummary: contentMetricSummary(metrics),
     };
   };
+  const buildXiaohongshuDomCards = () => {
+    const links = [...document.querySelectorAll([
+      "section.note-item a[href*='/explore/']",
+      "[class~='note-item'] a[href*='/explore/']",
+      "[class*='feeds-container'] a[href*='/explore/']",
+      "section.note-item a[href*='/discovery/item/']",
+      "[class~='note-item'] a[href*='/discovery/item/']",
+    ].join(","))];
+    const cards = [];
+    const seen = new Set();
+
+    for (const link of links) {
+      const url = new URL(link.href, location.href);
+      const noteId = clean(url.pathname.match(/\/(?:explore|discovery\/item)\/([^/?]+)/)?.[1]);
+      if (!noteId || seen.has(noteId)) continue;
+      const root = link.closest("section.note-item,[class~='note-item'],article,li,[class*='note-card']") || link.parentElement;
+      if (!root) continue;
+      const titleNode = root.querySelector([
+        ".footer .title",
+        "[class*='footer'] [class~='title']",
+        "[class*='footer'] [class*='title']",
+        "[class~='title']",
+      ].join(","));
+      const title = clean(
+        visibleText(titleNode)
+        || link.getAttribute("title")
+        || link.querySelector("img")?.getAttribute("alt"),
+      );
+      if (!title) continue;
+      const likeText = visibleText(root.querySelector([
+        ".like-wrapper .count",
+        "[class*='like-wrapper'] [class*='count']",
+        "[class*='like'] > [class*='count']",
+        "[class*='like'] [class*='count']",
+      ].join(",")));
+      const coverUrl = imageUrl(root.querySelector("img"));
+      const metrics = emptyContentMetrics();
+      metrics.likes = metric(likeText);
+      cards.push({
+        noteId,
+        title,
+        description: "",
+        type: root.querySelector("video") ? "video" : "image",
+        url: canonicalNoteUrl(noteId),
+        publishedAt: "",
+        tags: [],
+        imageUrls: coverUrl ? [coverUrl] : [],
+        coverUrl,
+        durationMs: null,
+        pinned: false,
+        metrics,
+        metricSummary: contentMetricSummary(metrics),
+      });
+      seen.add(noteId);
+      if (cards.length >= 20) break;
+    }
+    return cards;
+  };
   const findXiaohongshuNote = (state) => {
     const maps = [];
     const visit = (value, depth = 0) => {
@@ -199,6 +293,8 @@ export function captureVisibleAccountPage() {
     const basic = userPageData.basicInfo || {};
     const interactionMap = Object.fromEntries((userPageData.interactions || []).map((item) => [clean(item?.name), item]));
     const interactionMetric = (names) => {
+      const visibleMetric = metricNearLabel(names);
+      if (visibleMetric) return visibleMetric;
       for (const name of names) {
         const item = interactionMap[name];
         if (item) return metric(item.i18nCount ?? item.count);
@@ -217,9 +313,27 @@ export function captureVisibleAccountPage() {
       followerGrowth: isCreator ? metricFromText(bodyText, ["新增粉丝", "涨粉"], "creator_backend") : null,
     };
     const noteGroups = Array.isArray(state?.user?.notes) ? state.user.notes : [];
-    const cards = noteGroups.flatMap((group) => Array.isArray(group) ? group : [])
+    const stateCards = noteGroups.flatMap((group) => Array.isArray(group) ? group : [group])
       .map((item) => buildXiaohongshuCard(item?.noteCard || item))
       .filter(Boolean);
+    const domCards = isAccount ? buildXiaohongshuDomCards() : [];
+    const cardsById = new Map(stateCards.map((card) => [card.noteId, card]));
+    for (const card of domCards) {
+      const existing = cardsById.get(card.noteId);
+      cardsById.set(card.noteId, existing ? {
+        ...existing,
+        ...card,
+        metrics: {
+          ...existing.metrics,
+          likes: card.metrics.likes || existing.metrics.likes,
+        },
+        metricSummary: contentMetricSummary({
+          ...existing.metrics,
+          likes: card.metrics.likes || existing.metrics.likes,
+        }),
+      } : card);
+    }
+    const cards = [...cardsById.values()];
     const detailNote = findXiaohongshuNote(state);
     const detailContent = buildXiaohongshuNote(detailNote) || (isContent ? buildXiaohongshuDomNote() : null);
     const contents = detailContent ? [detailContent] : cards.slice(0, 20);
