@@ -1,6 +1,7 @@
 import { chatCompletionJson, parseJsonObject } from "@/lib/ai";
 import type { AccountContext } from "@/modules/positioning/types";
 import type { BriefKnowledgeSource, ContentBrief, ContentCitation } from "../types";
+import { normalizeBriefList } from "./normalize-brief-list";
 
 type RawBrief = Omit<ContentBrief, "citations"> & {
   citations?: Array<{ sourceId?: string; excerpt?: string; purpose?: string }>;
@@ -40,11 +41,11 @@ export async function createContentBrief(
     targetAudience: String(raw.targetAudience ?? "").trim(),
     contentGoal: String(raw.contentGoal ?? "").trim(),
     coreMessage: String(raw.coreMessage ?? "").trim(),
-    keyPoints: toStrings(raw.keyPoints),
-    outline: toStrings(raw.outline),
+    keyPoints: normalizeBriefList(raw.keyPoints),
+    outline: normalizeBriefList(raw.outline),
     callToAction: String(raw.callToAction ?? "").trim(),
     citations: normalizeCitations(raw.citations, sources),
-    openQuestions: toStrings(raw.openQuestions),
+    openQuestions: normalizeBriefList(raw.openQuestions),
   };
 }
 
@@ -83,8 +84,4 @@ function normalizeCitations(
     url: source.url,
     path: source.path,
   }));
-}
-
-function toStrings(value: unknown) {
-  return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
 }

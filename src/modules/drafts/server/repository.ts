@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import { isContentChannel, type ContentChannel, type ContentProject } from "@/modules/content/types";
+import { normalizeBriefList } from "@/modules/content/server/normalize-brief-list";
 import type {
   ContentDraft,
   DraftFilters,
@@ -94,6 +95,12 @@ export function parseDraftFilters(values: {
 function normalizeDraft(project: ContentProject & Partial<ContentDraft>): ContentDraft {
   return {
     ...project,
+    brief: {
+      ...project.brief,
+      keyPoints: normalizeBriefList(project.brief.keyPoints),
+      outline: normalizeBriefList(project.brief.outline),
+      openQuestions: normalizeBriefList(project.brief.openQuestions),
+    },
     channels: Array.isArray(project.channels) ? project.channels : [],
     channelDrafts: Array.isArray(project.channelDrafts) ? project.channelDrafts : [],
     selectedKnowledgeRefs: Array.isArray(project.selectedKnowledgeRefs)

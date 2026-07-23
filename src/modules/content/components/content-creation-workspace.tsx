@@ -24,7 +24,7 @@ type KnowledgeSource = {
   text?: string;
 };
 
-export function ContentCreationWorkspace() {
+export function ContentCreationWorkspace({ recommendedTopics = [] }: { recommendedTopics?: string[] }) {
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [topic, setTopic] = useState("");
@@ -270,36 +270,10 @@ export function ContentCreationWorkspace() {
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-950">创作输入</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">先确定选题和事实依据，再生成统一内容简报。</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">先选择事实依据，再结合账号定位确定选题。</p>
         </div>
 
-        <InputSection title="确定选题">
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            <span>这次想写什么</span>
-            <textarea
-              className="min-h-24 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
-              disabled={busy !== null}
-              onChange={(event) => changeTopic(event.target.value)}
-              placeholder="例如：装修选地板时，怎么避免只看价格的误区？"
-              value={topic}
-            />
-          </label>
-          <button className={`${secondaryButtonClass} mt-3 w-full`} disabled={!hasKnowledge || busy !== null} onClick={recommendTopics} type="button">
-            {busy === "suggest" ? "正在结合账号与知识推荐" : "根据账号与已选知识推荐"}
-          </button>
-          {suggestions.length ? (
-            <div className="mt-3 grid gap-2">
-              {suggestions.map((suggestion) => (
-                <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700 hover:bg-emerald-50/50 disabled:cursor-not-allowed disabled:opacity-50" disabled={busy !== null} key={suggestion.title} onClick={() => changeTopic(suggestion.title)} type="button">
-                  <span className="block text-xs font-semibold text-slate-800">{suggestion.title}</span>
-                  <span className="mt-1 block text-[11px] leading-5 text-slate-500">{suggestion.angle} · {suggestion.rationale}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </InputSection>
-
-        <InputSection title="选择知识" meta={`${selectedSources.length} 份已选`}>
+        <InputSection title="1. 选择本次知识" meta={`${selectedSources.length} 份已选`}>
           <div className="grid gap-3">
             <div className="flex gap-2">
               <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-emerald-800" disabled={busy !== null} onChange={(event) => setQuery(event.target.value)} placeholder="搜索飞书知识" value={query} />
@@ -332,21 +306,59 @@ export function ContentCreationWorkspace() {
             ) : <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">暂无资料。可先去知识库连接本地文件夹，或搜索飞书。</p>}
 
             {selectedSources.map((source) => (
-              <div className="flex items-start justify-between gap-3 rounded-xl bg-[#e9f0ec] px-3 py-2.5" key={source.id}>
-                <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{source.title}</p><p className="text-[11px] text-slate-500">{sourceLabel(source.source)}</p></div>
-                <button className="text-xs text-slate-500 disabled:cursor-not-allowed disabled:opacity-50" disabled={busy !== null} onClick={() => { setSelectedSources((items) => items.filter((item) => item.id !== source.id)); setSuggestions([]); setBrief(null); setProject(null); }} type="button">移除</button>
+              <div className="rounded-xl bg-[#e9f0ec] px-3 py-3" key={source.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{source.title}</p><p className="text-[11px] text-slate-500">{sourceLabel(source.source)}</p></div>
+                  <button className="text-xs text-slate-500 disabled:cursor-not-allowed disabled:opacity-50" disabled={busy !== null} onClick={() => { setSelectedSources((items) => items.filter((item) => item.id !== source.id)); setSuggestions([]); setBrief(null); setProject(null); }} type="button">移除</button>
+                </div>
+                {source.text ? <details className="mt-2 border-t border-emerald-900/10 pt-2"><summary className="cursor-pointer text-[11px] font-semibold text-emerald-800">预览资料</summary><MarkdownPreview className="mt-2 max-h-52 overflow-y-auto rounded-lg bg-white/75 p-3" content={source.text} /></details> : null}
               </div>
             ))}
           </div>
         </InputSection>
 
-        {message ? <p className="mx-5 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status">{message}</p> : null}
-        <div className="border-t border-slate-200 px-5 py-4">
-          <button className={`${primaryButtonClass} w-full`} disabled={!canCreateBrief || busy !== null} onClick={generateBrief} type="button">
-            {busy === "brief" ? "AI 正在生成内容简报" : brief ? "重新生成内容简报" : "生成内容简报"}
+        <InputSection title="2. 确定选题">
+          {recommendedTopics.length ? (
+            <div className="mb-3">
+              <p className="mb-2 text-xs font-semibold text-slate-600">根据当前账号定位推荐</p>
+              <div className="flex flex-wrap gap-2">
+                {recommendedTopics.slice(0, 4).map((item) => <button className="rounded-lg border border-emerald-800/15 bg-emerald-50 px-2.5 py-1.5 text-left text-xs font-medium text-emerald-900 hover:border-emerald-700" disabled={busy !== null} key={item} onClick={() => changeTopic(item)} type="button">{item}</button>)}
+              </div>
+            </div>
+          ) : null}
+          <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <span>这次想写什么</span>
+            <textarea
+              className="min-h-24 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
+              disabled={busy !== null}
+              onChange={(event) => changeTopic(event.target.value)}
+              placeholder={recommendedTopics.length ? "选择上方建议，或输入一个具体选题" : "输入一个具体选题"}
+              value={topic}
+            />
+          </label>
+          <button className={`${secondaryButtonClass} mt-3 w-full`} disabled={!hasKnowledge || busy !== null} onClick={recommendTopics} type="button">
+            {busy === "suggest" ? "正在结合账号与知识推荐" : hasKnowledge ? `根据账号与 ${selectedSources.length} 份知识推荐` : "先选择知识，再让 AI 推荐"}
           </button>
-          {!canCreateBrief ? <p className="mt-2 text-center text-[11px] text-slate-400">填写选题并选择至少 1 份资料后可生成。</p> : null}
-        </div>
+          {suggestions.length ? (
+            <div className="mt-3 grid gap-2">
+              {suggestions.map((suggestion) => (
+                <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700 hover:bg-emerald-50/50 disabled:cursor-not-allowed disabled:opacity-50" disabled={busy !== null} key={suggestion.title} onClick={() => changeTopic(suggestion.title)} type="button">
+                  <span className="block text-xs font-semibold text-slate-800">{suggestion.title}</span>
+                  <span className="mt-1 block text-[11px] leading-5 text-slate-500">写作角度：{suggestion.angle}</span>
+                  <span className="mt-1 block text-[11px] leading-5 text-slate-500">推荐理由：{suggestion.rationale}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <button className={`${primaryButtonClass} w-full`} disabled={!canCreateBrief || busy !== null} onClick={generateBrief} type="button">
+            {busy === "brief" ? "AI 正在生成内容简报" : brief ? "重新生成内容简报" : "生成内容简报"}
+            </button>
+            {!canCreateBrief ? <p className="mt-2 text-center text-[11px] text-slate-400">填写选题并选择至少 1 份资料后可生成。</p> : null}
+          </div>
+        </InputSection>
+
+        {message ? <p className="mx-5 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status">{message}</p> : null}
       </div>
 
       <div className="min-h-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -363,7 +375,7 @@ export function ContentCreationWorkspace() {
             <BriefListField label="关键论点" value={brief.keyPoints} onChange={(value) => updateBrief(setBrief, "keyPoints", value)} />
             <BriefListField label="内容结构" value={brief.outline} onChange={(value) => updateBrief(setBrief, "outline", value)} />
             <BriefField label="行动引导" value={brief.callToAction} onChange={(value) => updateBrief(setBrief, "callToAction", value)} />
-            <div><h3 className="text-xs font-semibold text-slate-700">知识引用</h3><div className="mt-2 grid gap-2">{brief.citations.map((citation) => <div className="rounded-xl border border-slate-200 bg-slate-50 p-3" key={`${citation.sourceId}:${citation.excerpt}`}><p className="text-xs font-semibold text-slate-800">{citation.sourceTitle} <span className="font-normal text-slate-400">· {citation.sourceId}</span></p><p className="mt-2 text-xs leading-5 text-slate-600">“{citation.excerpt}”</p><input className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs" onChange={(event) => setBrief((current) => current ? { ...current, citations: current.citations.map((item) => item === citation ? { ...item, purpose: event.target.value } : item) } : current)} value={citation.purpose} /></div>)}</div></div>
+            <div><h3 className="text-xs font-semibold text-slate-700">知识引用</h3><div className="mt-2 grid gap-2">{brief.citations.map((citation) => <div className="rounded-xl border border-slate-200 bg-slate-50 p-3" key={`${citation.sourceId}:${citation.excerpt}`}><p className="text-xs font-semibold text-slate-800">{citation.sourceTitle} <span className="font-normal text-slate-400">· {citation.sourceId}</span></p><MarkdownPreview className="mt-2 rounded-lg bg-white p-3" content={citation.excerpt} /><input className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs" onChange={(event) => setBrief((current) => current ? { ...current, citations: current.citations.map((item) => item === citation ? { ...item, purpose: event.target.value } : item) } : current)} value={citation.purpose} /></div>)}</div></div>
             <BriefListField label="待确认信息" value={brief.openQuestions} onChange={(value) => updateBrief(setBrief, "openQuestions", value)} />
             <div className="border-t border-slate-200 pt-5">
               <button className={`${primaryButtonClass} w-full`} disabled={Boolean(project) || busy === "confirm"} onClick={confirmBrief} type="button">{busy === "confirm" ? "正在原子保存" : project ? `已保存项目 ${project.id}` : "确认简报并创建内容项目"}</button>
@@ -543,6 +555,7 @@ function ChannelGenerationPanel({
                 ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs leading-5 text-red-700">{activeDraft.error || "未知错误"}</p>
                 : (
                   <div className="mt-3 grid gap-4">
+                    {activeDraft.channel === "xiaohongshu_note" ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900"><span className="font-semibold">当前交付为小红书文案稿。</span> 图片、封面和图文卡片尚未生成，本页不会隐藏或虚构图片产物。</div> : null}
                     <label className="grid gap-2">
                       <span className="flex items-center justify-between text-xs font-semibold text-slate-700">
                         <span>人工编辑稿</span>
@@ -689,6 +702,32 @@ function BriefField({ label, value, onChange, multiline = false }: { label: stri
 
 function BriefListField({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string[]) => void }) {
   return <label className="grid gap-2 text-xs font-semibold text-slate-700"><span>{label} <span className="font-normal text-slate-400">（每行一项）</span></span><textarea className="min-h-24 rounded-xl border border-slate-300 px-3 py-2 text-sm font-normal leading-6" onChange={(event) => onChange(event.target.value.split("\n").map((item) => item.trim()).filter(Boolean))} value={value.join("\n")} /></label>;
+}
+
+function MarkdownPreview({ content, className = "" }: { content: string; className?: string }) {
+  const lines = content.split("\n");
+  return (
+    <div className={`text-xs leading-5 text-slate-600 ${className}`}>
+      {lines.map((rawLine, index) => {
+        const line = rawLine.trim();
+        if (!line) return <div className="h-2" key={`space:${index}`} />;
+        const heading = line.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) return <p className={`${heading[1].length === 1 ? "text-sm" : "text-xs"} mt-2 font-semibold text-slate-900 first:mt-0`} key={`heading:${index}`}>{cleanMarkdownText(heading[2])}</p>;
+        const listItem = line.match(/^[-*+]\s+(.+)$/) ?? line.match(/^\d+[.)、]\s*(.+)$/);
+        if (listItem) return <div className="flex gap-2" key={`list:${index}`}><span className="text-emerald-700">•</span><span>{cleanMarkdownText(listItem[1])}</span></div>;
+        if (line.startsWith(">")) return <blockquote className="border-l-2 border-emerald-700/30 pl-3 text-slate-500" key={`quote:${index}`}>{cleanMarkdownText(line.slice(1))}</blockquote>;
+        return <p key={`text:${index}`}>{cleanMarkdownText(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+function cleanMarkdownText(value: string) {
+  return value
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|~~|`)/g, "")
+    .trim();
 }
 
 function BriefSkeleton() {

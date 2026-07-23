@@ -42,7 +42,7 @@ export type ContentChannel = (typeof contentChannels)[number];
 
 export const channelLabels: Record<ContentChannel, string> = {
   wechat_article: "公众号文章",
-  xiaohongshu_note: "小红书笔记",
+  xiaohongshu_note: "小红书文案",
   moments_post: "朋友圈文案",
   short_video_script: "短视频脚本",
 };
