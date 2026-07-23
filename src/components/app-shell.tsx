@@ -7,6 +7,7 @@ const navItems = [
   { label: "当前账号", href: "/positioning", mark: "账" },
   { label: "知识库", href: "/knowledge", mark: "知" },
   { label: "草稿历史", href: "/drafts", mark: "稿" },
+  { label: "内容库", href: "/articles", mark: "库" },
 ];
 
 export function AppShell({

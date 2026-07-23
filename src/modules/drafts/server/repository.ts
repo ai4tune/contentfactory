@@ -3,11 +3,14 @@ import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import { isContentChannel, type ContentChannel, type ContentProject } from "@/modules/content/types";
 import { normalizeBriefList } from "@/modules/content/server/normalize-brief-list";
 import type {
+  ContentLibraryItem,
+  ContentPublication,
   ContentDraft,
   DraftFilters,
   DraftListItem,
   DraftReviewStatus,
   DraftVersion,
+  PublicationMetrics,
 } from "../types";
 
 type ProjectStore = { projects: Array<ContentProject & Partial<ContentDraft>> };
@@ -32,6 +35,29 @@ export async function getContentDraft(draftId: string): Promise<ContentDraft | n
   const store = await readProjectStore();
   const project = store.projects.find((item) => item.id === draftId);
   return project ? normalizeDraft(project) : null;
+}
+
+export async function listContentLibraryItems(): Promise<ContentLibraryItem[]> {
+  const store = await readProjectStore();
+  return store.projects
+    .map(normalizeDraft)
+    .flatMap((draft) => draft.channelDrafts
+      .filter((channelDraft) => channelDraft.status === "generated")
+      .map((channelDraft) => {
+        const publication = draft.publications.find((item) => item.channel === channelDraft.channel);
+        return {
+          id: `${draft.id}:${channelDraft.channel}`,
+          draftId: draft.id,
+          topic: draft.topic,
+          channel: channelDraft.channel,
+          excerpt: createExcerpt(channelDraft.content),
+          reviewStatus: draft.reviewStatus,
+          publication,
+          createdAt: draft.createdAt,
+          updatedAt: publication?.updatedAt ?? channelDraft.updatedAt ?? draft.updatedAt,
+        };
+      }))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 export async function updateContentDraft(input: {
@@ -79,6 +105,48 @@ export async function updateContentDraft(input: {
   return updatedDraft;
 }
 
+export async function updateContentPublication(input: {
+  draftId: string;
+  channel: ContentChannel;
+  url?: string;
+  publishedAt: string;
+  metrics: PublicationMetrics;
+}): Promise<ContentDraft | null> {
+  let updatedDraft: ContentDraft | null = null;
+
+  await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
+    projects: (store.projects ?? []).map((project) => {
+      if (project.id !== input.draftId) return project;
+
+      const draft = normalizeDraft(project);
+      const channelDraft = draft.channelDrafts.find(
+        (item) => item.channel === input.channel && item.status === "generated",
+      );
+      if (!channelDraft) return project;
+
+      const now = new Date().toISOString();
+      const publication: ContentPublication = {
+        channel: input.channel,
+        url: input.url,
+        publishedAt: input.publishedAt,
+        updatedAt: now,
+        metrics: input.metrics,
+      };
+      updatedDraft = {
+        ...draft,
+        publications: [
+          ...draft.publications.filter((item) => item.channel !== input.channel),
+          publication,
+        ],
+        updatedAt: now,
+      };
+      return updatedDraft;
+    }),
+  }));
+
+  return updatedDraft;
+}
+
 export function parseDraftFilters(values: {
   query?: unknown;
   channel?: unknown;
@@ -108,6 +176,7 @@ function normalizeDraft(project: ContentProject & Partial<ContentDraft>): Conten
       : project.brief.citations ?? [],
     reviewStatus: isReviewStatus(project.reviewStatus) ? project.reviewStatus : "draft",
     versions: Array.isArray(project.versions) ? project.versions : [],
+    publications: normalizePublications(project.publications),
   };
 }
 
@@ -132,6 +201,58 @@ function toListItem(draft: ContentDraft): DraftListItem {
 
 function isReviewStatus(value: unknown): value is DraftReviewStatus {
   return value === "draft" || value === "editing" || value === "approved";
+}
+
+function normalizePublications(value: unknown): ContentPublication[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (!isContentChannel(record.channel)) return [];
+    const publishedAt = normalizeDate(record.publishedAt);
+    const updatedAt = normalizeDate(record.updatedAt);
+    if (!publishedAt || !updatedAt) return [];
+    const metrics = record.metrics && typeof record.metrics === "object"
+      ? record.metrics as Record<string, unknown>
+      : {};
+
+    return [{
+      channel: record.channel,
+      url: optionalString(record.url),
+      publishedAt,
+      updatedAt,
+      metrics: {
+        views: normalizeCount(metrics.views),
+        likes: normalizeCount(metrics.likes),
+        saves: normalizeCount(metrics.saves),
+        comments: normalizeCount(metrics.comments),
+        replies: normalizeCount(metrics.replies),
+      },
+    }];
+  });
+}
+
+function createExcerpt(content: string) {
+  return content
+    .replace(/[#*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+}
+
+function optionalString(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
+}
+
+function normalizeDate(value: unknown) {
+  const date = new Date(String(value ?? ""));
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function normalizeCount(value: unknown) {
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 ? Math.round(count) : 0;
 }
 
 async function readProjectStore() {

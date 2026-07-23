@@ -1,12 +1,13 @@
 import { readStore } from "@/lib/store";
-import { listContentDrafts } from "@/modules/drafts/server/repository";
+import { listContentDrafts, listContentLibraryItems } from "@/modules/drafts/server/repository";
 import { listRemoteKnowledgeSources } from "@/modules/knowledge/server/source-store";
 import { getCurrentAccountContext } from "@/modules/positioning/repository";
 
 export async function getDashboardSummary() {
-  const [store, drafts, remoteKnowledgeSources, account] = await Promise.all([
+  const [store, drafts, contentItems, remoteKnowledgeSources, account] = await Promise.all([
     readStore(),
     listContentDrafts(),
+    listContentLibraryItems(),
     listRemoteKnowledgeSources(),
     getCurrentAccountContext(),
   ]);
@@ -14,8 +15,8 @@ export async function getDashboardSummary() {
     ...store.materials.map((source) => `${source.source}:${source.id}`),
     ...remoteKnowledgeSources.map((source) => `${source.source}:${source.id}`),
   ]);
-  const publishedArticles = store.articles.filter((article) => article.publication);
-  const publicationMetrics = publishedArticles.map((article) => article.publication!.metrics);
+  const publishedContent = contentItems.filter((item) => item.publication);
+  const publicationMetrics = publishedContent.map((item) => item.publication!.metrics);
 
   return {
     account,
@@ -26,7 +27,7 @@ export async function getDashboardSummary() {
       0,
     ),
     approvedContentCount: drafts.filter((draft) => draft.reviewStatus === "approved").length,
-    publishedContentCount: publishedArticles.length,
+    publishedContentCount: publishedContent.length,
     totalViews: publicationMetrics.reduce((total, metrics) => total + metrics.views, 0),
     totalLikes: publicationMetrics.reduce((total, metrics) => total + metrics.likes, 0),
     totalInteractions: publicationMetrics.reduce(
