@@ -29,6 +29,7 @@ export function KnowledgeWorkspace() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const localResults = useMemo(() => searchLocalKnowledge(localItems, query), [localItems, query]);
+  const displayedRemoteResults = query.trim() ? feishuResults : remoteSources;
 
   useEffect(() => {
     let active = true;
@@ -176,47 +177,126 @@ export function KnowledgeWorkspace() {
     <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="连接本地 Markdown / TXT 与飞书资料。本地目录索引留在当前浏览器，正文按需读取。" actions={<span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">已选择 {selectedIds.length} 份</span>} />
     {message ? <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{message}</p> : null}
 
-    <div className="mt-6 grid gap-5 xl:grid-cols-[0.78fr_1.22fr]">
-      <div className="space-y-5">
-        <Panel title="本地文件夹" description="默认方式。浏览器直接读取，不把完整目录复制到服务端。">
-          {permission === "unsupported" ? <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">请使用桌面版 Chrome 或 Edge 连接文件夹。</p> : <div className="flex flex-wrap gap-2">
-            <button className={primaryButtonClass} disabled={busy !== null} onClick={chooseDirectory}>{busy === "choose" ? "建立索引中…" : "选择知识库文件夹"}</button>
-            {(permission === "prompt" || permission === "denied") ? <button className={secondaryButtonClass} disabled={busy !== null} onClick={grantPermission}>重新授权</button> : null}
-            {permission === "granted" ? <button className={secondaryButtonClass} disabled={busy !== null} onClick={refreshDirectory}>刷新索引</button> : null}
-            {localItems.length ? <button className={secondaryButtonClass} disabled={busy !== null} onClick={disconnectDirectory}>移除连接</button> : null}
-          </div>}
-          <p className="mt-3 text-xs leading-5 text-slate-500">{localItems.length ? `已索引 ${localItems.length} 份 .md / .txt，预览时才读取完整正文。` : "支持递归读取子文件夹，换设备后需要重新选择。"}</p>
-        </Panel>
-
-        <Panel title="飞书知识" description="连接已授权的飞书文档或多维表格。">
-          <label className="grid gap-2 text-sm font-medium text-slate-700"><span>飞书链接</span><input className="h-11 rounded-xl border border-slate-200 px-3 outline-none focus:border-emerald-700" value={feishuUrl} onChange={(event) => setFeishuUrl(event.target.value)} placeholder="https://*.feishu.cn/docx/..." /></label>
-          <button className={`${primaryButtonClass} mt-3 w-full`} disabled={busy !== null} onClick={resolveFeishu}>{busy === "resolve" ? "读取中…" : "连接并预览"}</button>
-          {remoteSources.length ? <div className="mt-4 space-y-2">{remoteSources.map((item) => <RemoteRow key={`${item.source}:${item.id}`} item={item} busy={busy} selected={selectedIds.includes(item.id)} onPreview={() => previewRemote(item)} onToggle={() => toggle(item.id)} />)}</div> : null}
-        </Panel>
-
-        <Panel title="文件上传（兼容入口）" description="仅在目录授权或飞书不可用时临时使用。">
-          <label className="flex cursor-pointer items-center justify-between rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600"><span>{busy === "upload" ? "读取中…" : "上传 Markdown / TXT"}</span><span>＋</span><input className="sr-only" type="file" multiple accept=".md,.txt,text/markdown,text/plain" onChange={(event) => upload(event.target.files)} /></label>
-        </Panel>
+    <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between px-1">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">知识来源</h2>
+          <p className="mt-1 text-xs text-slate-500">需要新增或更新资料时再使用这些入口。</p>
+        </div>
+        <span className="text-xs text-slate-400">{localItems.length + remoteSources.length} 个可用来源</span>
       </div>
 
-      <div className="space-y-5">
-        <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-5"><div className="flex flex-col gap-2 sm:flex-row"><label className="grid min-w-0 flex-1 gap-2 text-sm font-medium text-slate-700"><span>搜索知识</span><input className="h-11 rounded-xl border border-slate-200 px-3 outline-none focus:border-emerald-700" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="标题、标签或正文关键词" /></label><button className={`${secondaryButtonClass} self-end`} disabled={busy !== null} onClick={searchFeishu}>{busy === "search" ? "搜索飞书中…" : "同时搜索飞书"}</button></div><p className="mt-2 text-xs text-slate-500">本地搜索只在浏览器内完成。</p></div>
-          <div className="max-h-[430px] overflow-y-auto divide-y divide-slate-100">
-            {localResults.map((item) => <LocalRow key={item.id} item={item} busy={busy} selected={selectedIds.includes(item.id)} onPreview={() => previewLocal(item)} onToggle={() => toggle(item.id)} />)}
-            {feishuResults.map((item) => <RemoteRow key={`${item.source}:${item.id}`} item={item} busy={busy} selected={selectedIds.includes(item.id)} onPreview={() => previewRemote(item)} onToggle={() => toggle(item.id)} />)}
-            {!localResults.length && !feishuResults.length ? <div className="flex min-h-48 flex-col items-center justify-center px-6 text-center"><h3 className="text-sm font-semibold">暂无资料</h3><p className="mt-2 text-xs text-slate-500">先连接本地文件夹，或输入关键词搜索飞书。</p></div> : null}
+      <div className="grid gap-3 lg:grid-cols-[1.12fr_1fr_0.68fr]">
+        <section className="rounded-xl bg-slate-50 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">本地文件夹</h3>
+              <p className="mt-1 text-xs text-slate-500">{localItems.length ? `已索引 ${localItems.length} 份资料` : "浏览器内建立轻量索引"}</p>
+            </div>
+            <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${permission === "granted" ? "bg-emerald-100 text-emerald-800" : "bg-white text-slate-500"}`}>
+              {permission === "granted" ? "已连接" : "未连接"}
+            </span>
+          </div>
+          {permission === "unsupported" ? (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">请使用桌面版 Chrome 或 Edge。</p>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className={`${primaryButtonClass} min-h-9 px-3 text-xs`} disabled={busy !== null} onClick={chooseDirectory}>
+                {busy === "choose" ? "建立索引中…" : localItems.length ? "更换文件夹" : "选择文件夹"}
+              </button>
+              {(permission === "prompt" || permission === "denied") ? <button className={`${secondaryButtonClass} min-h-9 px-3 text-xs`} disabled={busy !== null} onClick={grantPermission}>重新授权</button> : null}
+              {permission === "granted" ? <button className={`${secondaryButtonClass} min-h-9 px-3 text-xs`} disabled={busy !== null} onClick={refreshDirectory}>刷新</button> : null}
+              {localItems.length ? <button className="min-h-9 px-2 text-xs font-semibold text-slate-500 hover:text-slate-800" disabled={busy !== null} onClick={disconnectDirectory}>移除</button> : null}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-xl bg-slate-50 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">飞书知识</h3>
+              <p className="mt-1 text-xs text-slate-500">{remoteSources.length ? `已连接 ${remoteSources.length} 个来源` : "按链接连接文档或多维表格"}</p>
+            </div>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">飞书文档或多维表格链接</span>
+              <input className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/10" value={feishuUrl} onChange={(event) => setFeishuUrl(event.target.value)} placeholder="粘贴飞书链接" />
+            </label>
+            <button className={`${secondaryButtonClass} min-h-9 shrink-0 px-3 text-xs`} disabled={busy !== null} onClick={resolveFeishu}>
+              {busy === "resolve" ? "读取中…" : "连接"}
+            </button>
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="text-sm font-semibold">正文预览</h2><p className="mt-1 text-xs text-slate-500">按需读取，不保存本地目录副本</p></div>{preview ? <SelectButton selected={selectedIds.includes(preview.id)} onClick={() => toggle(preview.id)} /> : null}</div>{preview ? <div className="p-5"><div className="flex items-center gap-2"><span className="rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">{sourceName(preview.source)}</span><h3 className="text-sm font-semibold">{preview.title}</h3></div>{preview.path ? <p className="mt-2 text-xs text-slate-400">{preview.path}</p> : null}<pre className="mt-4 max-h-[430px] overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 font-sans text-xs leading-6 text-slate-700">{preview.text || "没有可预览的正文。"}</pre></div> : <div className="flex min-h-56 items-center justify-center p-6 text-sm text-slate-400">点击一份资料查看正文</div>}</section>
+        <section className="rounded-xl bg-slate-50 p-3">
+          <h3 className="text-sm font-semibold text-slate-800">文件上传</h3>
+          <p className="mt-1 text-xs text-slate-500">临时兼容入口</p>
+          <label className="mt-3 flex min-h-9 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-emerald-700 hover:text-emerald-800">
+            <span>{busy === "upload" ? "读取中…" : "上传 MD / TXT"}</span>
+            <input className="sr-only" type="file" multiple accept=".md,.txt,text/markdown,text/plain" onChange={(event) => upload(event.target.files)} />
+          </label>
+        </section>
       </div>
+    </section>
+
+    <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">搜索与选择</h2>
+              <p className="mt-1 text-xs text-slate-500">本地资料即时过滤，飞书资料按需搜索。</p>
+            </div>
+            <span className="shrink-0 text-xs text-slate-400">{localResults.length + displayedRemoteResults.length} 条结果</span>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">搜索知识</span>
+              <input className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索标题、标签或正文关键词" />
+            </label>
+            <button className={`${secondaryButtonClass} shrink-0`} disabled={busy !== null} onClick={searchFeishu}>{busy === "search" ? "搜索飞书中…" : "搜索飞书"}</button>
+          </div>
+        </div>
+        <div className="min-h-[420px] max-h-[calc(100dvh-320px)] divide-y divide-slate-100 overflow-y-auto">
+          {localResults.map((item) => <LocalRow key={item.id} item={item} busy={busy} selected={selectedIds.includes(item.id)} onPreview={() => previewLocal(item)} onToggle={() => toggle(item.id)} />)}
+          {displayedRemoteResults.map((item) => <RemoteRow key={`${item.source}:${item.id}`} item={item} busy={busy} selected={selectedIds.includes(item.id)} onPreview={() => previewRemote(item)} onToggle={() => toggle(item.id)} />)}
+          {!localResults.length && !displayedRemoteResults.length ? (
+            <div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
+              <h3 className="text-sm font-semibold text-slate-800">{query.trim() ? "没有匹配的资料" : "知识库还是空的"}</h3>
+              <p className="mt-2 max-w-xs text-xs leading-5 text-slate-500">{query.trim() ? "换一个关键词，或点击“搜索飞书”查询远程资料。" : "从上方连接本地文件夹、飞书，或临时上传文件。"}</p>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-6">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">正文预览</h2>
+            <p className="mt-1 text-xs text-slate-500">按需读取，不保存本地目录副本</p>
+          </div>
+          {preview ? <SelectButton selected={selectedIds.includes(preview.id)} onClick={() => toggle(preview.id)} /> : null}
+        </div>
+        {preview ? (
+          <div className="p-5">
+            <div className="flex items-start gap-2">
+              <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">{sourceName(preview.source)}</span>
+              <h3 className="min-w-0 text-sm font-semibold leading-6 text-slate-900">{preview.title}</h3>
+            </div>
+            {preview.path ? <p className="mt-2 break-all text-xs text-slate-400">{preview.path}</p> : null}
+            <pre className="mt-4 max-h-[calc(100dvh-300px)] min-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-4 font-sans text-xs leading-6 text-slate-700">{preview.text || "没有可预览的正文。"}</pre>
+          </div>
+        ) : (
+          <div className="flex min-h-[520px] flex-col items-center justify-center p-6 text-center">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-[#e9f0ec] text-sm font-semibold text-emerald-900">阅</div>
+            <h3 className="mt-4 text-sm font-semibold text-slate-800">选择资料后在这里阅读</h3>
+            <p className="mt-2 text-xs text-slate-500">点击左侧任意资料即可按需加载正文。</p>
+          </div>
+        )}
+      </section>
     </div>
   </AppShell>;
-}
-
-function Panel({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
-  return <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="font-semibold">{title}</h2><p className="mb-4 mt-2 text-xs leading-5 text-slate-500">{description}</p>{children}</section>;
 }
 
 function LocalRow({ item, busy, selected, onPreview, onToggle }: { item: LocalKnowledgeItem; busy: string | null; selected: boolean; onPreview: () => void; onToggle: () => void }) {
@@ -224,7 +304,7 @@ function LocalRow({ item, busy, selected, onPreview, onToggle }: { item: LocalKn
 }
 
 function RemoteRow({ item, busy, selected, onPreview, onToggle }: { item: FeishuItem | RemoteKnowledgeSource; busy: string | null; selected: boolean; onPreview: () => void; onToggle: () => void }) {
-  return <article className="flex items-center gap-3 rounded-xl border border-slate-100 p-3"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="block text-[10px] font-semibold text-emerald-700">{item.source === "base" ? "飞书多维表格" : "飞书文档"}</span><span className="mt-1 block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-slate-400">{busy === `preview:${item.id}` ? "读取正文中…" : item.id}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
+  return <article className="flex items-start gap-3 p-4"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="block text-[10px] font-semibold text-emerald-700">{item.source === "base" ? "飞书多维表格" : "飞书文档"}</span><span className="mt-1 block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-slate-400">{busy === `preview:${item.id}` ? "读取正文中…" : item.id}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
 }
 
 function SelectButton({ selected, onClick }: { selected: boolean; onClick: () => void }) {
