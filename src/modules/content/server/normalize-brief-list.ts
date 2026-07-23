@@ -1,6 +1,6 @@
 export function normalizeBriefList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap(normalizeItem).filter(Boolean);
+  return [...new Set(value.flatMap(normalizeItem).filter(isUsableText))];
 }
 
 function normalizeItem(value: unknown): string[] {
@@ -28,4 +28,8 @@ function firstText(...values: unknown[]) {
     }
   }
   return "";
+}
+
+function isUsableText(value: string) {
+  return Boolean(value) && value.toLocaleLowerCase("en-US") !== "[object object]";
 }

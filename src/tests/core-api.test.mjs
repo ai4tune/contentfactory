@@ -246,6 +246,19 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.match(markdown, /朋友圈人工修改版本/);
   });
 
+  await context.test("legacy object placeholders are removed when a saved draft is read", async () => {
+    const projectStorePath = path.join(repositoryRoot, "data/content-projects.local.json");
+    const store = JSON.parse(await readFile(projectStorePath, "utf8"));
+    store.projects = store.projects.map((item) => item.id === project.id
+      ? { ...item, brief: { ...item.brief, outline: ["[object Object]", "[object Object]"] } }
+      : item);
+    await writeFile(projectStorePath, JSON.stringify(store, null, 2));
+
+    const result = await requestJson(`/api/content-drafts/${project.id}`);
+    assert.equal(result.response.status, 200);
+    assert.deepEqual(result.body.draft.brief.outline, []);
+  });
+
   await context.test("account capture rejects unknown callers, then supports preview and confirm", async () => {
     const rejected = await requestJson("/api/capture/account", {
       method: "POST",
