@@ -246,6 +246,38 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.match(markdown, /朋友圈人工修改版本/);
   });
 
+  await context.test("a generated channel can be recorded as published with real metrics", async () => {
+    const invalid = await requestJson(`/api/content-drafts/${project.id}/publication`, {
+      method: "POST",
+      body: { channel: "unknown", publishedAt: new Date().toISOString() },
+    });
+    assert.equal(invalid.response.status, 400);
+
+    const publishedAt = "2026-07-23T02:00:00.000Z";
+    const result = await requestJson(`/api/content-drafts/${project.id}/publication`, {
+      method: "POST",
+      body: {
+        channel: "wechat_article",
+        url: "https://example.com/published-content",
+        publishedAt,
+        metrics: { views: 1250, likes: 88, saves: 42, comments: 16, replies: 5 },
+      },
+    });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body.publication.channel, "wechat_article");
+    assert.equal(result.body.publication.metrics.views, 1250);
+
+    const detail = await requestJson(`/api/content-drafts/${project.id}`);
+    assert.equal(detail.body.draft.publications.length, 1);
+    assert.equal(detail.body.draft.publications[0].publishedAt, publishedAt);
+
+    const libraryResponse = await fetch(`${baseUrl}/articles`);
+    const libraryHtml = await libraryResponse.text();
+    assert.equal(libraryResponse.status, 200);
+    assert.match(libraryHtml, /内容库/);
+    assert.match(libraryHtml, /1250/);
+  });
+
   await context.test("legacy object placeholders are removed when a saved draft is read", async () => {
     const projectStorePath = path.join(repositoryRoot, "data/content-projects.local.json");
     const store = JSON.parse(await readFile(projectStorePath, "utf8"));
