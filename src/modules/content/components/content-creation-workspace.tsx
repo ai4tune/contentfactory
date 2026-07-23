@@ -24,7 +24,7 @@ type KnowledgeSource = {
   text?: string;
 };
 
-export function ContentCreationWorkspace({ recommendedTopics = [] }: { recommendedTopics?: string[] }) {
+export function ContentCreationWorkspace() {
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [topic, setTopic] = useState("");
@@ -145,7 +145,9 @@ export function ContentCreationWorkspace({ recommendedTopics = [] }: { recommend
         "/api/topics/suggest",
         { sources: selectedSources },
       );
-      setSuggestions(payload.suggestions ?? []);
+      setSuggestions(Array.from(
+        new Map((payload.suggestions ?? []).map((suggestion) => [suggestion.title, suggestion])).values(),
+      ));
     });
   }
 
@@ -266,11 +268,11 @@ export function ContentCreationWorkspace({ recommendedTopics = [] }: { recommend
   }
 
   return (
-    <section className="mt-5 grid items-start gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+    <section className="mt-5 grid gap-5">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-950">创作输入</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">先选择事实依据，再结合账号定位确定选题。</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">先选择本次要参考的资料，再输入题目或让 AI 推荐一批。</p>
         </div>
 
         <InputSection title="1. 选择本次知识" meta={`${selectedSources.length} 份已选`}>
@@ -318,31 +320,43 @@ export function ContentCreationWorkspace({ recommendedTopics = [] }: { recommend
         </InputSection>
 
         <InputSection title="2. 确定选题">
-          {recommendedTopics.length ? (
-            <div className="mb-3">
-              <p className="mb-2 text-xs font-semibold text-slate-600">根据当前账号定位推荐</p>
-              <div className="flex flex-wrap gap-2">
-                {recommendedTopics.slice(0, 4).map((item) => <button className="rounded-lg border border-emerald-800/15 bg-emerald-50 px-2.5 py-1.5 text-left text-xs font-medium text-emerald-900 hover:border-emerald-700" disabled={busy !== null} key={item} onClick={() => changeTopic(item)} type="button">{item}</button>)}
-              </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-700">这次想写什么</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">可以直接填写预期标题；如果还没想好，让 AI 结合账号定位和已选资料推荐。</p>
             </div>
-          ) : null}
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            <span>这次想写什么</span>
-            <textarea
-              className="min-h-24 resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
-              disabled={busy !== null}
-              onChange={(event) => changeTopic(event.target.value)}
-              placeholder={recommendedTopics.length ? "选择上方建议，或输入一个具体选题" : "输入一个具体选题"}
-              value={topic}
-            />
-          </label>
-          <button className={`${secondaryButtonClass} mt-3 w-full`} disabled={!hasKnowledge || busy !== null} onClick={recommendTopics} type="button">
-            {busy === "suggest" ? "正在结合账号与知识推荐" : hasKnowledge ? `根据账号与 ${selectedSources.length} 份知识推荐` : "先选择知识，再让 AI 推荐"}
-          </button>
+            <button
+              className={`${secondaryButtonClass} shrink-0`}
+              disabled={!hasKnowledge || busy !== null}
+              onClick={recommendTopics}
+              type="button"
+            >
+              {busy === "suggest" ? "正在推荐" : suggestions.length ? "再来一批" : "推荐一批"}
+            </button>
+          </div>
+          <textarea
+            aria-label="这次想写什么"
+            className="mt-3 min-h-24 w-full resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
+            disabled={busy !== null}
+            onChange={(event) => changeTopic(event.target.value)}
+            placeholder="输入预期标题，也可以先留空并点击“推荐一批”"
+            value={topic}
+          />
+          {!hasKnowledge ? <p className="mt-2 text-xs text-slate-400">先选择至少 1 份知识资料，才能获得针对性的题目推荐。</p> : null}
           {suggestions.length ? (
-            <div className="mt-3 grid gap-2">
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
               {suggestions.map((suggestion) => (
-                <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700 hover:bg-emerald-50/50 disabled:cursor-not-allowed disabled:opacity-50" disabled={busy !== null} key={suggestion.title} onClick={() => changeTopic(suggestion.title)} type="button">
+                <button
+                  className={`rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    topic === suggestion.title
+                      ? "border-emerald-800 bg-emerald-50"
+                      : "border-slate-200 hover:border-emerald-700 hover:bg-emerald-50/50"
+                  }`}
+                  disabled={busy !== null}
+                  key={suggestion.title}
+                  onClick={() => changeTopic(suggestion.title)}
+                  type="button"
+                >
                   <span className="block text-xs font-semibold text-slate-800">{suggestion.title}</span>
                   <span className="mt-1 block text-[11px] leading-5 text-slate-500">写作角度：{suggestion.angle}</span>
                   <span className="mt-1 block text-[11px] leading-5 text-slate-500">推荐理由：{suggestion.rationale}</span>
@@ -352,22 +366,23 @@ export function ContentCreationWorkspace({ recommendedTopics = [] }: { recommend
           ) : null}
           <div className="mt-4 border-t border-slate-100 pt-4">
             <button className={`${primaryButtonClass} w-full`} disabled={!canCreateBrief || busy !== null} onClick={generateBrief} type="button">
-            {busy === "brief" ? "AI 正在生成内容简报" : brief ? "重新生成内容简报" : "生成内容简报"}
+              {busy === "brief" ? "AI 正在生成内容简报" : brief ? "重新生成内容简报" : "生成内容简报"}
             </button>
             {!canCreateBrief ? <p className="mt-2 text-center text-[11px] text-slate-400">填写选题并选择至少 1 份资料后可生成。</p> : null}
           </div>
         </InputSection>
-
-        {message ? <p className="mx-5 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status">{message}</p> : null}
       </div>
 
-      <div className="min-h-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div><h2 className="text-base font-semibold text-slate-950">统一内容简报</h2><p className="mt-1 text-xs text-slate-500">确认后，后续所有渠道都以这份简报为准</p></div>
-          {project ? <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800">已确认</span> : brief ? <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800">待确认</span> : null}
-        </div>
-        {busy === "brief" ? <BriefSkeleton /> : brief ? (
-          <div className="grid gap-5 p-5 sm:p-6">
+      {message ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900" role="status">{message}</p> : null}
+
+      {busy === "brief" || brief ? (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
+            <div><h2 className="text-base font-semibold text-slate-950">统一内容简报</h2><p className="mt-1 text-xs text-slate-500">确认后，后续所有渠道都以这份简报为准</p></div>
+            {project ? <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800">已确认</span> : brief ? <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800">待确认</span> : null}
+          </div>
+          {busy === "brief" ? <BriefSkeleton /> : brief ? (
+            <div className="grid gap-5 p-5 sm:p-6">
             <fieldset className="grid gap-5" disabled={Boolean(project) || busy === "confirm"}>
             <BriefField label="目标受众" value={brief.targetAudience} onChange={(value) => updateBrief(setBrief, "targetAudience", value)} />
             <BriefField label="内容目标" value={brief.contentGoal} onChange={(value) => updateBrief(setBrief, "contentGoal", value)} />
@@ -398,9 +413,10 @@ export function ContentCreationWorkspace({ recommendedTopics = [] }: { recommend
                 topic={project.topic}
               />
             ) : null}
-          </div>
-        ) : <div className="flex min-h-[650px] flex-col items-center justify-center px-6 text-center"><div className="flex size-14 items-center justify-center rounded-2xl bg-[#e9f0ec] text-lg font-semibold text-emerald-900">简</div><h3 className="mt-5 text-base font-semibold text-slate-900">简报会出现在这里</h3><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">它会固定目标受众、核心观点、结构、行动引导和可追溯引用。</p></div>}
-      </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
