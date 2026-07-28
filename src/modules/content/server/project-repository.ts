@@ -1,7 +1,13 @@
 import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import type { AccountContext } from "@/modules/positioning/types";
-import type { ChannelDraft, ContentBrief, ContentChannel, ContentProject } from "../types";
+import type {
+  ChannelDraft,
+  ContentBrief,
+  ContentChannel,
+  ContentProject,
+  GeneratedVisualAsset,
+} from "../types";
 
 type ProjectStore = { projects: ContentProject[] };
 
@@ -81,6 +87,31 @@ export async function saveChannelDrafts(
         channels: Array.from(new Set([...project.channels, ...channels])),
         channelDrafts: drafts,
         status: getProjectStatus(drafts),
+        updatedAt: new Date().toISOString(),
+      };
+      return updatedProject;
+    }),
+  }));
+
+  return updatedProject;
+}
+
+export async function saveChannelVisualAssets(
+  projectId: string,
+  channel: ContentChannel,
+  visualAssets: GeneratedVisualAsset[],
+) {
+  let updatedProject: ContentProject | null = null;
+
+  await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
+    projects: (store.projects ?? []).map((project) => {
+      if (project.id !== projectId) return project;
+      const channelDrafts = (project.channelDrafts ?? []).map((draft) =>
+        draft.channel === channel ? { ...draft, visualAssets } : draft,
+      );
+      updatedProject = {
+        ...project,
+        channelDrafts,
         updatedAt: new Date().toISOString(),
       };
       return updatedProject;

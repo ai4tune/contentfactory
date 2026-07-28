@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { channelLabels, contentChannels, type ContentChannel } from "@/modules/content/types";
@@ -70,11 +71,19 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
           </div>
 
           {channelDraft?.status === "generated" ? (
-            <textarea
-              className="mt-5 min-h-[560px] w-full resize-y rounded-xl border border-slate-300 px-4 py-4 text-sm leading-7 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
-              onChange={(event) => setEdits((current) => ({ ...current, [activeChannel]: event.target.value }))}
-              value={content}
-            />
+            <>
+              <textarea
+                className="mt-5 min-h-[560px] w-full resize-y rounded-xl border border-slate-300 px-4 py-4 text-sm leading-7 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
+                onChange={(event) => setEdits((current) => ({ ...current, [activeChannel]: event.target.value }))}
+                value={content}
+              />
+              {activeChannel === "xiaohongshu_note" && channelDraft.visualAssets?.length ? (
+                <DraftVisualAssets
+                  assets={channelDraft.visualAssets}
+                  draftId={draft.id}
+                />
+              ) : null}
+            </>
           ) : channelDraft?.status === "failed" ? (
             <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-5 text-sm leading-6 text-red-700">{channelDraft.error || "该渠道生成失败，请返回创作页重新生成。"}</div>
           ) : (
@@ -106,6 +115,57 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
         </InfoCard>
       </aside>
     </div>
+  );
+}
+
+function DraftVisualAssets({
+  assets,
+  draftId,
+}: {
+  assets: NonNullable<ContentDraft["channelDrafts"][number]["visualAssets"]>;
+  draftId: string;
+}) {
+  return (
+    <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-900">小红书配图</h3>
+        <p className="mt-1 text-xs text-slate-500">配图已随草稿保存，可逐张下载后人工发布。</p>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {assets.map((asset) => (
+          <article className="overflow-hidden rounded-xl border border-slate-200 bg-white" key={asset.id}>
+            {asset.status === "generated" && asset.imageUrl ? (
+              <Image
+                alt={asset.title}
+                className="aspect-[2/3] w-full bg-slate-100 object-cover"
+                height={1536}
+                sizes="(min-width: 640px) 320px, 90vw"
+                src={asset.imageUrl}
+                width={1024}
+              />
+            ) : (
+              <div className="flex aspect-[2/3] items-center justify-center bg-red-50 p-5 text-center text-xs text-red-700">
+                {asset.error || "图片生成失败"}
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3 p-3">
+              <div>
+                <p className="text-[10px] font-semibold text-emerald-700">{asset.kind === "cover" ? "封面" : "图文卡片"}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-800">{asset.title}</p>
+              </div>
+              {asset.status === "generated" ? (
+                <a
+                  className={secondaryButtonClass}
+                  href={`/api/content/projects/${encodeURIComponent(draftId)}/channels/xiaohongshu_note/images/${encodeURIComponent(asset.id)}`}
+                >
+                  下载
+                </a>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

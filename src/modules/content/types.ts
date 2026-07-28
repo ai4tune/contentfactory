@@ -47,12 +47,25 @@ export const channelLabels: Record<ContentChannel, string> = {
   short_video_script: "短视频脚本",
 };
 
+export type GeneratedVisualAsset = {
+  id: string;
+  kind: "cover" | "card";
+  title: string;
+  prompt: string;
+  status: "generated" | "failed";
+  imageUrl?: string;
+  revisedPrompt?: string;
+  error?: string;
+  updatedAt: string;
+};
+
 export type ChannelDraft = {
   channel: ContentChannel;
   content: string;
   status: "generated" | "failed";
   error?: string;
   review?: ChannelReview;
+  visualAssets?: GeneratedVisualAsset[];
   updatedAt: string;
 };
 

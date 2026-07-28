@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { loadLocalKnowledge, readLocalKnowledgeItem } from "@/modules/knowledge/local-index";
@@ -10,6 +11,7 @@ import {
   type ContentBrief,
   type ContentChannel,
   type ContentProject,
+  type GeneratedVisualAsset,
 } from "@/modules/content/types";
 import type { LocalKnowledgeItem } from "@/modules/knowledge/types";
 import type { ReviewIssue, ReviewIssueCategory, ReviewRiskLevel } from "@/modules/reviews/types";
@@ -247,6 +249,19 @@ export function ContentCreationWorkspace() {
     });
   }
 
+  async function generateXiaohongshuImages(assetId?: string) {
+    if (!project) return false;
+    return run(assetId ? `image:${assetId}` : "images", async () => {
+      const payload = await postJson<{ project?: ContentProject; error?: string }>(
+        `/api/content/projects/${encodeURIComponent(project.id)}/channels/xiaohongshu_note/images`,
+        assetId ? { assetId } : {},
+      );
+      if (!payload.project) throw new Error("没有返回可用的小红书配图。");
+      setProject(payload.project);
+      setMessage(assetId ? "这张配图已重新生成。" : "小红书封面和图文卡片已生成并保存。");
+    });
+  }
+
   function toggleChannel(channel: ContentChannel) {
     setSelectedChannels((channels) => channels.includes(channel)
       ? channels.filter((item) => item !== channel)
@@ -404,11 +419,13 @@ export function ContentCreationWorkspace() {
                 generatingChannels={generatingChannels}
                 onApplyIssue={applyIssue}
                 onGenerate={generateChannels}
+                onGenerateImages={generateXiaohongshuImages}
                 onReview={reviewChannel}
                 onRetry={retryChannel}
                 onSave={saveChannel}
                 onSelect={setActiveChannel}
                 onToggle={toggleChannel}
+                projectId={project.id}
                 selectedChannels={selectedChannels}
                 topic={project.topic}
               />
@@ -428,11 +445,13 @@ function ChannelGenerationPanel({
   generatingChannels,
   onApplyIssue,
   onGenerate,
+  onGenerateImages,
   onReview,
   onRetry,
   onSave,
   onSelect,
   onToggle,
+  projectId,
   selectedChannels,
   topic,
 }: {
@@ -442,11 +461,13 @@ function ChannelGenerationPanel({
   generatingChannels: ContentChannel[];
   onApplyIssue: (channel: ContentChannel, issueId: string) => Promise<boolean>;
   onGenerate: () => void;
+  onGenerateImages: (assetId?: string) => Promise<boolean>;
   onReview: (channel: ContentChannel) => Promise<boolean>;
   onRetry: (channel: ContentChannel) => void;
   onSave: (channel: ContentChannel, content: string) => Promise<boolean>;
   onSelect: (channel: ContentChannel) => void;
   onToggle: (channel: ContentChannel) => void;
+  projectId: string;
   selectedChannels: ContentChannel[];
   topic: string;
 }) {
@@ -459,6 +480,7 @@ function ChannelGenerationPanel({
     ? editorContents[activeDraft.channel] ?? activeDraft.content
     : "";
   const dirty = Boolean(activeDraft && editorContent !== activeDraft.content);
+  const imageBusy = busy === "images" || Boolean(busy?.startsWith("image:"));
   const hasUnsavedEdits = drafts.some((draft) => {
     const editedContent = editorContents[draft.channel];
     return editedContent !== undefined && editedContent !== draft.content;
@@ -571,7 +593,6 @@ function ChannelGenerationPanel({
                 ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs leading-5 text-red-700">{activeDraft.error || "未知错误"}</p>
                 : (
                   <div className="mt-3 grid gap-4">
-                    {activeDraft.channel === "xiaohongshu_note" ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900"><span className="font-semibold">当前交付为小红书文案稿。</span> 图片、封面和图文卡片尚未生成，本页不会隐藏或虚构图片产物。</div> : null}
                     <label className="grid gap-2">
                       <span className="flex items-center justify-between text-xs font-semibold text-slate-700">
                         <span>人工编辑稿</span>
@@ -600,6 +621,17 @@ function ChannelGenerationPanel({
                     </div>
                     {actionNotice ? <p className="text-xs text-emerald-800" role="status">{actionNotice}</p> : null}
 
+                    {activeDraft.channel === "xiaohongshu_note" ? (
+                      <XiaohongshuVisuals
+                        assets={activeDraft.visualAssets ?? []}
+                        busy={busy}
+                        dirty={dirty}
+                        imageBusy={imageBusy}
+                        onGenerate={onGenerateImages}
+                        projectId={projectId}
+                      />
+                    ) : null}
+
                     <ReviewResult
                       busy={busy}
                       dirty={dirty}
@@ -612,6 +644,113 @@ function ChannelGenerationPanel({
           ) : null}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function XiaohongshuVisuals({
+  assets,
+  busy,
+  dirty,
+  imageBusy,
+  onGenerate,
+  projectId,
+}: {
+  assets: GeneratedVisualAsset[];
+  busy: string | null;
+  dirty: boolean;
+  imageBusy: boolean;
+  onGenerate: (assetId?: string) => Promise<boolean>;
+  projectId: string;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-white p-4">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">小红书图文配套</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            AI 根据已保存终稿制作 1 张封面和 3 张图文卡片，生成后可逐张下载。
+          </p>
+        </div>
+        <button
+          className={assets.length ? secondaryButtonClass : primaryButtonClass}
+          disabled={dirty || busy !== null}
+          onClick={() => onGenerate()}
+          type="button"
+        >
+          {imageBusy
+            ? "AI 正在生成图片"
+            : dirty
+              ? "先保存文案"
+              : assets.length
+                ? "整组重新生成"
+                : "生成封面和 3 张卡片"}
+        </button>
+      </div>
+
+      {imageBusy ? (
+        <div className="p-4" aria-live="polite">
+          <div className="animate-pulse rounded-xl bg-white px-4 py-5 text-xs leading-5 text-slate-500">
+            正在规划版式并调用生图服务，通常需要 1–3 分钟，请不要关闭页面。
+          </div>
+        </div>
+      ) : assets.length ? (
+        <div className="grid gap-3 p-4 sm:grid-cols-2">
+          {assets.map((asset) => (
+            <article className="overflow-hidden rounded-xl border border-slate-200 bg-white" key={asset.id}>
+              {asset.status === "generated" && asset.imageUrl ? (
+                <Image
+                  alt={asset.title}
+                  className="aspect-[2/3] w-full bg-slate-100 object-cover"
+                  height={1536}
+                  sizes="(min-width: 640px) 320px, 90vw"
+                  src={asset.imageUrl}
+                  width={1024}
+                />
+              ) : (
+                <div className="flex aspect-[2/3] items-center justify-center bg-red-50 p-5 text-center text-xs leading-5 text-red-700">
+                  {asset.error || "图片生成失败"}
+                </div>
+              )}
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                      {asset.kind === "cover" ? "封面" : "图文卡片"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-800">{asset.title}</p>
+                  </div>
+                  <span className={`shrink-0 text-[10px] font-semibold ${asset.status === "generated" ? "text-emerald-700" : "text-red-600"}`}>
+                    {asset.status === "generated" ? "已生成" : "失败"}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    className={secondaryButtonClass}
+                    disabled={busy !== null}
+                    onClick={() => onGenerate(asset.id)}
+                    type="button"
+                  >
+                    {busy === `image:${asset.id}` ? "生成中" : "重新生成"}
+                  </button>
+                  {asset.status === "generated" ? (
+                    <a
+                      className={secondaryButtonClass}
+                      href={`/api/content/projects/${encodeURIComponent(projectId)}/channels/xiaohongshu_note/images/${encodeURIComponent(asset.id)}`}
+                    >
+                      下载
+                    </a>
+                  ) : <span />}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="p-4 text-xs leading-5 text-slate-500">
+          先确认并保存小红书文案，再生成与正文结构一致的图文素材。
+        </p>
+      )}
     </section>
   );
 }

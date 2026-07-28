@@ -1,10 +1,32 @@
 import http from "node:http";
 
 const port = Number(process.env.MOCK_AI_PORT || 4320);
+let imageCounter = 0;
 
 const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && request.url === "/health") {
     return json(response, 200, { ok: true });
+  }
+
+  if (request.method === "GET" && request.url?.startsWith("/generated/")) {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zs7sAAAAASUVORK5CYII=",
+      "base64",
+    );
+    response.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.length });
+    return response.end(png);
+  }
+
+  if (request.method === "POST" && request.url?.endsWith("/images/generations")) {
+    await readJson(request);
+    imageCounter += 1;
+    return json(response, 200, {
+      created: Date.now(),
+      data: [{
+        url: `http://127.0.0.1:${port}/generated/xhs-${imageCounter}.png`,
+        revised_prompt: `acceptance-image-${imageCounter}`,
+      }],
+    });
   }
 
   if (request.method !== "POST" || !request.url?.endsWith("/chat/completions")) {
@@ -28,6 +50,17 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user) {
+  if (system.includes("小红书图文策划")) {
+    return {
+      items: [
+        { kind: "cover", title: "选地板别只看价格", prompt: "米白与深绿色，清单式封面，中文标题清晰。" },
+        { kind: "card", title: "先确认使用空间", prompt: "家居空间图解，突出使用空间判断。" },
+        { kind: "card", title: "再检查基层安装", prompt: "基层和安装步骤信息卡，简洁图标。" },
+        { kind: "card", title: "最后明确售后", prompt: "售后核对清单，四项要点收束。" },
+      ],
+    };
+  }
+
   if (system.includes("账号定位顾问")) {
     return {
       accountPosition: "面向装修家庭的建材决策顾问",
