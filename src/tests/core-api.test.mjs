@@ -112,6 +112,36 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(current.body.context.accountPosition, draft.accountPosition);
   });
 
+  await context.test("current positioning can be edited without losing AI evidence", async () => {
+    const current = await requestJson("/api/positioning/current");
+    const {
+      id,
+      status,
+      confirmedAt,
+      updatedAt,
+      ...currentDraft
+    } = current.body.context;
+    void id;
+    void status;
+    void confirmedAt;
+    void updatedAt;
+
+    const updated = await requestJson("/api/positioning/current", {
+      method: "PATCH",
+      body: {
+        action: "confirm",
+        draft: {
+          ...currentDraft,
+          input: draft.input,
+          brandVoice: ["专业", "真诚", "少说套话"],
+        },
+      },
+    });
+    assert.equal(updated.response.status, 200);
+    assert.deepEqual(updated.body.context.brandVoice, ["专业", "真诚", "少说套话"]);
+    assert.deepEqual(updated.body.context.analysisEvidence, current.body.context.analysisEvidence);
+  });
+
   await context.test("knowledge source API responds without copying a local directory", async () => {
     const result = await requestJson("/api/knowledge-sources");
     assert.equal(result.response.status, 200);
