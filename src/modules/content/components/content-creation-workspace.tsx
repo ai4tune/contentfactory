@@ -1,8 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
+import {
+  downloadXiaohongshuVisualAsset,
+  XiaohongshuVisualCard,
+} from "@/modules/content/components/xiaohongshu-visual-card";
 import { loadLocalKnowledge, readLocalKnowledgeItem } from "@/modules/knowledge/local-index";
 import {
   channelLabels,
@@ -258,7 +261,23 @@ export function ContentCreationWorkspace() {
       );
       if (!payload.project) throw new Error("没有返回可用的小红书配图。");
       setProject(payload.project);
-      setMessage(assetId ? "这张配图已重新生成。" : "小红书封面和图文卡片已生成并保存。");
+      setMessage(assetId ? "封面背景已重新生成。" : "小红书封面和正文内页已生成并保存。");
+    });
+  }
+
+  async function saveXiaohongshuVisualAsset(
+    assetId: string,
+    input: { title: string; body: string; points: string[] },
+  ) {
+    if (!project) return false;
+    return run(`save-image:${assetId}`, async () => {
+      const payload = await requestJson<{ project?: ContentProject; error?: string }>(
+        `/api/content/projects/${encodeURIComponent(project.id)}/channels/xiaohongshu_note/images`,
+        { method: "PATCH", body: { assetId, ...input } },
+      );
+      if (!payload.project) throw new Error("图文页保存失败。");
+      setProject(payload.project);
+      setMessage("图文页文字已保存，预览和下载会使用新内容。");
     });
   }
 
@@ -420,12 +439,14 @@ export function ContentCreationWorkspace() {
                 onApplyIssue={applyIssue}
                 onGenerate={generateChannels}
                 onGenerateImages={generateXiaohongshuImages}
+                onSaveVisualAsset={saveXiaohongshuVisualAsset}
                 onReview={reviewChannel}
                 onRetry={retryChannel}
                 onSave={saveChannel}
                 onSelect={setActiveChannel}
                 onToggle={toggleChannel}
                 projectId={project.id}
+                accountName={project.accountSnapshot?.accountName}
                 selectedChannels={selectedChannels}
                 topic={project.topic}
               />
@@ -439,6 +460,7 @@ export function ContentCreationWorkspace() {
 }
 
 function ChannelGenerationPanel({
+  accountName,
   activeChannel,
   busy,
   drafts,
@@ -446,6 +468,7 @@ function ChannelGenerationPanel({
   onApplyIssue,
   onGenerate,
   onGenerateImages,
+  onSaveVisualAsset,
   onReview,
   onRetry,
   onSave,
@@ -455,6 +478,7 @@ function ChannelGenerationPanel({
   selectedChannels,
   topic,
 }: {
+  accountName?: string;
   activeChannel: ContentChannel;
   busy: string | null;
   drafts: ChannelDraft[];
@@ -462,6 +486,10 @@ function ChannelGenerationPanel({
   onApplyIssue: (channel: ContentChannel, issueId: string) => Promise<boolean>;
   onGenerate: () => void;
   onGenerateImages: (assetId?: string) => Promise<boolean>;
+  onSaveVisualAsset: (
+    assetId: string,
+    input: { title: string; body: string; points: string[] },
+  ) => Promise<boolean>;
   onReview: (channel: ContentChannel) => Promise<boolean>;
   onRetry: (channel: ContentChannel) => void;
   onSave: (channel: ContentChannel, content: string) => Promise<boolean>;
@@ -623,11 +651,13 @@ function ChannelGenerationPanel({
 
                     {activeDraft.channel === "xiaohongshu_note" ? (
                       <XiaohongshuVisuals
+                        accountName={accountName}
                         assets={activeDraft.visualAssets ?? []}
                         busy={busy}
                         dirty={dirty}
                         imageBusy={imageBusy}
                         onGenerate={onGenerateImages}
+                        onSave={onSaveVisualAsset}
                         projectId={projectId}
                       />
                     ) : null}
@@ -649,27 +679,56 @@ function ChannelGenerationPanel({
 }
 
 function XiaohongshuVisuals({
+  accountName,
   assets,
   busy,
   dirty,
   imageBusy,
   onGenerate,
+  onSave,
   projectId,
 }: {
+  accountName?: string;
   assets: GeneratedVisualAsset[];
   busy: string | null;
   dirty: boolean;
   imageBusy: boolean;
   onGenerate: (assetId?: string) => Promise<boolean>;
+  onSave: (
+    assetId: string,
+    input: { title: string; body: string; points: string[] },
+  ) => Promise<boolean>;
   projectId: string;
 }) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function downloadAsset(asset: GeneratedVisualAsset, index: number) {
+    setDownloading(asset.id);
+    setNotice(null);
+    try {
+      await downloadXiaohongshuVisualAsset({
+        asset,
+        brandName: accountName,
+        index,
+        projectId,
+        total: assets.length,
+      });
+      setNotice(`第 ${index + 1} 张 PNG 已下载。`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "图片下载失败。");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-white p-4">
         <div>
-          <h4 className="text-sm font-semibold text-slate-900">小红书图文配套</h4>
+          <h4 className="text-sm font-semibold text-slate-900">小红书图文故事板</h4>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            AI 根据已保存终稿制作 1 张封面和 3 张图文卡片，生成后可逐张下载。
+            首图负责吸引点击；3–6 张正文内页负责解释观点、步骤和清单，文字可继续编辑。
           </p>
         </div>
         <button
@@ -684,39 +743,31 @@ function XiaohongshuVisuals({
               ? "先保存文案"
               : assets.length
                 ? "整组重新生成"
-                : "生成封面和 3 张卡片"}
+                : "生成封面和正文内页"}
         </button>
       </div>
 
       {imageBusy ? (
         <div className="p-4" aria-live="polite">
           <div className="animate-pulse rounded-xl bg-white px-4 py-5 text-xs leading-5 text-slate-500">
-            正在规划版式并调用生图服务，通常需要 1–3 分钟，请不要关闭页面。
+            正在拆分正文故事板，并为首图生成无文字背景。只有封面调用生图服务，通常约 1 分钟。
           </div>
         </div>
       ) : assets.length ? (
         <div className="grid gap-3 p-4 sm:grid-cols-2">
-          {assets.map((asset) => (
+          {assets.map((asset, index) => (
             <article className="overflow-hidden rounded-xl border border-slate-200 bg-white" key={asset.id}>
-              {asset.status === "generated" && asset.imageUrl ? (
-                <Image
-                  alt={asset.title}
-                  className="aspect-[2/3] w-full bg-slate-100 object-cover"
-                  height={1536}
-                  sizes="(min-width: 640px) 320px, 90vw"
-                  src={asset.imageUrl}
-                  width={1024}
-                />
-              ) : (
-                <div className="flex aspect-[2/3] items-center justify-center bg-red-50 p-5 text-center text-xs leading-5 text-red-700">
-                  {asset.error || "图片生成失败"}
-                </div>
-              )}
+              <XiaohongshuVisualCard
+                asset={asset}
+                brandName={accountName}
+                index={index}
+                total={assets.length}
+              />
               <div className="p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                      {asset.kind === "cover" ? "封面" : "图文卡片"}
+                      {asset.kind === "cover" ? "点击封面" : `正文内页 ${index}`}
                     </p>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-800">{asset.title}</p>
                   </div>
@@ -724,34 +775,120 @@ function XiaohongshuVisuals({
                     {asset.status === "generated" ? "已生成" : "失败"}
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    className={secondaryButtonClass}
-                    disabled={busy !== null}
-                    onClick={() => onGenerate(asset.id)}
-                    type="button"
-                  >
-                    {busy === `image:${asset.id}` ? "生成中" : "重新生成"}
-                  </button>
-                  {asset.status === "generated" ? (
-                    <a
+                <VisualAssetEditor
+                  asset={asset}
+                  busy={busy}
+                  key={`${asset.id}:${asset.updatedAt}`}
+                  onSave={onSave}
+                />
+                <div className={`mt-3 grid gap-2 ${asset.kind === "cover" ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {asset.kind === "cover" ? (
+                    <button
                       className={secondaryButtonClass}
-                      href={`/api/content/projects/${encodeURIComponent(projectId)}/channels/xiaohongshu_note/images/${encodeURIComponent(asset.id)}`}
+                      disabled={busy !== null}
+                      onClick={() => onGenerate(asset.id)}
+                      type="button"
                     >
-                      下载
-                    </a>
+                      {busy === `image:${asset.id}` ? "生成中" : "重生成背景"}
+                    </button>
+                  ) : null}
+                  {asset.status === "generated" ? (
+                    <button
+                      className={secondaryButtonClass}
+                      disabled={downloading !== null}
+                      onClick={() => downloadAsset(asset, index)}
+                      type="button"
+                    >
+                      {downloading === asset.id ? "正在导出 PNG" : "下载 PNG"}
+                    </button>
                   ) : <span />}
                 </div>
               </div>
             </article>
           ))}
+          {notice ? <p className="text-xs text-emerald-800 sm:col-span-2" role="status">{notice}</p> : null}
         </div>
       ) : (
         <p className="p-4 text-xs leading-5 text-slate-500">
-          先确认并保存小红书文案，再生成与正文结构一致的图文素材。
+          先确认并保存小红书文案，再让 AI 把终稿拆成一张点击封面和连续正文内页。
         </p>
       )}
     </section>
+  );
+}
+
+function VisualAssetEditor({
+  asset,
+  busy,
+  onSave,
+}: {
+  asset: GeneratedVisualAsset;
+  busy: string | null;
+  onSave: (
+    assetId: string,
+    input: { title: string; body: string; points: string[] },
+  ) => Promise<boolean>;
+}) {
+  const [title, setTitle] = useState(asset.title);
+  const [body, setBody] = useState(asset.body ?? "");
+  const [points, setPoints] = useState((asset.points ?? []).join("\n"));
+  const dirty = title !== asset.title
+    || body !== (asset.body ?? "")
+    || points !== (asset.points ?? []).join("\n");
+
+  async function save() {
+    await onSave(asset.id, {
+      title,
+      body,
+      points: points.split("\n").map((item) => item.trim()).filter(Boolean),
+    });
+  }
+
+  return (
+    <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <summary className="cursor-pointer text-[11px] font-semibold text-slate-600">编辑本页文字</summary>
+      <div className="mt-3 grid gap-2">
+        <label className="grid gap-1 text-[10px] font-semibold text-slate-500">
+          标题
+          <input
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-normal text-slate-800"
+            disabled={busy !== null}
+            maxLength={asset.kind === "cover" ? 28 : 32}
+            onChange={(event) => setTitle(event.target.value)}
+            value={title}
+          />
+        </label>
+        <label className="grid gap-1 text-[10px] font-semibold text-slate-500">
+          {asset.kind === "cover" ? "副标题" : "正文解释"}
+          <textarea
+            className="min-h-20 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal leading-5 text-slate-800"
+            disabled={busy !== null}
+            maxLength={asset.kind === "cover" ? 60 : 180}
+            onChange={(event) => setBody(event.target.value)}
+            value={body}
+          />
+        </label>
+        {asset.kind === "card" ? (
+          <label className="grid gap-1 text-[10px] font-semibold text-slate-500">
+            要点（每行一条，最多 5 条）
+            <textarea
+              className="min-h-24 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal leading-5 text-slate-800"
+              disabled={busy !== null}
+              onChange={(event) => setPoints(event.target.value)}
+              value={points}
+            />
+          </label>
+        ) : null}
+        <button
+          className={primaryButtonClass}
+          disabled={!dirty || !title.trim() || busy !== null}
+          onClick={save}
+          type="button"
+        >
+          {busy === `save-image:${asset.id}` ? "保存中" : "保存本页文字"}
+        </button>
+      </div>
+    </details>
   );
 }
 

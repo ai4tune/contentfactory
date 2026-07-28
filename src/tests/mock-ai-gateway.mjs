@@ -8,6 +8,10 @@ const server = http.createServer(async (request, response) => {
     return json(response, 200, { ok: true });
   }
 
+  if (request.method === "GET" && request.url === "/image-count") {
+    return json(response, 200, { count: imageCounter });
+  }
+
   if (request.method === "GET" && request.url?.startsWith("/generated/")) {
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zs7sAAAAASUVORK5CYII=",
@@ -53,10 +57,40 @@ function mockCompletion(system, user) {
   if (system.includes("小红书图文策划")) {
     return {
       items: [
-        { kind: "cover", title: "选地板别只看价格", prompt: "米白与深绿色，清单式封面，中文标题清晰。" },
-        { kind: "card", title: "先确认使用空间", prompt: "家居空间图解，突出使用空间判断。" },
-        { kind: "card", title: "再检查基层安装", prompt: "基层和安装步骤信息卡，简洁图标。" },
-        { kind: "card", title: "最后明确售后", prompt: "售后核对清单，四项要点收束。" },
+        {
+          kind: "cover",
+          title: "选地板别只看价格",
+          body: "装修决策先看这四项条件",
+          prompt: "米白与深绿色的现代家居空间，地板纹理清晰，主体明确，画面不含任何文字。",
+        },
+        {
+          kind: "card",
+          layout: "explain",
+          title: "低价为什么不等于省钱",
+          body: "单价只是一个变量，空间、基层、安装与售后共同影响最终结果。",
+          points: [],
+        },
+        {
+          kind: "card",
+          layout: "steps",
+          title: "先确认空间和基层",
+          body: "使用环境决定材料和安装条件，先核对实际情况再比较产品。",
+          points: ["确认房间用途", "检查基层平整度"],
+        },
+        {
+          kind: "card",
+          layout: "checklist",
+          title: "再核对安装与售后",
+          body: "把隐性成本和责任边界提前问清楚。",
+          points: ["安装方式与费用", "问题处理和售后边界"],
+        },
+        {
+          kind: "card",
+          layout: "summary",
+          title: "带着四项清单再咨询",
+          body: "空间、基层、安装、售后都明确后，价格比较才有意义。",
+          points: ["收藏这份清单", "结合真实条件人工确认"],
+        },
       ],
     };
   }

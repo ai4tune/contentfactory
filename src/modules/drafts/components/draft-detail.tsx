@@ -1,8 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { useMemo, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
+import {
+  downloadXiaohongshuVisualAsset,
+  XiaohongshuVisualCard,
+} from "@/modules/content/components/xiaohongshu-visual-card";
 import { channelLabels, contentChannels, type ContentChannel } from "@/modules/content/types";
 import type { ContentDraft } from "../types";
 
@@ -80,6 +83,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
               {activeChannel === "xiaohongshu_note" && channelDraft.visualAssets?.length ? (
                 <DraftVisualAssets
                   assets={channelDraft.visualAssets}
+                  brandName={draft.accountSnapshot?.accountName}
                   draftId={draft.id}
                 />
               ) : null}
@@ -120,51 +124,65 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
 
 function DraftVisualAssets({
   assets,
+  brandName,
   draftId,
 }: {
   assets: NonNullable<ContentDraft["channelDrafts"][number]["visualAssets"]>;
+  brandName?: string;
   draftId: string;
 }) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function download(asset: (typeof assets)[number], index: number) {
+    setDownloading(asset.id);
+    setMessage(null);
+    try {
+      await downloadXiaohongshuVisualAsset({
+        asset,
+        brandName,
+        index,
+        projectId: draftId,
+        total: assets.length,
+      });
+      setMessage(`第 ${index + 1} 张 PNG 已下载。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "图片下载失败。");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   return (
     <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">小红书配图</h3>
-        <p className="mt-1 text-xs text-slate-500">配图已随草稿保存，可逐张下载后人工发布。</p>
+        <h3 className="text-sm font-semibold text-slate-900">小红书图文故事板</h3>
+        <p className="mt-1 text-xs text-slate-500">首图负责点击，内页负责讲清正文；整套已随草稿保存。</p>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {assets.map((asset) => (
+        {assets.map((asset, index) => (
           <article className="overflow-hidden rounded-xl border border-slate-200 bg-white" key={asset.id}>
-            {asset.status === "generated" && asset.imageUrl ? (
-              <Image
-                alt={asset.title}
-                className="aspect-[2/3] w-full bg-slate-100 object-cover"
-                height={1536}
-                sizes="(min-width: 640px) 320px, 90vw"
-                src={asset.imageUrl}
-                width={1024}
-              />
-            ) : (
-              <div className="flex aspect-[2/3] items-center justify-center bg-red-50 p-5 text-center text-xs text-red-700">
-                {asset.error || "图片生成失败"}
-              </div>
-            )}
+            <XiaohongshuVisualCard asset={asset} brandName={brandName} index={index} total={assets.length} />
             <div className="flex items-center justify-between gap-3 p-3">
               <div>
-                <p className="text-[10px] font-semibold text-emerald-700">{asset.kind === "cover" ? "封面" : "图文卡片"}</p>
+                <p className="text-[10px] font-semibold text-emerald-700">{asset.kind === "cover" ? "点击封面" : `正文内页 ${index}`}</p>
                 <p className="mt-1 text-xs font-semibold text-slate-800">{asset.title}</p>
               </div>
               {asset.status === "generated" ? (
-                <a
+                <button
                   className={secondaryButtonClass}
-                  href={`/api/content/projects/${encodeURIComponent(draftId)}/channels/xiaohongshu_note/images/${encodeURIComponent(asset.id)}`}
+                  disabled={downloading !== null}
+                  onClick={() => download(asset, index)}
+                  type="button"
                 >
-                  下载
-                </a>
+                  {downloading === asset.id ? "导出中" : "下载 PNG"}
+                </button>
               ) : null}
             </div>
           </article>
         ))}
       </div>
+      {message ? <p className="mt-3 text-xs text-emerald-800" role="status">{message}</p> : null}
     </section>
   );
 }
