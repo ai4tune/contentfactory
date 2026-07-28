@@ -3,7 +3,11 @@ import { requireEnv } from "@/lib/config";
 import type { AccountContext } from "@/modules/positioning/types";
 import type { GeneratedVisualAsset } from "./types";
 
-type ImagePlanItem = Pick<GeneratedVisualAsset, "kind" | "title" | "prompt">;
+type ImagePlanItem = Pick<
+  GeneratedVisualAsset,
+  "kind" | "title" | "body" | "points" | "layout" | "prompt"
+>;
+type CardLayout = Exclude<NonNullable<GeneratedVisualAsset["layout"]>, "cover">;
 
 type GenerateVisualAssetsInput = {
   topic: string;
@@ -14,29 +18,25 @@ type GenerateVisualAssetsInput = {
 export async function generateXiaohongshuVisualAssets(
   input: GenerateVisualAssetsInput,
 ): Promise<GeneratedVisualAsset[]> {
-  const plan = await createImagePlan(input);
-  const assets: GeneratedVisualAsset[] = [];
-
-  for (let index = 0; index < plan.length; index += 2) {
-    const batch = await Promise.all(
-      plan.slice(index, index + 2).map((item, offset) =>
-        generatePlannedAsset(item, index + offset),
-      ),
-    );
-    assets.push(...batch);
-  }
-
-  return assets;
+  const [cover, ...cards] = await createImagePlan(input);
+  return [
+    await generateCoverAsset(cover, 0),
+    ...cards.map((item, index) => ({
+      id: createAssetId(index + 1),
+      ...item,
+      status: "generated" as const,
+      updatedAt: new Date().toISOString(),
+    })),
+  ];
 }
 
 export async function retryXiaohongshuVisualAsset(
   asset: GeneratedVisualAsset,
 ): Promise<GeneratedVisualAsset> {
-  return generatePlannedAsset(
-    { kind: asset.kind, title: asset.title, prompt: asset.prompt },
-    0,
-    asset.id,
-  );
+  if (asset.kind !== "cover" || !asset.prompt) {
+    throw new Error("只有封面背景需要调用生图服务重新生成。");
+  }
+  return generateCoverAsset(asset, 0, asset.id);
 }
 
 export function isAllowedGeneratedImageUrl(value: string) {
@@ -55,10 +55,12 @@ async function createImagePlan(input: GenerateVisualAssetsInput): Promise<ImageP
     {
       role: "system",
       content: [
-        "你是小红书图文策划和视觉导演。只输出 JSON，不要 Markdown。",
-        "JSON 必须包含 items，且恰好 4 项：第 1 项 kind=cover，后 3 项 kind=card。",
-        "每项必须包含 title 和 prompt。prompt 要描述竖版 2:3 构图、视觉主体、配色、版式和需要清晰呈现的简短中文。",
-        "四张图视觉风格必须统一，不得虚构产品参数、数据、客户案例或品牌标识。",
+        "你是小红书图文策划和信息设计师。只输出 JSON，不要 Markdown。",
+        "JSON 必须包含 items：第 1 项 kind=cover，后面 3–6 项 kind=card。",
+        "封面负责吸引点击，包含 title、body 和 prompt。title 不超过 18 个汉字，body 不超过 28 个汉字；prompt 只描述无文字的背景画面、主体、场景、构图和配色，明确禁止画面出现任何文字、字母、数字、水印或品牌标识。",
+        "内页负责解释正文，每项包含 title、body、points 和 layout，不需要 prompt。title 不超过 20 个汉字，body 不超过 80 个汉字，points 为 0–5 条短句。",
+        "layout 只能是 explain、steps、checklist、summary。连续内页共同构成完整阅读顺序，不要把每页都写成封面或口号。",
+        "只使用终稿中已有的事实和观点，不得虚构参数、数据、客户案例或承诺。",
       ].join("\n"),
     },
     {
@@ -69,7 +71,7 @@ async function createImagePlan(input: GenerateVisualAssetsInput): Promise<ImageP
         input.accountContext ? JSON.stringify(input.accountContext, null, 2) : "暂无已确认定位",
         "【已保存的小红书终稿】",
         input.content.slice(0, 12_000),
-        "请制作 1 张封面和 3 张承载核心信息的图文卡片。每张图上的中文尽量控制在 18 字以内。",
+        "请制作 1 张点击封面和 3–6 张正文内页。内页按“问题/背景 → 核心解释/步骤 → 清单/总结”组织，让用户右滑后真正读懂正文。",
       ].join("\n\n"),
     },
   ]);
@@ -78,38 +80,58 @@ async function createImagePlan(input: GenerateVisualAssetsInput): Promise<ImageP
 }
 
 function normalizeImagePlan(value: unknown, topic: string): ImagePlanItem[] {
-  if (!Array.isArray(value)) throw new Error("AI 没有返回可用的配图方案，请重试。");
+  if (!Array.isArray(value)) throw new Error("AI 没有返回可用的图文方案，请重试。");
 
-  const items = value.flatMap((item, index) => {
-    if (!item || typeof item !== "object") return [];
+  const items: ImagePlanItem[] = [];
+  value.slice(0, 7).forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
     const record = item as Record<string, unknown>;
-    const title = String(record.title ?? "").trim().slice(0, 40);
-    const prompt = String(record.prompt ?? "").trim();
-    if (!title || !prompt) return [];
-    return [{
-      kind: index === 0 ? "cover" as const : "card" as const,
-      title,
-      prompt: [
-        prompt,
-        `内容主题：${topic}`,
-        "竖版 2:3 小红书图文，中文排版清晰、留白充足、适合手机阅读，不使用未提供的品牌标志。",
-      ].join("\n"),
-    }];
-  }).slice(0, 4);
+    const title = String(record.title ?? "").trim().slice(0, index === 0 ? 28 : 32);
+    const body = String(record.body ?? "").trim().slice(0, index === 0 ? 60 : 180);
+    if (!title) return;
 
-  if (items.length !== 4) throw new Error("AI 配图方案不是完整的 1 张封面和 3 张卡片，请重试。");
+    if (index === 0) {
+      const prompt = String(record.prompt ?? "").trim();
+      if (!prompt) return;
+      items.push({
+        kind: "cover" as const,
+        layout: "cover" as const,
+        title,
+        body,
+        prompt: [
+          prompt,
+          `内容主题：${topic}`,
+          "竖版视觉背景，主体明确、画面有吸引力并预留标题区域。画面中绝对不要出现文字、字母、数字、水印、海报排版或品牌标志。",
+        ].join("\n"),
+      });
+      return;
+    }
+
+    items.push({
+      kind: "card" as const,
+      layout: normalizeCardLayout(record.layout, index, value.length),
+      title,
+      body,
+      points: normalizePoints(record.points),
+    });
+  });
+
+  if (items.length < 4 || items.length > 7 || items[0]?.kind !== "cover") {
+    throw new Error("AI 图文方案需要包含 1 张封面和 3–6 张正文内页，请重试。");
+  }
   return items;
 }
 
-async function generatePlannedAsset(
+async function generateCoverAsset(
   item: ImagePlanItem,
   index: number,
   existingId?: string,
 ): Promise<GeneratedVisualAsset> {
   const updatedAt = new Date().toISOString();
-  const id = existingId ?? `xhsImage_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`;
+  const id = existingId ?? createAssetId(index);
 
   try {
+    if (!item.prompt) throw new Error("封面缺少背景图提示词。");
     const result = await requestImage(item.prompt);
     return {
       id,
@@ -124,10 +146,34 @@ async function generatePlannedAsset(
       id,
       ...item,
       status: "failed",
-      error: error instanceof Error ? error.message : "图片生成失败",
+      error: error instanceof Error ? error.message : "封面背景生成失败",
       updatedAt,
     };
   }
+}
+
+function createAssetId(index: number) {
+  return `xhsImage_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function normalizePoints(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? "").trim().slice(0, 64))
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function normalizeCardLayout(
+  value: unknown,
+  index: number,
+  total: number,
+): CardLayout {
+  if (value === "explain" || value === "steps" || value === "checklist" || value === "summary") {
+    return value;
+  }
+  if (index === total - 1) return "summary";
+  return index === 1 ? "explain" : "steps";
 }
 
 async function requestImage(prompt: string) {

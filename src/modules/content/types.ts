@@ -51,7 +51,10 @@ export type GeneratedVisualAsset = {
   id: string;
   kind: "cover" | "card";
   title: string;
-  prompt: string;
+  body?: string;
+  points?: string[];
+  layout?: "cover" | "explain" | "steps" | "checklist" | "summary";
+  prompt?: string;
   status: "generated" | "failed";
   imageUrl?: string;
   revisedPrompt?: string;

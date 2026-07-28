@@ -215,24 +215,54 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(result.body.draft.channel, "short_video_script");
   });
 
-  await context.test("xiaohongshu draft generates, retries, persists, and downloads four images", async () => {
+  await context.test("xiaohongshu storyboard uses one AI cover plus editable content cards", async () => {
+    const beforeCount = await fetch(`http://127.0.0.1:${aiPort}/image-count`).then((response) => response.json());
     const generated = await requestJson(
       `/api/content/projects/${project.id}/channels/xiaohongshu_note/images`,
       { method: "POST", body: {} },
     );
     assert.equal(generated.response.status, 200, serverOutput);
-    assert.equal(generated.body.assets.length, 4);
+    assert.equal(generated.body.assets.length, 5);
     assert.equal(generated.body.assets[0].kind, "cover");
     assert.equal(generated.body.assets.every((item) => item.status === "generated"), true);
+    assert.equal(generated.body.assets.slice(1).every((item) => item.kind === "card"), true);
+    assert.equal(generated.body.assets.slice(1).every((item) => !item.imageUrl), true);
+    assert.equal(generated.body.assets.slice(1).every((item) => item.body), true);
+    const afterCount = await fetch(`http://127.0.0.1:${aiPort}/image-count`).then((response) => response.json());
+    assert.equal(afterCount.count - beforeCount.count, 1);
     project = generated.body.project;
 
     const firstAsset = generated.body.assets[0];
+    const firstCard = generated.body.assets[1];
+    const editedCard = await requestJson(
+      `/api/content/projects/${project.id}/channels/xiaohongshu_note/images`,
+      {
+        method: "PATCH",
+        body: {
+          assetId: firstCard.id,
+          title: "人工确认后的问题页",
+          body: "内页文字可以继续编辑，不需要重新调用生图服务。",
+          points: ["保留正文事实", "调整阅读顺序"],
+        },
+      },
+    );
+    assert.equal(editedCard.response.status, 200);
+    assert.equal(editedCard.body.asset.title, "人工确认后的问题页");
+    assert.deepEqual(editedCard.body.asset.points, ["保留正文事实", "调整阅读顺序"]);
+    project = editedCard.body.project;
+
+    const rejectedCardRetry = await requestJson(
+      `/api/content/projects/${project.id}/channels/xiaohongshu_note/images`,
+      { method: "POST", body: { assetId: firstCard.id } },
+    );
+    assert.equal(rejectedCardRetry.response.status, 400);
+
     const retried = await requestJson(
       `/api/content/projects/${project.id}/channels/xiaohongshu_note/images`,
       { method: "POST", body: { assetId: firstAsset.id } },
     );
     assert.equal(retried.response.status, 200, serverOutput);
-    assert.equal(retried.body.assets.length, 4);
+    assert.equal(retried.body.assets.length, 5);
     assert.equal(retried.body.assets[0].id, firstAsset.id);
     assert.notEqual(retried.body.assets[0].imageUrl, firstAsset.imageUrl);
     project = retried.body.project;
@@ -248,7 +278,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     const xiaohongshu = detail.body.draft.channelDrafts.find(
       (item) => item.channel === "xiaohongshu_note",
     );
-    assert.equal(xiaohongshu.visualAssets.length, 4);
+    assert.equal(xiaohongshu.visualAssets.length, 5);
+    assert.equal(xiaohongshu.visualAssets[1].title, "人工确认后的问题页");
   });
 
   await context.test("AI review separates fact, style, and platform issues", async () => {
