@@ -79,6 +79,7 @@ function hasRequiredKnowledge(
   brief: NonNullable<ReturnType<typeof normalizeContentBrief>>,
   sources: ReturnType<typeof normalizeKnowledgeSources>,
 ) {
+  if (!brief.citations.length) return Boolean(brief.inspiration);
   const sourceIds = new Set(sources.map((source) => source.id));
-  return sources.length > 0 && brief.citations.every((citation) => sourceIds.has(citation.sourceId));
+  return brief.citations.every((citation) => sourceIds.has(citation.sourceId));
 }

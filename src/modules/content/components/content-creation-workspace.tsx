@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import {
@@ -13,6 +14,7 @@ import {
   type ChannelDraft,
   type ContentBrief,
   type ContentChannel,
+  type ContentInspirationReference,
   type ContentProject,
   type GeneratedVisualAsset,
 } from "@/modules/content/types";
@@ -29,12 +31,17 @@ type KnowledgeSource = {
   text?: string;
 };
 
+type CreationMode = "original" | "viral_rewrite";
+
 export function ContentCreationWorkspace() {
+  const [creationMode, setCreationMode] = useState<CreationMode>("original");
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [topic, setTopic] = useState("");
   const [searchItems, setSearchItems] = useState<KnowledgeSource[]>([]);
   const [selectedSources, setSelectedSources] = useState<KnowledgeSource[]>([]);
+  const [inspirations, setInspirations] = useState<ContentInspirationReference[]>([]);
+  const [selectedInspirationId, setSelectedInspirationId] = useState("");
   const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
   const [brief, setBrief] = useState<ContentBrief | null>(null);
   const [project, setProject] = useState<ContentProject | null>(null);
@@ -53,13 +60,41 @@ export function ContentCreationWorkspace() {
         .then((response) => response.json())
         .then((payload: { sources?: KnowledgeSource[] }) => payload.sources ?? []),
       loadLocalKnowledge().then((items) => items.map(localItemToSource)).catch(() => []),
+      fetch("/api/inspirations", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload: { inspirations?: ContentInspirationReference[] }) =>
+          payload.inspirations ?? []),
     ])
-      .then(([legacy, remote, local]) => setSearchItems(uniqueSources([...local, ...remote, ...legacy])))
-      .catch(() => setMessage("知识资料读取失败，请稍后重试。"));
+      .then(([legacy, remote, local, inspirationItems]) => {
+        setSearchItems(uniqueSources([...local, ...remote, ...legacy]));
+        setInspirations(inspirationItems);
+      })
+      .catch(() => setMessage("创作资料读取失败，请稍后重试。"));
   }, []);
 
   const hasKnowledge = selectedSources.length > 0;
-  const canCreateBrief = topic.trim().length > 0 && hasKnowledge;
+  const selectedInspiration = inspirations.find((item) => item.id === selectedInspirationId);
+  const canCreateBrief = topic.trim().length > 0
+    && (creationMode === "viral_rewrite" ? Boolean(selectedInspiration) : hasKnowledge);
+
+  function changeCreationMode(mode: CreationMode) {
+    setCreationMode(mode);
+    setSelectedInspirationId("");
+    setSuggestions([]);
+    setBrief(null);
+    setProject(null);
+    setMessage(null);
+  }
+
+  function selectInspiration(inspiration: ContentInspirationReference) {
+    setSelectedInspirationId(inspiration.id);
+    if (!topic.trim()) {
+      setTopic(inspiration.adaptationIdeas[0] || inspiration.title);
+    }
+    setSuggestions([]);
+    setBrief(null);
+    setProject(null);
+  }
 
   function changeTopic(value: string) {
     setTopic(value);
@@ -157,11 +192,21 @@ export function ContentCreationWorkspace() {
   }
 
   async function generateBrief() {
-    if (!canCreateBrief) return setMessage("需要填写选题并至少选择 1 份资料。");
+    if (!canCreateBrief) {
+      return setMessage(
+        creationMode === "viral_rewrite"
+          ? "需要填写选题并选择一篇爆款参考；知识资料可以不选。"
+          : "需要填写选题并至少选择 1 份资料。",
+      );
+    }
     await run("brief", async () => {
       const payload = await postJson<{ brief?: ContentBrief; error?: string }>(
         "/api/content/brief",
-        { topic, sources: selectedSources },
+        {
+          topic,
+          sources: selectedSources,
+          inspirationId: creationMode === "viral_rewrite" ? selectedInspirationId : undefined,
+        },
       );
       if (!payload.brief) throw new Error("没有生成可用的内容简报。");
       setBrief(payload.brief);
@@ -306,10 +351,101 @@ export function ContentCreationWorkspace() {
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-950">创作输入</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">先选择本次要参考的资料，再输入题目或让 AI 推荐一批。</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">可以从自己的知识出发原创，也可以学习一篇爆款的钩子和结构后重新创作。</p>
         </div>
 
-        <InputSection title="1. 选择本次知识" meta={`${selectedSources.length} 份已选`}>
+        <InputSection title="1. 选择创作方式">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              aria-pressed={creationMode === "original"}
+              className={`rounded-xl border p-4 text-left transition ${
+                creationMode === "original"
+                  ? "border-emerald-800 bg-emerald-50"
+                  : "border-slate-200 hover:border-emerald-700"
+              }`}
+              disabled={busy !== null}
+              onClick={() => changeCreationMode("original")}
+              type="button"
+            >
+              <span className="block text-sm font-semibold text-slate-900">原创创作</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">根据账号定位和自己的知识资料，生成新的选题与内容。</span>
+            </button>
+            <button
+              aria-pressed={creationMode === "viral_rewrite"}
+              className={`rounded-xl border p-4 text-left transition ${
+                creationMode === "viral_rewrite"
+                  ? "border-emerald-800 bg-emerald-50"
+                  : "border-slate-200 hover:border-emerald-700"
+              }`}
+              disabled={busy !== null}
+              onClick={() => changeCreationMode("viral_rewrite")}
+              type="button"
+            >
+              <span className="block text-sm font-semibold text-slate-900">爆款改写</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">学习爆款的受众、钩子和结构，再结合当前账号重新表达。</span>
+            </button>
+          </div>
+
+          {creationMode === "viral_rewrite" ? (
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">选择一篇爆款参考</p>
+                  <p className="mt-1 text-[11px] leading-5 text-slate-500">只学习方法，不把原文数据、案例和产品事实当作自己的内容。</p>
+                </div>
+                <Link className="shrink-0 text-xs font-semibold text-emerald-800 hover:underline" href="/inspirations/new">＋ 录入爆款</Link>
+              </div>
+              {inspirations.length ? (
+                <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto">
+                  {inspirations.map((inspiration) => {
+                    const selected = inspiration.id === selectedInspirationId;
+                    return (
+                      <button
+                        aria-pressed={selected}
+                        className={`rounded-xl border p-3 text-left ${
+                          selected
+                            ? "border-emerald-800 bg-emerald-50"
+                            : "border-slate-200 hover:border-emerald-700 hover:bg-slate-50"
+                        }`}
+                        disabled={busy !== null}
+                        key={inspiration.id}
+                        onClick={() => selectInspiration(inspiration)}
+                        type="button"
+                      >
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-emerald-800">{inspiration.platform}</span>
+                          {inspiration.metrics ? <span className="text-[10px] text-slate-400">{inspiration.metrics}</span> : null}
+                        </span>
+                        <span className="mt-2 block text-xs font-semibold leading-5 text-slate-800">{inspiration.title}</span>
+                        <span className="mt-1 line-clamp-2 block text-[11px] leading-5 text-slate-500">{inspiration.summary}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-xl bg-slate-50 px-3 py-4 text-xs leading-5 text-slate-500">爆款库还是空的。先录入一篇标题、正文和来源链接，AI 拆解后即可在这里选择。</p>
+              )}
+
+              {selectedInspiration ? (
+                <div className="mt-3 rounded-xl bg-[#173e32] p-4 text-white">
+                  <p className="text-[10px] font-semibold tracking-[0.14em] text-amber-300">本次改写依据</p>
+                  <p className="mt-2 text-xs font-semibold leading-5">{selectedInspiration.title}</p>
+                  <p className="mt-3 text-[11px] leading-5 text-white/70">钩子：{selectedInspiration.hook || "待结合选题确定"}</p>
+                  {selectedInspiration.reusablePatterns.length ? (
+                    <ul className="mt-2 space-y-1 text-[11px] leading-5 text-white/70">
+                      {selectedInspiration.reusablePatterns.slice(0, 3).map((item) => <li key={item}>• {item}</li>)}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </InputSection>
+
+        <InputSection
+          title={`2. 选择本次知识${creationMode === "viral_rewrite" ? "（可选）" : ""}`}
+          meta={`${selectedSources.length} 份已选`}
+        >
           <div className="grid gap-3">
             <div className="flex gap-2">
               <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-emerald-800" disabled={busy !== null} onChange={(event) => setQuery(event.target.value)} placeholder="搜索飞书知识" value={query} />
@@ -353,30 +489,63 @@ export function ContentCreationWorkspace() {
           </div>
         </InputSection>
 
-        <InputSection title="2. 确定选题">
+        <InputSection title="3. 确定选题">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-sm font-medium text-slate-700">这次想写什么</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">可以直接填写预期标题；如果还没想好，让 AI 结合账号定位和已选资料推荐。</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {creationMode === "viral_rewrite"
+                  ? "可以填写自己的标题，或直接使用下方基于爆款拆解得到的改写方向。"
+                  : "可以直接填写预期标题；如果还没想好，让 AI 结合账号定位和已选资料推荐。"}
+              </p>
             </div>
-            <button
-              className={`${secondaryButtonClass} shrink-0`}
-              disabled={!hasKnowledge || busy !== null}
-              onClick={recommendTopics}
-              type="button"
-            >
-              {busy === "suggest" ? "正在推荐" : suggestions.length ? "再来一批" : "推荐一批"}
-            </button>
+            {creationMode === "original" ? (
+              <button
+                className={`${secondaryButtonClass} shrink-0`}
+                disabled={!hasKnowledge || busy !== null}
+                onClick={recommendTopics}
+                type="button"
+              >
+                {busy === "suggest" ? "正在推荐" : suggestions.length ? "再来一批" : "推荐一批"}
+              </button>
+            ) : null}
           </div>
           <textarea
             aria-label="这次想写什么"
             className="mt-3 min-h-24 w-full resize-none rounded-xl border border-slate-300 px-3 py-3 text-sm leading-6 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
             disabled={busy !== null}
             onChange={(event) => changeTopic(event.target.value)}
-            placeholder="输入预期标题，也可以先留空并点击“推荐一批”"
+            placeholder={creationMode === "viral_rewrite"
+              ? "输入预期标题，也可以选择下方的改写方向"
+              : "输入预期标题，也可以先留空并点击“推荐一批”"}
             value={topic}
           />
-          {!hasKnowledge ? <p className="mt-2 text-xs text-slate-400">先选择至少 1 份知识资料，才能获得针对性的题目推荐。</p> : null}
+          {!hasKnowledge ? (
+            <p className="mt-2 text-xs text-slate-400">
+              {creationMode === "viral_rewrite"
+                ? "不选知识资料也可以改写；如果涉及自己的产品、案例或观点，建议先选择资料。"
+                : "先选择至少 1 份知识资料，才能获得针对性的题目推荐。"}
+            </p>
+          ) : null}
+          {creationMode === "viral_rewrite" && selectedInspiration?.adaptationIdeas.length ? (
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {selectedInspiration.adaptationIdeas.slice(0, 6).map((idea) => (
+                <button
+                  className={`rounded-xl border p-3 text-left text-xs font-semibold leading-5 transition ${
+                    topic === idea
+                      ? "border-emerald-800 bg-emerald-50 text-emerald-900"
+                      : "border-slate-200 text-slate-700 hover:border-emerald-700 hover:bg-emerald-50/50"
+                  }`}
+                  disabled={busy !== null}
+                  key={idea}
+                  onClick={() => changeTopic(idea)}
+                  type="button"
+                >
+                  {idea}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {suggestions.length ? (
             <div className="mt-4 grid gap-2 md:grid-cols-2">
               {suggestions.map((suggestion) => (
@@ -402,7 +571,13 @@ export function ContentCreationWorkspace() {
             <button className={`${primaryButtonClass} w-full`} disabled={!canCreateBrief || busy !== null} onClick={generateBrief} type="button">
               {busy === "brief" ? "AI 正在生成内容简报" : brief ? "重新生成内容简报" : "生成内容简报"}
             </button>
-            {!canCreateBrief ? <p className="mt-2 text-center text-[11px] text-slate-400">填写选题并选择至少 1 份资料后可生成。</p> : null}
+            {!canCreateBrief ? (
+              <p className="mt-2 text-center text-[11px] text-slate-400">
+                {creationMode === "viral_rewrite"
+                  ? "填写选题并选择一篇爆款参考后可生成；知识资料为可选。"
+                  : "填写选题并选择至少 1 份资料后可生成。"}
+              </p>
+            ) : null}
           </div>
         </InputSection>
       </div>
@@ -424,7 +599,15 @@ export function ContentCreationWorkspace() {
             <BriefListField label="关键论点" value={brief.keyPoints} onChange={(value) => updateBrief(setBrief, "keyPoints", value)} />
             <BriefListField label="内容结构" value={brief.outline} onChange={(value) => updateBrief(setBrief, "outline", value)} />
             <BriefField label="行动引导" value={brief.callToAction} onChange={(value) => updateBrief(setBrief, "callToAction", value)} />
-            <div><h3 className="text-xs font-semibold text-slate-700">知识引用</h3><div className="mt-2 grid gap-2">{brief.citations.map((citation) => <div className="rounded-xl border border-slate-200 bg-slate-50 p-3" key={`${citation.sourceId}:${citation.excerpt}`}><p className="text-xs font-semibold text-slate-800">{citation.sourceTitle} <span className="font-normal text-slate-400">· {citation.sourceId}</span></p><MarkdownPreview className="mt-2 rounded-lg bg-white p-3" content={citation.excerpt} /><input className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs" onChange={(event) => setBrief((current) => current ? { ...current, citations: current.citations.map((item) => item === citation ? { ...item, purpose: event.target.value } : item) } : current)} value={citation.purpose} /></div>)}</div></div>
+            {brief.inspiration ? <BriefInspiration inspiration={brief.inspiration} /> : null}
+            <div>
+              <h3 className="text-xs font-semibold text-slate-700">知识引用</h3>
+              {brief.citations.length ? (
+                <div className="mt-2 grid gap-2">
+                  {brief.citations.map((citation) => <div className="rounded-xl border border-slate-200 bg-slate-50 p-3" key={`${citation.sourceId}:${citation.excerpt}`}><p className="text-xs font-semibold text-slate-800">{citation.sourceTitle} <span className="font-normal text-slate-400">· {citation.sourceId}</span></p><MarkdownPreview className="mt-2 rounded-lg bg-white p-3" content={citation.excerpt} /><input className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs" onChange={(event) => setBrief((current) => current ? { ...current, citations: current.citations.map((item) => item === citation ? { ...item, purpose: event.target.value } : item) } : current)} value={citation.purpose} /></div>)}
+                </div>
+              ) : <p className="mt-2 rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">本次没有选择知识资料。爆款只作为结构参考，涉及事实、案例和数据的内容需要人工确认。</p>}
+            </div>
             <BriefListField label="待确认信息" value={brief.openQuestions} onChange={(value) => updateBrief(setBrief, "openQuestions", value)} />
             <div className="border-t border-slate-200 pt-5">
               <button className={`${primaryButtonClass} w-full`} disabled={Boolean(project) || busy === "confirm"} onClick={confirmBrief} type="button">{busy === "confirm" ? "正在原子保存" : project ? `已保存项目 ${project.id}` : "确认简报并创建内容项目"}</button>
@@ -986,6 +1169,30 @@ function uniqueSources(sources: KnowledgeSource[]) {
 
 function updateBrief<K extends keyof ContentBrief>(setBrief: React.Dispatch<React.SetStateAction<ContentBrief | null>>, key: K, value: ContentBrief[K]) {
   setBrief((current) => current ? { ...current, [key]: value } : current);
+}
+
+function BriefInspiration({ inspiration }: { inspiration: ContentInspirationReference }) {
+  return (
+    <section className="rounded-xl border border-emerald-900/15 bg-emerald-50/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-emerald-800">爆款结构参考</p>
+          <h3 className="mt-1 text-sm font-semibold leading-6 text-slate-900">{inspiration.title}</h3>
+        </div>
+        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-emerald-800">{inspiration.platform}</span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-600">钩子机制：{inspiration.hook || "待结合选题确定"}</p>
+      {inspiration.structure.length ? (
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold text-slate-700">参考结构</p>
+          <ol className="mt-1 space-y-1 text-[11px] leading-5 text-slate-600">
+            {inspiration.structure.slice(0, 6).map((item, index) => <li key={`${index}:${item}`}>{index + 1}. {item}</li>)}
+          </ol>
+        </div>
+      ) : null}
+      <p className="mt-3 text-[11px] leading-5 text-amber-800">仅用于学习钩子、结构和节奏，不作为事实、案例或数据来源。</p>
+    </section>
+  );
 }
 
 function BriefField({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {

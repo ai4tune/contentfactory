@@ -177,6 +177,66 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.match(brief.outline[0], /价格误区/);
   });
 
+  await context.test("viral rewriting can create a brief without treating the source as knowledge", async () => {
+    const analyzed = await requestJson("/api/inspirations/analyze", {
+      method: "POST",
+      body: {
+        platform: "小红书",
+        sourceUrl: "https://www.xiaohongshu.com/explore/acceptance",
+        title: "低价不等于省钱",
+        metrics: "点赞 3200，收藏 980",
+        content: "装修只比较单价容易踩坑，应该同时确认空间、基层、安装和售后。",
+      },
+    });
+    assert.equal(analyzed.response.status, 200);
+
+    const library = await requestJson("/api/inspirations");
+    assert.equal(library.response.status, 200);
+    assert.equal(library.body.inspirations[0].id, analyzed.body.record.id);
+    assert.equal(library.body.inspirations[0].hook, "低价不等于省钱");
+
+    const missing = await requestJson("/api/content/brief", {
+      method: "POST",
+      body: { topic: "测试爆款改写", sources: [], inspirationId: "missing" },
+    });
+    assert.equal(missing.response.status, 404);
+
+    const viralBriefResult = await requestJson("/api/content/brief", {
+      method: "POST",
+      body: {
+        topic: "企业做内容为什么不能只追求日更？",
+        sources: [],
+        inspirationId: analyzed.body.record.id,
+      },
+    });
+    assert.equal(viralBriefResult.response.status, 200, serverOutput);
+    assert.equal(viralBriefResult.body.brief.inspiration.id, analyzed.body.record.id);
+    assert.equal(viralBriefResult.body.brief.citations.length, 0);
+
+    const viralProjectResult = await requestJson("/api/content/projects", {
+      method: "POST",
+      body: {
+        topic: "企业做内容为什么不能只追求日更？",
+        brief: viralBriefResult.body.brief,
+      },
+    });
+    assert.equal(viralProjectResult.response.status, 201);
+
+    const generated = await requestJson("/api/content/generate", {
+      method: "POST",
+      body: {
+        projectId: viralProjectResult.body.project.id,
+        topic: viralProjectResult.body.project.topic,
+        brief: viralBriefResult.body.brief,
+        sources: [],
+        channels: ["xiaohongshu_note"],
+      },
+    });
+    assert.equal(generated.response.status, 200, serverOutput);
+    assert.equal(generated.body.project.brief.inspiration.title, "低价不等于省钱");
+    assert.equal(generated.body.project.channelDrafts[0].status, "generated");
+  });
+
   await context.test("confirmed brief is saved as one atomic content project", async () => {
     const result = await requestJson("/api/content/projects", {
       method: "POST",

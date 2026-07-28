@@ -126,6 +126,21 @@ function mockCompletion(system, user) {
     };
   }
 
+  if (system.includes("爆款拆解助手")) {
+    return {
+      summary: "用反常识开场解释为什么单看价格会做错决策。",
+      targetAudience: "第一次装修、缺少判断标准的家庭",
+      painPoint: "只会比较单价，不知道还要核对哪些条件",
+      hook: "低价不等于省钱",
+      structure: ["反常识开场", "解释常见误区", "给出四项判断清单", "行动引导", "互动提问"],
+      reusablePatterns: ["反常识钩子 + 原因解释", "问题拆解 + 可收藏清单", "克制的咨询引导"],
+      keywords: ["装修避坑", "SPC 地板", "价格误区", "安装条件", "售后"],
+      adaptationIdeas: ["企业做内容为什么不能只追求日更？"],
+      topicCandidates: ["企业内容生产的四项检查清单"],
+      riskNotes: ["不要继承原文中的价格、销量和客户案例"],
+    };
+  }
+
   if (system.includes("内容策略编辑")) {
     return {
       targetAudience: "第一次装修、需要选择地板的家庭",

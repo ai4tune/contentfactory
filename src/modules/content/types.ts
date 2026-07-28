@@ -20,6 +20,22 @@ export type ContentCitation = {
   path?: string;
 };
 
+export type ContentInspirationReference = {
+  id: string;
+  platform: string;
+  title: string;
+  sourceUrl?: string;
+  metrics?: string;
+  summary: string;
+  targetAudience: string;
+  painPoint: string;
+  hook: string;
+  structure: string[];
+  reusablePatterns: string[];
+  adaptationIdeas: string[];
+  riskNotes: string[];
+};
+
 export type ContentBrief = {
   targetAudience: string;
   contentGoal: string;
@@ -29,6 +45,7 @@ export type ContentBrief = {
   callToAction: string;
   citations: ContentCitation[];
   openQuestions: string[];
+  inspiration?: ContentInspirationReference;
 };
 
 export const contentChannels = [
