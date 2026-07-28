@@ -37,6 +37,10 @@ before(async () => {
       AI_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
       AI_API_KEY: "acceptance-test-key",
       AI_MODEL: "acceptance-mock",
+      IMAGE_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
+      IMAGE_API_KEY: "acceptance-image-key",
+      IMAGE_MODEL: "gpt-image-2",
+      IMAGE_SIZE: "1024x1536",
       FEISHU_APP_ID: "",
       FEISHU_APP_SECRET: "",
       UPLOADS_ENABLED: "true",
@@ -65,6 +69,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   await context.test("health and validation errors are explicit", async () => {
     const health = await requestJson("/api/health");
     assert.equal(health.response.status, 200);
+    assert.equal(health.body.imageConfigured, true);
 
     const positioningError = await requestJson("/api/positioning/analyze", {
       method: "POST",
@@ -208,6 +213,42 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(result.response.status, 200);
     assert.equal(result.body.project.id, project.id);
     assert.equal(result.body.draft.channel, "short_video_script");
+  });
+
+  await context.test("xiaohongshu draft generates, retries, persists, and downloads four images", async () => {
+    const generated = await requestJson(
+      `/api/content/projects/${project.id}/channels/xiaohongshu_note/images`,
+      { method: "POST", body: {} },
+    );
+    assert.equal(generated.response.status, 200, serverOutput);
+    assert.equal(generated.body.assets.length, 4);
+    assert.equal(generated.body.assets[0].kind, "cover");
+    assert.equal(generated.body.assets.every((item) => item.status === "generated"), true);
+    project = generated.body.project;
+
+    const firstAsset = generated.body.assets[0];
+    const retried = await requestJson(
+      `/api/content/projects/${project.id}/channels/xiaohongshu_note/images`,
+      { method: "POST", body: { assetId: firstAsset.id } },
+    );
+    assert.equal(retried.response.status, 200, serverOutput);
+    assert.equal(retried.body.assets.length, 4);
+    assert.equal(retried.body.assets[0].id, firstAsset.id);
+    assert.notEqual(retried.body.assets[0].imageUrl, firstAsset.imageUrl);
+    project = retried.body.project;
+
+    const download = await fetch(
+      `${baseUrl}/api/content/projects/${project.id}/channels/xiaohongshu_note/images/${firstAsset.id}`,
+    );
+    assert.equal(download.status, 200);
+    assert.match(download.headers.get("content-type") ?? "", /image\/png/);
+    assert.ok((await download.arrayBuffer()).byteLength > 0);
+
+    const detail = await requestJson(`/api/content-drafts/${project.id}`);
+    const xiaohongshu = detail.body.draft.channelDrafts.find(
+      (item) => item.channel === "xiaohongshu_note",
+    );
+    assert.equal(xiaohongshu.visualAssets.length, 4);
   });
 
   await context.test("AI review separates fact, style, and platform issues", async () => {
