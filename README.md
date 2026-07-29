@@ -1,15 +1,15 @@
 # Content Factory
 
-This repository contains the runnable pre-realignment prototype and the approved Content Factory V0.1 product baseline.
+This repository contains the runnable Content Factory V1 baseline for real-use and paid-delivery validation.
 
 ## Source of truth
 
 - Product requirements: `docs/prd/Content-Factory-MVP-PRD-v0.1.md`
 - Technical specification: `docs/specs/AI-Growth-OS-Spec-v1.0.md`
-- Current code audit: `docs/audits/Content-Factory-MVP-Code-Audit-2026-07-20.md`
+- Historical code audit: `docs/audits/Content-Factory-MVP-Code-Audit-2026-07-20.md`
 - Branch and code ownership: `docs/development/P0-Code-Ownership-and-Branch-Strategy.md`
 
-The implemented P0 direction is:
+The implemented V1 direction is:
 
 - Web app, single-enterprise deployment.
 - Customer-owned knowledge base first.
@@ -19,6 +19,9 @@ The implemented P0 direction is:
 - No multi-tenant SaaS, no database, no heavy auth in this phase.
 - Current account state is saved to `data/contentfactory.local.json`.
 - Confirmed briefs and channel drafts are saved atomically to `data/content-projects.local.json`.
+- Original creation and optional viral-rewrite creation share one brief and review flow.
+- Xiaohongshu supports one generated cover plus editable text-based content cards.
+- Content library supports manual publication links and real metrics; automatic publishing is not included.
 
 ## Run locally
 
@@ -55,18 +58,20 @@ Feishu should use a self-built enterprise app, not a personal password. The app 
 - `https://your-gateway.example.com`
 - `https://your-gateway.example.com/v1`
 
-## P0 creation flow
+## V1 creation flow
 
 1. Confirm the current account positioning, or skip it temporarily.
-2. Connect a local Markdown/TXT folder or Feishu knowledge source.
-3. Select 1–5 real source documents and enter or request a topic.
-4. Generate and manually confirm one shared content brief with traceable citations.
-5. Select any combination of WeChat article, Xiaohongshu note, Moments post, and short-video script.
-6. Generate all selected channels together or retry one failed channel.
+2. Choose original creation or viral rewriting.
+3. Original creation selects real knowledge; viral rewriting selects a stored inspiration and may also use real knowledge.
+4. Enter a topic or select a suggested direction.
+5. Generate and confirm one shared content brief with traceable citations and optional inspiration structure.
+6. Generate any combination of WeChat article, Xiaohongshu note, Moments post, and short-video script.
+7. Run AI review, edit, save versions, and confirm the content is publishable.
+8. Copy or export for manual publication, then record the real link and metrics in the content library.
 
 Chrome 扩展是账号定位的可选采集入口：只读取用户主动打开页面中的可见账号和作品信息，先预览采集结果，再生成可编辑的 AI 定位，只有用户最后确认才会覆盖当前账号。小红书账号与作品指标会作为带时间的本地快照保留，公开页未展示的阅读/曝光不会被推测或替代。
 
-Hot-content analysis and publication metrics are not prerequisites for this P0 flow.
+Viral rewriting is optional and never blocks original creation. Automatic viral-content collection and automatic publication are not part of V1.
 
 The first Chrome extension prototype lives in:
 
@@ -82,11 +87,16 @@ Successful P0 runs save the minimum local workflow state:
 - Content projects and confirmed briefs
 - Citation excerpts and selected knowledge references
 - Per-channel drafts and generation status
+- Viral inspiration references and analysis
+- AI review, manual versions, approval status, and manual publication metrics
+- Xiaohongshu visual storyboards
 
 The local data file is ignored by Git:
 
 ```bash
 data/contentfactory.local.json
+data/content-projects.local.json
+data/knowledge-sources.local.json
 ```
 
 Local knowledge uses a separate privacy boundary:
@@ -113,7 +123,9 @@ Run the repeatable technical acceptance suite:
 npm run test:acceptance
 ```
 
-The API suite starts an isolated local AI mock, exercises the account → knowledge → brief → project → four-channel flow, and restores any pre-existing local data files when it exits.
+The API suite starts an isolated local AI mock, runs 18 API subtests across account → knowledge/inspiration → brief → project → channels → review → versions → publication, and restores pre-existing local data files when it exits.
+
+Run the acceptance suite after stopping a development server in the same worktree, or run it from a dedicated worktree, because Next.js prevents two processes from sharing the same `.next` directory.
 
 To rehearse with a real customer-owned Markdown/TXT file without committing its contents:
 
