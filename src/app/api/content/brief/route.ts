@@ -1,23 +1,38 @@
 import { NextResponse } from "next/server";
 import { createContentBrief } from "@/modules/content/server/brief-service";
 import { normalizeKnowledgeSources } from "@/modules/content/server/request";
+import { getInspirationReference } from "@/modules/inspirations/service";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { topic?: unknown; sources?: unknown };
+    const body = (await request.json()) as {
+      topic?: unknown;
+      sources?: unknown;
+      inspirationId?: unknown;
+    };
     const topic = String(body.topic ?? "").trim();
     const sources = normalizeKnowledgeSources(body.sources);
-    if (!topic || !sources.length) {
+    const inspirationId = String(body.inspirationId ?? "").trim();
+    const inspiration = await getInspirationReference(inspirationId);
+    if (inspirationId && !inspiration) {
+      return NextResponse.json({ error: "选择的爆款参考不存在。" }, { status: 404 });
+    }
+    if (!topic || (!sources.length && !inspiration)) {
       return NextResponse.json(
-        { error: "选题和至少 1 份包含正文的知识资料为必填项。" },
+        { error: "请填写选题，并选择知识资料或一篇爆款参考。" },
         { status: 400 },
       );
     }
 
-    const brief = await createContentBrief(topic, await getActiveAccountContext(), sources);
+    const brief = await createContentBrief(
+      topic,
+      await getActiveAccountContext(),
+      sources,
+      inspiration,
+    );
     return NextResponse.json({ brief });
   } catch (error) {
     return NextResponse.json(

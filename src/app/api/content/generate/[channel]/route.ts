@@ -35,7 +35,10 @@ export async function POST(
 
     const sources = normalizeKnowledgeSources(body.sources);
     const sourceIds = new Set(sources.map((source) => source.id));
-    if (!sources.length || !brief.citations.every((citation) => sourceIds.has(citation.sourceId))) {
+    const hasRequiredKnowledge = brief.citations.length
+      ? brief.citations.every((citation) => sourceIds.has(citation.sourceId))
+      : Boolean(brief.inspiration);
+    if (!hasRequiredKnowledge) {
       return NextResponse.json({ error: "The knowledge sources used by this brief are required" }, { status: 400 });
     }
 

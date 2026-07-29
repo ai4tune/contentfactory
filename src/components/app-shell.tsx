@@ -54,7 +54,7 @@ export function AppShell({
 
           <div className="mt-10 hidden rounded-2xl border border-white/10 bg-white/5 p-4 lg:block">
             <p className="text-xs font-semibold tracking-wide text-[#dfb967]">主流程</p>
-            <p className="mt-2 text-xs leading-5 text-white/55">选择知识 → 确定选题 → 生成渠道内容 → 审核发布</p>
+            <p className="mt-2 text-xs leading-5 text-white/55">选择依据 → 确定选题 → 生成渠道内容 → 审核发布</p>
           </div>
         </aside>
 

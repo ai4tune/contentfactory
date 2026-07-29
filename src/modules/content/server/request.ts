@@ -1,4 +1,8 @@
-import type { BriefKnowledgeSource, ContentBrief } from "../types";
+import type {
+  BriefKnowledgeSource,
+  ContentBrief,
+  ContentInspirationReference,
+} from "../types";
 import { normalizeBriefList } from "./normalize-brief-list";
 
 const sourceTypes = new Set<BriefKnowledgeSource["source"]>([
@@ -64,11 +68,42 @@ export function normalizeContentBrief(value: unknown): ContentBrief | null {
     callToAction: String(record.callToAction ?? "").trim(),
     citations,
     openQuestions: normalizeBriefList(record.openQuestions),
+    inspiration: normalizeInspirationReference(record.inspiration),
   };
 
-  return brief.targetAudience && brief.contentGoal && brief.coreMessage && brief.outline.length && citations.length
+  return brief.targetAudience
+    && brief.contentGoal
+    && brief.coreMessage
+    && brief.outline.length
+    && (citations.length || brief.inspiration)
     ? brief
     : null;
+}
+
+function normalizeInspirationReference(value: unknown): ContentInspirationReference | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const id = String(record.id ?? "").trim();
+  const platform = String(record.platform ?? "").trim();
+  const title = String(record.title ?? "").trim();
+  const summary = String(record.summary ?? "").trim();
+  if (!id || !platform || !title || !summary) return undefined;
+
+  return {
+    id,
+    platform,
+    title,
+    sourceUrl: optionalString(record.sourceUrl),
+    metrics: optionalString(record.metrics),
+    summary,
+    targetAudience: String(record.targetAudience ?? "").trim(),
+    painPoint: String(record.painPoint ?? "").trim(),
+    hook: String(record.hook ?? "").trim(),
+    structure: normalizeBriefList(record.structure),
+    reusablePatterns: normalizeBriefList(record.reusablePatterns),
+    adaptationIdeas: normalizeBriefList(record.adaptationIdeas),
+    riskNotes: normalizeBriefList(record.riskNotes),
+  };
 }
 
 function optionalString(value: unknown) {

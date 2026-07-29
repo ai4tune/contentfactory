@@ -111,6 +111,15 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
           <ListBlock label="关键论点" items={draft.brief.keyPoints} />
           <ListBlock label="内容结构" items={draft.brief.outline} />
         </InfoCard>
+        {draft.brief.inspiration ? (
+          <InfoCard title="爆款结构参考">
+            <p className="text-xs font-semibold leading-5 text-slate-800">{draft.brief.inspiration.title}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-600">钩子：{draft.brief.inspiration.hook || "未提取"}</p>
+            <ListBlock label="参考结构" items={draft.brief.inspiration.structure} />
+            <p className="mt-3 text-[11px] leading-5 text-amber-700">仅学习结构和表达方法，不作为事实依据。</p>
+            {draft.brief.inspiration.sourceUrl ? <a className="mt-2 inline-block text-xs font-semibold text-emerald-800 hover:underline" href={draft.brief.inspiration.sourceUrl} rel="noreferrer" target="_blank">查看原文 ↗</a> : null}
+          </InfoCard>
+        ) : null}
         <InfoCard title={`引用来源 · ${draft.brief.citations.length}`}>
           {draft.brief.citations.length ? <div className="grid gap-3">{draft.brief.citations.map((citation) => <article className="rounded-xl bg-slate-50 p-3" key={`${citation.sourceId}:${citation.excerpt}`}><p className="text-xs font-semibold text-slate-800">{citation.sourceTitle}</p><p className="mt-2 text-xs leading-5 text-slate-600">“{citation.excerpt}”</p><p className="mt-2 text-[11px] text-slate-400">用途：{citation.purpose}</p></article>)}</div> : <p className="text-xs text-slate-400">暂无引用。</p>}
         </InfoCard>

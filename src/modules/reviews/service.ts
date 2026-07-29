@@ -23,6 +23,7 @@ export async function reviewChannelDraft(input: ReviewChannelInput): Promise<Cha
         "输出结构：{\"conclusion\":\"\",\"riskLevel\":\"low|medium|high|blocked\",\"issues\":[{\"category\":\"fact|style|platform\",\"severity\":\"low|medium|high|blocked\",\"title\":\"\",\"description\":\"\",\"originalText\":\"\",\"suggestedText\":\"\",\"autoFixable\":true,\"requiresConfirmation\":false}]}。",
         "originalText 必须逐字摘自待审稿件并能精确定位。只有不改变事实含义且可安全替换时 autoFixable 才能为 true。",
         "缺乏知识证据的事实不得自行补全：标记 requiresConfirmation=true、autoFixable=false。",
+        "当简报包含爆款参考时，额外检查是否照抄原文表达（归为 style）或错误继承原文事实、数据和案例（归为 fact）。",
       ].join("\n"),
     },
     {
