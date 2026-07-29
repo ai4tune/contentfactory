@@ -136,4 +136,4 @@ ACCEPTANCE_KNOWLEDGE_FILE="/absolute/path/to/customer-material.md" \
 npm run test:api
 ```
 
-See [`docs/acceptance/P0-Acceptance-Manual.md`](docs/acceptance/P0-Acceptance-Manual.md) for browser checks, privacy checks, modification-ratio recording, publishability, and the approximately CNY 3,000 willingness interview.
+See [`docs/acceptance/P0-Acceptance-Manual.md`](docs/acceptance/P0-Acceptance-Manual.md) for technical and manual acceptance, [`docs/acceptance/V1-Real-Knowledge-Pack-Manifest.md`](docs/acceptance/V1-Real-Knowledge-Pack-Manifest.md) for the first real knowledge pack, and [`docs/acceptance/V1-7-Day-Real-Use-Log.md`](docs/acceptance/V1-7-Day-Real-Use-Log.md) for daily timing, modification ratio, publication, metrics, and the enterprise handoff gate.
