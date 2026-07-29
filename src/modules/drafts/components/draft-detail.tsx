@@ -19,6 +19,10 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
   const channelDraft = draft.channelDrafts.find((item) => item.channel === activeChannel);
   const content = edits[activeChannel] ?? "";
   const changed = Boolean(channelDraft && content !== channelDraft.content);
+  const hasUnsavedChanges = draft.channelDrafts.some(
+    (item) => (edits[item.channel] ?? item.content) !== item.content,
+  );
+  const hasGeneratedContent = draft.channelDrafts.some((item) => item.status === "generated");
   const versions = useMemo(() => draft.versions.filter((item) => item.channel === activeChannel).reverse(), [activeChannel, draft.versions]);
 
   async function save() {
@@ -50,6 +54,27 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
       setMessage(`已复制${channelLabels[activeChannel]}。`);
     } catch {
       setMessage("复制失败，请手工选择文本复制。");
+    }
+  }
+
+  async function approve() {
+    if (!hasGeneratedContent || hasUnsavedChanges) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/content-drafts/${encodeURIComponent(draft.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewStatus: "approved" }),
+      });
+      const payload = (await response.json()) as { draft?: ContentDraft; error?: string };
+      if (!response.ok || !payload.draft) throw new Error(payload.error ?? "确认失败");
+      setDraft(payload.draft);
+      setMessage("已确认内容可发布。后续修改会自动回到“编辑中”，需要再次确认。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "确认失败");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -105,6 +130,29 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
       <aside className="grid gap-4">
         <InfoCard title="草稿状态">
           <dl className="grid grid-cols-2 gap-3 text-xs"><Metric label="审核状态" value={reviewLabel(draft.reviewStatus)} /><Metric label="知识来源" value={`${draft.selectedKnowledgeRefs.length} 个`} /><Metric label="创建时间" value={formatDate(draft.createdAt)} /><Metric label="最后修改" value={formatDate(draft.updatedAt)} /></dl>
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            {draft.reviewStatus === "approved" && !hasUnsavedChanges ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-semibold text-emerald-900">已确认可发布</p>
+                <p className="mt-1 text-[11px] leading-5 text-emerald-800">可以复制或下载后人工发布。继续修改并保存时，状态会回到“编辑中”。</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-[11px] leading-5 text-slate-500">
+                  请核对最终正文、事实引用和平台风险；确认代表你已完成人工审核。
+                </p>
+                {hasUnsavedChanges ? <p className="mt-2 text-[11px] font-semibold text-amber-700">先保存当前修改，再重新确认。</p> : null}
+                <button
+                  className={`${primaryButtonClass} mt-3 w-full`}
+                  disabled={!hasGeneratedContent || hasUnsavedChanges || busy}
+                  onClick={approve}
+                  type="button"
+                >
+                  {busy ? "正在确认" : "确认内容可发布"}
+                </button>
+              </>
+            )}
+          </div>
         </InfoCard>
         <InfoCard title="统一内容简报">
           <InfoRow label="目标受众" value={draft.brief.targetAudience} /><InfoRow label="内容目标" value={draft.brief.contentGoal} /><InfoRow label="核心观点" value={draft.brief.coreMessage} /><InfoRow label="行动引导" value={draft.brief.callToAction} />

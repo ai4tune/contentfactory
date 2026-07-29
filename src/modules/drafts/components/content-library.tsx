@@ -7,6 +7,7 @@ import { channelLabels, contentChannels, type ContentChannel } from "@/modules/c
 import type {
   ContentLibraryItem,
   ContentPublication,
+  DraftReviewStatus,
   PublicationMetrics,
 } from "../types";
 
@@ -25,12 +26,17 @@ const emptyMetrics: PublicationMetrics = {
   comments: 0,
   replies: 0,
 };
+const reviewLabels: Record<DraftReviewStatus, string> = {
+  draft: "待人工审核",
+  editing: "编辑中",
+  approved: "已确认",
+};
 
 export function ContentLibrary({ initialItems }: { initialItems: ContentLibraryItem[] }) {
   const [items, setItems] = useState(initialItems);
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState<ContentChannel | "all">("all");
-  const [status, setStatus] = useState<"all" | "draft" | "published">("all");
+  const [status, setStatus] = useState<"all" | DraftReviewStatus | "published">("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const visibleItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
@@ -38,11 +44,12 @@ export function ContentLibrary({ initialItems }: { initialItems: ContentLibraryI
       const matchesQuery = !normalizedQuery || item.topic.toLocaleLowerCase("zh-CN").includes(normalizedQuery);
       const matchesChannel = channel === "all" || item.channel === channel;
       const matchesStatus = status === "all"
-        || (status === "published" ? Boolean(item.publication) : !item.publication);
+        || (status === "published" ? Boolean(item.publication) : item.reviewStatus === status);
       return matchesQuery && matchesChannel && matchesStatus;
     });
   }, [channel, items, query, status]);
   const publishedItems = items.filter((item) => item.publication);
+  const approvedItems = items.filter((item) => item.reviewStatus === "approved");
   const totalViews = publishedItems.reduce(
     (total, item) => total + (item.publication?.metrics.views ?? 0),
     0,
@@ -67,7 +74,7 @@ export function ContentLibrary({ initialItems }: { initialItems: ContentLibraryI
     <>
       <section className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="全部内容" value={items.length} />
-        <SummaryCard label="待发布" value={items.length - publishedItems.length} />
+        <SummaryCard label="已确认" value={approvedItems.length} />
         <SummaryCard label="已发布" value={publishedItems.length} />
         <SummaryCard label="总阅读 / 互动" value={`${formatNumber(totalViews)} / ${formatNumber(totalInteractions)}`} />
       </section>
@@ -86,7 +93,9 @@ export function ContentLibrary({ initialItems }: { initialItems: ContentLibraryI
           </select>
           <select className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" onChange={(event) => setStatus(event.target.value as typeof status)} value={status}>
             <option value="all">全部状态</option>
-            <option value="draft">待发布</option>
+            <option value="draft">待人工审核</option>
+            <option value="editing">编辑中</option>
+            <option value="approved">已确认</option>
             <option value="published">已发布</option>
           </select>
         </div>
@@ -172,6 +181,7 @@ function PublicationRow({
           <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">{item.excerpt || "暂无正文摘要"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span className={reviewStatusClass(item.reviewStatus)}>{reviewLabels[item.reviewStatus]}</span>
           <span className={`w-fit rounded-lg px-2.5 py-1 text-[11px] font-semibold ${item.publication ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{item.publication ? "已发布" : "待发布"}</span>
           {item.publication?.url ? <a className="text-[11px] font-semibold text-emerald-800 xl:hidden" href={item.publication.url} rel="noreferrer" target="_blank">查看链接</a> : null}
         </div>
@@ -205,6 +215,16 @@ function PublicationRow({
 
 function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="font-mono text-2xl font-semibold text-slate-950">{typeof value === "number" ? formatNumber(value) : value}</p><p className="mt-2 text-xs font-semibold text-slate-500">{label}</p></div>;
+}
+
+function reviewStatusClass(status: DraftReviewStatus) {
+  return `w-fit rounded-lg px-2.5 py-1 text-[11px] font-semibold ${
+    status === "approved"
+      ? "bg-emerald-50 text-emerald-800"
+      : status === "editing"
+        ? "bg-blue-50 text-blue-700"
+        : "bg-slate-100 text-slate-600"
+  }`;
 }
 
 function Metric({ label, value }: { label: string; value?: number }) {

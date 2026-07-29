@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { isContentChannel } from "@/modules/content/types";
-import { getContentDraft, updateContentDraft } from "@/modules/drafts/server/repository";
+import {
+  getContentDraft,
+  updateContentDraft,
+  updateContentDraftReviewStatus,
+} from "@/modules/drafts/server/repository";
 
 export const runtime = "nodejs";
 
@@ -21,7 +25,25 @@ export async function PATCH(
 ) {
   try {
     const { id } = await context.params;
-    const body = (await request.json()) as { channel?: unknown; content?: unknown };
+    const body = (await request.json()) as {
+      channel?: unknown;
+      content?: unknown;
+      reviewStatus?: unknown;
+    };
+    if (body.reviewStatus !== undefined) {
+      if (body.reviewStatus !== "approved") {
+        return NextResponse.json({ error: "Only approved review status is accepted" }, { status: 400 });
+      }
+      const current = await getContentDraft(id);
+      if (!current) {
+        return NextResponse.json({ error: "Draft not found" }, { status: 404 });
+      }
+      if (!current.channelDrafts.some((item) => item.status === "generated")) {
+        return NextResponse.json({ error: "Generate at least one channel before approval" }, { status: 400 });
+      }
+      const draft = await updateContentDraftReviewStatus(id, "approved");
+      return NextResponse.json({ draft });
+    }
     if (!isContentChannel(body.channel)) {
       return NextResponse.json({ error: "A valid channel is required" }, { status: 400 });
     }

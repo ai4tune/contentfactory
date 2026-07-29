@@ -408,6 +408,61 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.match(markdown, /朋友圈人工修改版本/);
   });
 
+  await context.test("human approval is explicit and later changes require reapproval", async () => {
+    const invalid = await requestJson(`/api/content-drafts/${project.id}`, {
+      method: "PATCH",
+      body: { reviewStatus: "draft" },
+    });
+    assert.equal(invalid.response.status, 400);
+
+    const approved = await requestJson(`/api/content-drafts/${project.id}`, {
+      method: "PATCH",
+      body: { reviewStatus: "approved" },
+    });
+    assert.equal(approved.response.status, 200);
+    assert.equal(approved.body.draft.reviewStatus, "approved");
+
+    const approvedList = await requestJson("/api/content-drafts?reviewStatus=approved");
+    assert.equal(approvedList.body.drafts.some((item) => item.id === project.id), true);
+
+    const regenerated = await requestJson("/api/content/generate/short_video_script", {
+      method: "POST",
+      body: {
+        projectId: project.id,
+        topic: acceptanceTopic(),
+        brief,
+        sources: [source],
+        channels: ["short_video_script"],
+      },
+    });
+    assert.equal(regenerated.response.status, 200);
+    assert.equal(regenerated.body.project.reviewStatus, "editing");
+
+    const reapproved = await requestJson(`/api/content-drafts/${project.id}`, {
+      method: "PATCH",
+      body: { reviewStatus: "approved" },
+    });
+    assert.equal(reapproved.response.status, 200);
+    assert.equal(reapproved.body.draft.reviewStatus, "approved");
+
+    const changedAgain = await requestJson(`/api/content-drafts/${project.id}`, {
+      method: "PATCH",
+      body: {
+        channel: "moments_post",
+        content: "朋友圈再次人工修改：发布前重新核对事实和表达。",
+      },
+    });
+    assert.equal(changedAgain.response.status, 200);
+    assert.equal(changedAgain.body.draft.reviewStatus, "editing");
+
+    const finalApproval = await requestJson(`/api/content-drafts/${project.id}`, {
+      method: "PATCH",
+      body: { reviewStatus: "approved" },
+    });
+    assert.equal(finalApproval.response.status, 200);
+    assert.equal(finalApproval.body.draft.reviewStatus, "approved");
+  });
+
   await context.test("a generated channel can be recorded as published with real metrics", async () => {
     const invalid = await requestJson(`/api/content-drafts/${project.id}/publication`, {
       method: "POST",
