@@ -105,6 +105,34 @@ export async function updateContentDraft(input: {
   return updatedDraft;
 }
 
+export async function updateContentDraftReviewStatus(
+  draftId: string,
+  reviewStatus: DraftReviewStatus,
+): Promise<ContentDraft | null> {
+  let updatedDraft: ContentDraft | null = null;
+
+  await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
+    projects: (store.projects ?? []).map((project) => {
+      if (project.id !== draftId) return project;
+
+      const draft = normalizeDraft(project);
+      if (draft.reviewStatus === reviewStatus) {
+        updatedDraft = draft;
+        return draft;
+      }
+
+      updatedDraft = {
+        ...draft,
+        reviewStatus,
+        updatedAt: new Date().toISOString(),
+      };
+      return updatedDraft;
+    }),
+  }));
+
+  return updatedDraft;
+}
+
 export async function updateContentPublication(input: {
   draftId: string;
   channel: ContentChannel;

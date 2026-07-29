@@ -123,7 +123,7 @@ Run the repeatable technical acceptance suite:
 npm run test:acceptance
 ```
 
-The API suite starts an isolated local AI mock, runs 18 API subtests across account → knowledge/inspiration → brief → project → channels → review → versions → publication, and restores pre-existing local data files when it exits.
+The API suite starts an isolated local AI mock, runs 19 API subtests across account → knowledge/inspiration → brief → project → channels → review → human approval → versions → publication, and restores pre-existing local data files when it exits.
 
 Run the acceptance suite after stopping a development server in the same worktree, or run it from a dedicated worktree, because Next.js prevents two processes from sharing the same `.next` directory.
 

@@ -8,8 +8,10 @@ import type {
   ContentProject,
   GeneratedVisualAsset,
 } from "../types";
+import type { DraftReviewStatus } from "@/modules/drafts/types";
 
-type ProjectStore = { projects: ContentProject[] };
+type StoredContentProject = ContentProject & { reviewStatus?: DraftReviewStatus };
+type ProjectStore = { projects: StoredContentProject[] };
 
 const projectStorePath = path.join(process.cwd(), "data", "content-projects.local.json");
 const emptyStore: ProjectStore = { projects: [] };
@@ -58,6 +60,7 @@ export async function replaceChannelDraft(projectId: string, draft: ChannelDraft
         channels: project.channels.includes(draft.channel) ? project.channels : [...project.channels, draft.channel],
         channelDrafts,
         status: getProjectStatus(channelDrafts),
+        ...invalidateApproval(project),
         updatedAt: new Date().toISOString(),
       };
       return updatedProject;
@@ -87,6 +90,7 @@ export async function saveChannelDrafts(
         channels: Array.from(new Set([...project.channels, ...channels])),
         channelDrafts: drafts,
         status: getProjectStatus(drafts),
+        ...invalidateApproval(project),
         updatedAt: new Date().toISOString(),
       };
       return updatedProject;
@@ -112,6 +116,7 @@ export async function saveChannelVisualAssets(
       updatedProject = {
         ...project,
         channelDrafts,
+        ...invalidateApproval(project),
         updatedAt: new Date().toISOString(),
       };
       return updatedProject;
@@ -125,4 +130,10 @@ function getProjectStatus(drafts: ChannelDraft[]): ContentProject["status"] {
   if (!drafts.length) return "brief_confirmed";
   if (drafts.every((draft) => draft.status === "failed")) return "failed";
   return drafts.some((draft) => draft.status === "failed") ? "partially_failed" : "generated";
+}
+
+function invalidateApproval(project: StoredContentProject) {
+  return project.reviewStatus === "approved"
+    ? { reviewStatus: "editing" as const }
+    : {};
 }
