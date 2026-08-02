@@ -1,36 +1,39 @@
 import { NextResponse } from "next/server";
-import { analyzeInspiration, type InspirationRequest } from "@/lib/ai";
-import { saveInspiration } from "@/lib/store";
+import { analyzeInspiration } from "@/lib/ai";
+import {
+  formatInspirationMetrics,
+  InspirationValidationError,
+  parseInspirationCaptureInput,
+} from "@/modules/inspirations/normalization";
+import { upsertInspiration } from "@/modules/inspirations/service";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as InspirationRequest;
+    const body: unknown = await request.json();
     const accountContext = await getActiveAccountContext();
+    const input = parseInspirationCaptureInput(body, {
+      captureMethod: "manual",
+      accountPosition: accountContext?.accountPosition,
+    });
+    const result = await analyzeInspiration({
+      platform: input.platform,
+      sourceUrl: input.sourceUrl,
+      title: input.title,
+      metrics: formatInspirationMetrics(input.metrics, input.metricsSummary),
+      sourceKeyword: input.sourceKeyword,
+      content: input.content,
+      accountPosition: input.accountPosition,
+    });
+    const saved = await upsertInspiration(input, result);
 
-    if (!body.platform?.trim() || !body.title?.trim() || !body.content?.trim()) {
-      return NextResponse.json(
-        { error: "Platform, title, and content are required" },
-        { status: 400 },
-      );
-    }
-
-    const input = {
-      platform: body.platform,
-      sourceUrl: body.sourceUrl,
-      title: body.title,
-      metrics: body.metrics,
-      sourceKeyword: body.sourceKeyword,
-      content: body.content,
-      accountPosition: body.accountPosition || accountContext?.accountPosition,
-    };
-    const result = await analyzeInspiration(input);
-    const record = await saveInspiration(input, result);
-
-    return NextResponse.json({ result, record });
+    return NextResponse.json({ result, ...saved });
   } catch (error) {
+    if (error instanceof InspirationValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Inspiration analysis failed" },
       { status: 500 },

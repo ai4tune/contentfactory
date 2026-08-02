@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { AppShell, PageHeader, primaryButtonClass } from "@/components/app-shell";
-import { readStore } from "@/lib/store";
+import { formatInspirationMetrics } from "@/modules/inspirations/normalization";
+import { listInspirationRecords } from "@/modules/inspirations/service";
 
 export const dynamic = "force-dynamic";
 
 export default async function InspirationsPage() {
-  const store = await readStore();
-  const inspirations = [...store.inspirations].reverse();
+  const inspirations = await listInspirationRecords();
 
   return (
     <AppShell active="/inspirations">
@@ -28,30 +28,31 @@ export default async function InspirationsPage() {
 
         {inspirations.length ? (
           <div className="divide-y divide-slate-100">
-            {inspirations.map((item) => (
-              <Link key={item.id} href={`/inspirations/${item.id}`} className="group grid gap-5 px-5 py-6 transition hover:bg-[#fafaf7] sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px_32px] lg:items-center">
+            {inspirations.map((item) => {
+              const metrics = formatInspirationMetrics(item.metrics);
+              return <Link key={item.id} href={`/inspirations/${item.id}`} className="group grid gap-5 px-5 py-6 transition hover:bg-[#fafaf7] sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px_32px] lg:items-center">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">{item.input.platform}</span>
-                    {item.input.sourceKeyword ? <span className="text-slate-400">关键词：{item.input.sourceKeyword}</span> : null}
-                    <span className="text-slate-400">{formatDate(item.createdAt)}</span>
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">{item.source.platform}</span>
+                    {item.discovery.sourceKeyword ? <span className="text-slate-400">关键词：{item.discovery.sourceKeyword}</span> : null}
+                    <span className="text-slate-400">{formatDate(item.updatedAt)}</span>
                   </div>
-                  <h3 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 group-hover:text-emerald-800">{item.input.title}</h3>
-                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">{item.result.summary}</p>
-                  {item.input.metrics ? <p className="mt-3 text-xs font-medium text-slate-400">原始数据 · {item.input.metrics}</p> : null}
+                  <h3 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 group-hover:text-emerald-800">{item.content.title}</h3>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">{item.analysis.summary}</p>
+                  {metrics ? <p className="mt-3 text-xs font-medium text-slate-400">互动数据 · {metrics}</p> : null}
                 </div>
 
                 <div className="rounded-2xl bg-[#f5f6f3] p-4">
                   <p className="text-[11px] font-semibold tracking-[0.14em] text-emerald-700">可以学习什么</p>
                   <ul className="mt-3 space-y-2">
-                    {item.result.reusablePatterns.slice(0, 2).map((pattern) => (
+                    {item.analysis.reusablePatterns.slice(0, 2).map((pattern) => (
                       <li key={pattern} className="line-clamp-2 text-xs leading-5 text-slate-600">• {pattern}</li>
                     ))}
                   </ul>
                 </div>
                 <span className="hidden text-xl text-slate-300 transition group-hover:translate-x-1 group-hover:text-emerald-700 lg:block">→</span>
-              </Link>
-            ))}
+              </Link>;
+            })}
           </div>
         ) : (
           <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
@@ -69,4 +70,3 @@ export default async function InspirationsPage() {
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
 }
-

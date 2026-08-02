@@ -84,7 +84,7 @@ Codex 在实现本项目时，应优先遵循本文件中的：
 ```text
 账号：/api/capture/account、/api/capture/import、/api/positioning/*
 知识：/api/knowledge-sources、/api/knowledge/search、/api/uploads、/api/integrations/feishu/*
-爆款：/api/inspirations、/api/inspirations/analyze
+爆款：/api/inspirations、/api/inspirations/:id、/api/inspirations/analyze、/api/capture/import
 创作：/api/topics/suggest、/api/content/brief、/api/content/projects、/api/content/generate*
 审核：/api/content/projects/:id/channels/:channel/review*
 草稿：/api/content-drafts、/api/content-drafts/:id、/export、/publication
@@ -95,6 +95,8 @@ Codex 在实现本项目时，应优先遵循本文件中的：
 
 - 服务端本地 JSON：当前账号、采集记录、爆款、远程知识元数据、内容项目、简报、引用、渠道草稿、审核、版本和手工发布数据；
 - 浏览器 IndexedDB：本地目录句柄、本地 Markdown/TXT 轻量索引和授权状态；
+- 爆款记录使用 schema v2：来源身份、规范化 URL、正文、作者、发布时间、发现关键词、结构化互动指标、指标快照、AI 拆解和使用状态分开保存；旧版 `input/result` 记录读取时自动标准化；
+- 爆款使用平台内容 ID、规范化 URL或内容指纹去重；重复导入更新同一记录并追加指标快照；
 - `ContentBrief` 可同时保存知识引用与 `inspiration` 爆款结构参考；
 - `ContentDraft` 保存 `reviewStatus`、历史版本、渠道发布记录和小红书视觉资产；
 - V1 暂不引入数据库迁移、向量库、多租户或平台自建文件云盘。
@@ -1846,10 +1848,12 @@ POST   /api/content/projects
 
 ```text
 GET    /api/inspirations
+GET    /api/inspirations/:id
 POST   /api/inspirations/analyze
+POST   /api/capture/import
 ```
 
-V1 只承诺用户粘贴标题、正文、平台、链接和可选互动数据后保存并拆解，不承诺只靠第三方链接稳定获取正文。
+手工录入和插件导入共用同一份 schema v2 保存契约。V1 只承诺用户粘贴标题、正文、平台、链接和可选互动数据后保存并拆解，不承诺只靠第三方链接稳定获取正文。小红书插件详情采集仍属于下一 PR。
 
 ## 25.5 渠道内容生成
 
@@ -2407,6 +2411,7 @@ extensions/
 - [x] 将浏览器插件改造成账号采集助手；
 - [x] 完成账号定位确认、保存和自动继承；
 - [x] 完成手工爆款录入、拆解和爆款改写；
+- [x] 完成爆款 schema v2、去重、结构化指标、指标快照和旧数据兼容；
 - [x] 完成小红书图文故事板；
 - [x] 完成内容库和手工发布结果记录；
 - [x] 补齐明确的“确认内容可发布”动作；

@@ -189,11 +189,75 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       },
     });
     assert.equal(analyzed.response.status, 200);
+    assert.equal(analyzed.body.operation, "created");
+    assert.equal(analyzed.body.record.schemaVersion, 2);
+    assert.equal(analyzed.body.record.metrics.likes.value, 3200);
+    assert.equal(analyzed.body.record.metrics.collects.value, 980);
+
+    const recaptured = await requestJson("/api/capture/import", {
+      method: "POST",
+      body: {
+        platform: "小红书",
+        sourceUrl: "https://www.xiaohongshu.com/explore/acceptance?xsec_token=temporary",
+        platformContentId: "acceptance",
+        title: "低价不等于省钱",
+        content: "装修只比较单价容易踩坑，应该同时确认空间、基层、安装和售后。",
+        contentType: "image",
+        author: { name: "验收作者", platformAuthorId: "author-001", followers: { value: 1200 } },
+        metrics: {
+          likes: { value: 3600, raw: "3600" },
+          collects: { value: 1100, raw: "1100" },
+          comments: { value: 88, raw: "88" },
+        },
+      },
+    });
+    assert.equal(recaptured.response.status, 200);
+    assert.equal(recaptured.body.operation, "updated");
+    assert.equal(recaptured.body.record.id, analyzed.body.record.id);
+    assert.equal(recaptured.body.record.metricSnapshots.length, 2);
+    assert.equal(recaptured.body.record.metrics.likes.value, 3600);
+    assert.equal(recaptured.body.record.author.name, "验收作者");
+
+    const detail = await requestJson(`/api/inspirations/${analyzed.body.record.id}`);
+    assert.equal(detail.response.status, 200);
+    assert.equal(detail.body.inspiration.schemaVersion, 2);
+    assert.equal(detail.body.inspiration.source.platformContentId, "acceptance");
+    assert.match(detail.body.reference.metrics, /点赞 3600/);
 
     const library = await requestJson("/api/inspirations");
     assert.equal(library.response.status, 200);
-    assert.equal(library.body.inspirations[0].id, analyzed.body.record.id);
-    assert.equal(library.body.inspirations[0].hook, "低价不等于省钱");
+    assert.equal(library.body.total, library.body.inspirations.length);
+    const libraryItem = library.body.inspirations.find((item) => item.id === analyzed.body.record.id);
+    assert.equal(libraryItem?.hook, "低价不等于省钱");
+
+    const invalid = await requestJson("/api/inspirations/analyze", {
+      method: "POST",
+      body: { platform: "小红书", sourceUrl: "javascript:alert(1)", title: "非法链接", content: "正文" },
+    });
+    assert.equal(invalid.response.status, 400);
+
+    const storeFile = path.join(repositoryRoot, "data/contentfactory.local.json");
+    const stored = JSON.parse(await readFile(storeFile, "utf8"));
+    stored.inspirations.push({
+      id: "legacy-inspiration-001",
+      createdAt: "2026-01-02T03:04:05.000Z",
+      input: {
+        platform: "公众号",
+        sourceUrl: "https://mp.weixin.qq.com/s/legacy",
+        title: "旧爆款记录",
+        metrics: "阅读 2.4万，点赞 120",
+        sourceKeyword: "旧数据",
+        content: "这是一条升级前保存的旧记录。",
+      },
+      result: analyzed.body.result,
+    });
+    await writeFile(storeFile, `${JSON.stringify(stored, null, 2)}\n`, "utf8");
+
+    const legacy = await requestJson("/api/inspirations/legacy-inspiration-001");
+    assert.equal(legacy.response.status, 200);
+    assert.equal(legacy.body.inspiration.schemaVersion, 2);
+    assert.equal(legacy.body.inspiration.metrics.views.value, 24000);
+    assert.equal(legacy.body.inspiration.content.title, "旧爆款记录");
 
     const missing = await requestJson("/api/content/brief", {
       method: "POST",
