@@ -5,14 +5,14 @@ import type { AccountCapture } from "@/modules/positioning/capture";
 import type {
   GenerateRequest,
   GenerateResult,
-  InspirationRequest,
-  InspirationResult,
   PositioningRequest,
   PositioningResult,
   TopicRadarRequest,
   TopicRadarResult,
 } from "./ai";
 import type { KnowledgeSource } from "./feishu";
+import { normalizeInspirationRecords } from "@/modules/inspirations/normalization";
+import type { InspirationRecord } from "@/modules/inspirations/types";
 
 export type StoredRecord<Input, Result> = {
   id: string;
@@ -48,7 +48,7 @@ export type ContentStore = {
   accountCaptures: AccountCapture[];
   accountProfiles: Array<StoredRecord<PositioningRequest, PositioningResult>>;
   topicRadars: Array<StoredRecord<TopicRadarRequest, TopicRadarResult>>;
-  inspirations: Array<StoredRecord<InspirationRequest, InspirationResult>>;
+  inspirations: InspirationRecord[];
   materials: MaterialRecord[];
   articles: ArticleRecord[];
 };
@@ -105,10 +105,6 @@ export async function getCurrentAccountProfile() {
 
 export async function saveTopicRadar(input: TopicRadarRequest, result: TopicRadarResult) {
   return appendRecord("topicRadars", input, result);
-}
-
-export async function saveInspiration(input: InspirationRequest, result: InspirationResult) {
-  return appendRecord("inspirations", input, result);
 }
 
 export async function saveArticle(input: GenerateRequest, result: GenerateResult) {
@@ -171,7 +167,7 @@ export async function getDashboardData() {
 }
 
 async function appendRecord<
-  Key extends keyof Pick<ContentStore, "topicRadars" | "inspirations" | "articles">,
+  Key extends keyof Pick<ContentStore, "topicRadars" | "articles">,
 >(
   key: Key,
   input: ContentStore[Key][number]["input"],
@@ -186,7 +182,7 @@ async function appendRecord<
   return record;
 }
 
-function createRecord<Key extends keyof Pick<ContentStore, "accountProfiles" | "topicRadars" | "inspirations" | "articles">>(
+function createRecord<Key extends keyof Pick<ContentStore, "accountProfiles" | "topicRadars" | "articles">>(
   key: Key,
   input: ContentStore[Key][number]["input"],
   result: ContentStore[Key][number]["result"],
@@ -209,7 +205,7 @@ function normalizeStore(parsed: Partial<ContentStore>): ContentStore {
     accountCaptures: parsed.accountCaptures ?? [],
     accountProfiles: parsed.accountProfiles ?? [],
     topicRadars: parsed.topicRadars ?? [],
-    inspirations: parsed.inspirations ?? [],
+    inspirations: normalizeInspirationRecords(parsed.inspirations),
     materials: parsed.materials ?? [],
     articles: parsed.articles ?? [],
   };

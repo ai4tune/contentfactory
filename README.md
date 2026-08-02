@@ -22,6 +22,7 @@ The implemented V1 direction is:
 - Original creation and optional viral-rewrite creation share one brief and review flow.
 - Xiaohongshu supports one generated cover plus editable text-based content cards.
 - Content library supports manual publication links and real metrics; automatic publishing is not included.
+- The viral-content library stores structured source identity and engagement snapshots, deduplicates repeat imports, and keeps legacy records readable.
 
 ## Run locally
 

@@ -87,6 +87,9 @@ export type InspirationResult = {
   targetAudience: string;
   painPoint: string;
   hook: string;
+  pacing: string;
+  evidence: string[];
+  callToAction: string;
   structure: string[];
   reusablePatterns: string[];
   keywords: string[];
@@ -185,7 +188,7 @@ export async function analyzeInspiration(request: InspirationRequest): Promise<I
     {
       role: "system",
       content:
-        "你是内容工厂的爆款拆解助手。只输出 JSON，不要 Markdown。JSON 字段必须包含 summary, targetAudience, painPoint, hook, structure, reusablePatterns, keywords, adaptationIdeas, topicCandidates, riskNotes。structure 至少 5 条，reusablePatterns 至少 3 条，keywords 至少 5 条，topicCandidates 至少 5 条。",
+        "你是内容工厂的爆款拆解助手。只输出 JSON，不要 Markdown。JSON 字段必须包含 summary, targetAudience, painPoint, hook, pacing, evidence, callToAction, structure, reusablePatterns, keywords, adaptationIdeas, topicCandidates, riskNotes。structure 至少 5 条，reusablePatterns 至少 3 条，keywords 至少 5 条，topicCandidates 至少 5 条。",
     },
     {
       role: "user",
@@ -370,6 +373,9 @@ function normalizeInspirationResult(value: Partial<InspirationResult>): Inspirat
     targetAudience: String(value.targetAudience ?? ""),
     painPoint: String(value.painPoint ?? ""),
     hook: String(value.hook ?? ""),
+    pacing: String(value.pacing ?? ""),
+    evidence: toStringArray(value.evidence),
+    callToAction: String(value.callToAction ?? ""),
     structure: firstStringArray(record, ["structure", "contentStructure", "outline"]),
     reusablePatterns: firstStringArray(record, [
       "reusablePatterns",
