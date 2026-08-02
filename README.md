@@ -23,6 +23,7 @@ The implemented V1 direction is:
 - Xiaohongshu supports one generated cover plus editable text-based content cards.
 - Content library supports manual publication links and real metrics; automatic publishing is not included.
 - The viral-content library stores structured source identity and engagement snapshots, deduplicates repeat imports, and keeps legacy records readable.
+- Chrome extension v0.6.0 captures either the current Xiaohongshu account page for positioning or the current visible note into the viral-content library.
 
 ## Run locally
 

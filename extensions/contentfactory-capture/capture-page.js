@@ -79,6 +79,12 @@ export function captureVisibleAccountPage() {
       || image.infoList?.find((item) => item?.url)?.url || "";
   };
   const parseInitialState = () => {
+    const jsonState = document.querySelector("script#__INITIAL_STATE__, script[id*='INITIAL_STATE']");
+    if (jsonState?.textContent) {
+      try {
+        return JSON.parse(jsonState.textContent.replace(/\bundefined\b/g, "null"));
+      } catch {}
+    }
     const script = [...document.scripts]
       .map((item) => item.textContent || "")
       .find((text) => text.includes("window.__INITIAL_STATE__"));
@@ -150,6 +156,7 @@ export function captureVisibleAccountPage() {
     const imageUrls = (note.imageList || []).map(imageUrl).filter(Boolean).slice(0, 20);
     const coverUrl = imageUrls[0] || meta("og:image");
     const timestamp = Number(note.time || note.createTime || 0);
+    const authorId = clean(note.user?.userId || note.user?.user_id || note.user?.id);
     return {
       noteId,
       title,
@@ -162,6 +169,11 @@ export function captureVisibleAccountPage() {
       coverUrl,
       durationMs: Number(note.video?.consumer?.duration || note.video?.duration || 0) || null,
       pinned: Boolean(note.interactInfo?.sticky),
+      author: {
+        name: clean(note.user?.nickname || note.user?.nickName),
+        platformAuthorId: authorId,
+        profileUrl: authorId ? `https://www.xiaohongshu.com/user/profile/${authorId}` : "",
+      },
       metrics,
       metricSummary: contentMetricSummary(metrics),
     };
@@ -184,6 +196,12 @@ export function captureVisibleAccountPage() {
       .filter((url) => /^https?:\/\//.test(url)))]
       .slice(0, 20);
     const readCount = (selector) => metric(root.querySelector(selector)?.textContent);
+    const authorLink = root.querySelector(".author-container a[href*='/user/profile/'], a.author[href*='/user/profile/']");
+    const authorId = clean(authorLink?.href?.match(/\/user\/profile\/([^/?]+)/)?.[1]);
+    const publishedAt = clean(
+      document.querySelector("meta[property='article:published_time']")?.content
+      || root.querySelector("time[datetime]")?.getAttribute("datetime"),
+    );
     const metrics = {
       likes: readCount(".engage-bar-container .like-wrapper .count"),
       collects: readCount(".engage-bar-container .collect-wrapper .count"),
@@ -198,12 +216,22 @@ export function captureVisibleAccountPage() {
       description,
       type: root.querySelector(".media-container video") ? "video" : "image",
       url: canonicalNoteUrl(noteId),
-      publishedAt: "",
       tags,
       imageUrls,
       coverUrl: imageUrls[0] || meta("og:image"),
       durationMs: null,
       pinned: false,
+      author: {
+        name: clean(
+          root.querySelector(".author-container .username")?.textContent
+          || root.querySelector(".username")?.textContent,
+        ),
+        platformAuthorId: authorId,
+        profileUrl: authorLink?.href || "",
+      },
+      publishedAt: publishedAt && !Number.isNaN(new Date(publishedAt).valueOf())
+        ? new Date(publishedAt).toISOString()
+        : "",
       metrics,
       metricSummary: contentMetricSummary(metrics),
     };

@@ -25,13 +25,20 @@
     return location.pathname.toLowerCase().includes("/user/profile/");
   }
 
+  function isNotePage() {
+    const path = location.pathname.toLowerCase();
+    return path.includes("/explore/") || path.includes("/discovery/item/");
+  }
+
   function renderDefaultLabel() {
-    button.textContent = isAccountPage() ? "采集当前账号" : "先去「我」再采集";
+    button.textContent = isAccountPage()
+      ? "采集当前账号"
+      : isNotePage() ? "收藏为爆款" : "打开采集助手";
   }
 
   button.addEventListener("click", async () => {
-    if (!isAccountPage()) {
-      button.textContent = "请先点击左侧「我」";
+    if (!isAccountPage() && !isNotePage()) {
+      button.textContent = "请打开账号主页或笔记详情";
       window.setTimeout(renderDefaultLabel, 2_000);
       return;
     }
