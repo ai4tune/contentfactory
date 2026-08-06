@@ -61,6 +61,13 @@ export function validateStyleProfileForConfirmation(profile: StyleProfileInput) 
   return Array.from(new Set(issues));
 }
 
+export function normalizeTemporaryStyleInstructions(value: unknown) {
+  if (typeof value === "string") {
+    return stringList(value.split("\n"), 12, 500);
+  }
+  return stringList(value, 12, 500);
+}
+
 function normalizeSources(value: unknown): StyleSourceReference[] {
   if (!Array.isArray(value)) return [];
   return uniqueById(value.flatMap((item, index) => {

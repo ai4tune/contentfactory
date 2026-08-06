@@ -13,6 +13,7 @@ import {
 } from "@/modules/content/types";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
+import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
 
 export const runtime = "nodejs";
 
@@ -45,10 +46,15 @@ export async function POST(request: Request) {
 
     const [accountContext, styleSnapshot] = existingProject
       ? [existingProject.accountSnapshot, existingProject.styleSnapshot]
-      : await Promise.all([getActiveAccountContext(), getActiveStyleContract()]);
+      : await Promise.all([
+          getActiveAccountContext(),
+          getActiveStyleContract({
+            temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
+          }),
+        ]);
     const settled = await Promise.allSettled(
       channels.map((channel) =>
-        generateChannelDraft({ channel, brief, sources, accountContext }),
+        generateChannelDraft({ channel, brief, sources, accountContext, styleContract: styleSnapshot }),
       ),
     );
     const now = new Date().toISOString();

@@ -1,5 +1,7 @@
 import { chatCompletionJson, parseJsonObject } from "@/lib/ai";
 import type { AccountContext } from "@/modules/positioning/types";
+import { formatStyleContractForPrompt } from "@/modules/style-profile/prompt";
+import type { StyleContract } from "@/modules/style-profile/types";
 import { getChannelSystemPrompt } from "./channel-prompts";
 import type { BriefKnowledgeSource, ChannelDraft, ContentBrief, ContentChannel } from "./types";
 
@@ -8,6 +10,7 @@ type GenerateChannelInput = {
   brief: ContentBrief;
   sources: BriefKnowledgeSource[];
   accountContext: AccountContext | null;
+  styleContract: StyleContract | null;
 };
 
 export async function generateChannelDraft(input: GenerateChannelInput): Promise<ChannelDraft> {
@@ -32,6 +35,8 @@ function buildChannelContext(input: GenerateChannelInput) {
     JSON.stringify(input.brief, null, 2),
     "【当前账号上下文】",
     input.accountContext ? JSON.stringify(input.accountContext, null, 2) : "未确认，不要虚构品牌事实。",
+    "【已确认写作风格】",
+    formatStyleContractForPrompt(input.styleContract, input.channel),
     "【知识证据】",
     knowledge || "暂无证据，涉及事实的内容必须标记待确认。",
   ].join("\n\n");

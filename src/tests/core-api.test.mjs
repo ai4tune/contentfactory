@@ -207,17 +207,18 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   await context.test("topic suggestions use the selected knowledge source", async () => {
     const result = await requestJson("/api/topics/suggest", {
       method: "POST",
-      body: { sources: [source] },
+      body: { sources: [source], temporaryStyleInstructions: ["这次更像真实项目复盘"] },
     });
     assert.equal(result.response.status, 200);
     assert.ok(result.body.suggestions.length > 0);
     assert.deepEqual(result.body.suggestions[0].sourceIds, [source.id]);
+    assert.match(result.body.suggestions[0].title, /后来我发现/);
   });
 
   await context.test("content brief preserves a traceable source excerpt", async () => {
     const result = await requestJson("/api/content/brief", {
       method: "POST",
-      body: { topic: acceptanceTopic(), sources: [source] },
+      body: { topic: acceptanceTopic(), sources: [source], temporaryStyleInstructions: ["这次更像真实项目复盘"] },
     });
     assert.equal(result.response.status, 200);
     brief = result.body.brief;
@@ -225,6 +226,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.ok(source.text.includes(brief.citations[0].excerpt));
     assert.equal(brief.outline.some((item) => item.includes("[object Object]")), false);
     assert.match(brief.outline[0], /价格误区/);
+    assert.match(brief.coreMessage, /后来我发现/);
   });
 
   await context.test("viral rewriting can create a brief without treating the source as knowledge", async () => {
@@ -354,7 +356,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   await context.test("confirmed brief is saved as one atomic content project", async () => {
     const result = await requestJson("/api/content/projects", {
       method: "POST",
-      body: { topic: acceptanceTopic(), brief },
+      body: { topic: acceptanceTopic(), brief, temporaryStyleInstructions: ["这次更像真实项目复盘"] },
     });
     assert.equal(result.response.status, 201);
     project = result.body.project;
@@ -363,6 +365,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(project.styleSnapshot.profileVersion, 1);
     assert.equal(project.styleSnapshot.hardRules[0].evidence[0].sourceTitle, "验收风格指南");
     assert.deepEqual(project.styleSnapshot.bannedPhrases, ["深度赋能"]);
+    assert.equal(project.styleSnapshot.mode, "temporary");
+    assert.deepEqual(project.styleSnapshot.temporaryInstructions, ["这次更像真实项目复盘"]);
 
     const nextProfile = acceptanceStyleProfile();
     nextProfile.bannedPhrases = ["深度赋能", "革命性"];
@@ -389,6 +393,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(project.channelDrafts.every((item) => item.status === "generated"), true);
     assert.equal(new Set(project.channelDrafts.map((item) => item.content)).size, 4);
     assert.match(project.channelDrafts.find((item) => item.channel === "wechat_article").content, /摘要|一、/);
+    assert.match(project.channelDrafts.find((item) => item.channel === "wechat_article").content, /后来我发现/);
     assert.match(project.channelDrafts.find((item) => item.channel === "xiaohongshu_note").content, /前三行|#/);
     assert.match(project.channelDrafts.find((item) => item.channel === "moments_post").content, /朋友|一起看/);
     assert.match(project.channelDrafts.find((item) => item.channel === "short_video_script").content, /前三秒|画面|口播/);

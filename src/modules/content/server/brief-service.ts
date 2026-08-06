@@ -1,5 +1,7 @@
 import { chatCompletionJson, parseJsonObject } from "@/lib/ai";
 import type { AccountContext } from "@/modules/positioning/types";
+import { formatStyleContractForPrompt } from "@/modules/style-profile/prompt";
+import type { StyleContract } from "@/modules/style-profile/types";
 import type {
   BriefKnowledgeSource,
   ContentBrief,
@@ -17,6 +19,7 @@ export async function createContentBrief(
   account: AccountContext | null,
   sources: BriefKnowledgeSource[],
   inspiration: ContentInspirationReference | null = null,
+  styleContract: StyleContract | null = null,
 ): Promise<ContentBrief> {
   const sourceContext = sources
     .map((source) => `[${source.id}] ${source.title}\n${source.text.slice(0, 6000)}`)
@@ -40,6 +43,8 @@ export async function createContentBrief(
         `产品/服务: ${account?.offer || "待判断"}`,
         `内容目标: ${account?.conversionGoal || "建立信任并推动下一步行动"}`,
         `品牌语气: ${account?.brandVoice.join("、") || "专业、清晰"}`,
+        "写作风格约束:",
+        formatStyleContractForPrompt(styleContract),
         "爆款参考:",
         inspiration ? JSON.stringify(inspiration, null, 2) : "未选择，按原创模式生成。",
         "已确认知识:",

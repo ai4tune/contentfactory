@@ -3,6 +3,7 @@ import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-she
 import { getConfigStatus } from "@/lib/config";
 import { ContentCreationWorkspace } from "@/modules/content/components/content-creation-workspace";
 import { getCurrentAccountContext } from "@/modules/positioning/repository";
+import { getConfirmedStyleProfile } from "@/modules/style-profile/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,9 @@ const creationSteps = [
 ];
 
 export default async function ContentCreationPage() {
-  const [accountContext, status] = await Promise.all([
+  const [accountContext, styleProfile, status] = await Promise.all([
     getCurrentAccountContext(),
+    getConfirmedStyleProfile(),
     Promise.resolve(getConfigStatus()),
   ]);
 
@@ -66,7 +68,7 @@ export default async function ContentCreationPage() {
         </div>
       </section>
 
-      <ContentCreationWorkspace />
+      <ContentCreationWorkspace initialStyleProfile={styleProfile} />
     </AppShell>
   );
 }
