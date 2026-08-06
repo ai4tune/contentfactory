@@ -162,7 +162,7 @@ export function PositioningClient({
             <p className="mt-4 text-lg leading-8 text-white/85">{context.accountPosition}</p>
             <div className="mt-8 grid gap-3 sm:grid-cols-3"><Stat label="目标客户" value={context.targetAudience.join("、")} /><Stat label="核心产品" value={context.offer} /><Stat label="主要平台" value={context.platforms.join("、")} /></div>
           </section>
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><ResultGroup title="品牌语气" items={context.brandVoice} tags /><ResultGroup title="禁用表达" items={context.bannedPhrases} tags /><Link className={`${primaryButtonClass} mt-6`} href="/create">带着当前定位去创作 →</Link></section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><ResultGroup title="品牌语气" items={context.brandVoice} tags /><ResultGroup title="禁用表达" items={context.bannedPhrases} tags /><div className="mt-6 flex flex-wrap gap-3"><Link className={primaryButtonClass} href="/create">带着当前定位去创作 →</Link><Link className={secondaryButtonClass} href="/style-profile">管理写作风格</Link></div></section>
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2"><div className="grid gap-7 lg:grid-cols-2"><ResultGroup title="内容支柱" items={context.contentPillars} /><ResultGroup title="常用表达" items={context.preferredPhrases} tags /><ResultGroup title="下一阶段内容方向" items={context.contentDirections} /></div></section>
           <AnalysisDetails analysisEvidence={context.analysisEvidence} informationGaps={context.informationGaps} />
         </div>

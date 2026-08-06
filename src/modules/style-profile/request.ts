@@ -158,7 +158,7 @@ function uniqueById<T extends { id: string }>(items: T[]) {
 
 function normalizeId(value: unknown, fallback: string) {
   const id = String(value ?? "").trim();
-  return /^[a-zA-Z0-9_-]{1,160}$/.test(id) ? id : fallback;
+  return id && id.length <= 160 && !/[\u0000-\u001f\u007f]/.test(id) ? id : fallback;
 }
 
 function optionalString(value: unknown, limit: number) {

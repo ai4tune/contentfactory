@@ -54,6 +54,74 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user) {
+  if (system.includes("写作风格分析师")) {
+    return {
+      name: "验收账号默认风格",
+      persona: "做过真实项目、能把技术讲明白的建材与 AI 实践者",
+      readerRelationship: "像和熟悉的同行复盘刚完成的真实工作",
+      values: ["事实优先", "给出具体下一步"],
+      tone: ["真诚", "克制", "技术人讲人话"],
+      rules: [
+        {
+          id: "style-rule-001",
+          category: "rhythm",
+          priority: "hard",
+          instruction: "公众号正文使用自然段，不把完整口语拆成密集短句。",
+          evidence: [{
+            sourceId: "local:style guide.md",
+            excerpt: "不要大量使用一句一段的短句结构。",
+            note: "风格指南中的明确要求",
+          }],
+        },
+        {
+          id: "style-rule-002",
+          category: "narrative",
+          priority: "soft",
+          instruction: "从亲历判断切入，再给出可执行步骤。",
+          evidence: [{
+            sourceId: "local:approved sample.md",
+            excerpt: "我之前一直以为工具选对就够了，后来真正到企业里跑了一遍，才发现问题往往不在工具。",
+          }],
+        },
+        {
+          id: "style-rule-003",
+          category: "language",
+          priority: "hard",
+          instruction: "不使用深度赋能等空泛表达。",
+          evidence: [{ sourceId: "local:style guide.md", excerpt: "禁用表达：深度赋能。" }],
+        },
+        {
+          id: "style-rule-004",
+          category: "boundary",
+          priority: "soft",
+          instruction: "结论保留真实条件，不作绝对承诺。",
+          evidence: [{ sourceId: "local:approved sample.md", excerpt: "这只是我跑完真实项目后的阶段性判断。" }],
+        },
+      ],
+      preferredPhrases: ["后来我发现"],
+      bannedPhrases: ["深度赋能"],
+      channelOverrides: { moments_post: ["像本人分享最近观察，不写成总结报告。"] },
+      examples: [
+        {
+          id: "style-example-001",
+          sourceId: "local:approved sample.md",
+          title: "自然讲述样例",
+          excerpt: "我之前一直以为工具选对就够了，后来真正到企业里跑了一遍，才发现问题往往不在工具。",
+          purpose: "展示自然转折和第一人称判断",
+          channel: "wechat_article",
+        },
+        {
+          id: "style-example-002",
+          sourceId: "local:approved sample.md",
+          title: "克制结论样例",
+          excerpt: "这只是我跑完真实项目后的阶段性判断。",
+          purpose: "展示真实边界",
+          channel: "moments_post",
+        },
+      ],
+    };
+  }
+
   if (system.includes("小红书图文策划")) {
     return {
       items: [

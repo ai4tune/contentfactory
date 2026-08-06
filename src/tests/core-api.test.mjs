@@ -149,7 +149,22 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   });
 
   await context.test("a confirmed style profile requires evidence and can be reused", async () => {
-    const profile = acceptanceStyleProfile();
+    const missingSources = await requestJson("/api/style-profile/analyze", {
+      method: "POST",
+      body: { sources: [] },
+    });
+    assert.equal(missingSources.response.status, 400);
+
+    const analyzed = await requestJson("/api/style-profile/analyze", {
+      method: "POST",
+      body: { sources: acceptanceStyleSources() },
+    });
+    assert.equal(analyzed.response.status, 200, serverOutput);
+    const profile = analyzed.body.profile;
+    assert.equal(profile.name, "验收账号默认风格");
+    assert.ok(profile.rules.length >= 4);
+    assert.ok(acceptanceStyleSources().some((source) => source.text.includes(profile.rules[0].evidence[0].excerpt)));
+
     const invalid = await requestJson("/api/style-profile/current", {
       method: "PATCH",
       body: {
@@ -170,7 +185,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
 
     const current = await requestJson("/api/style-profile/current");
     assert.equal(current.body.profile.name, "验收账号默认风格");
-    assert.equal(current.body.profile.rules[0].evidence[0].sourceId, "style-source-001");
+    assert.equal(current.body.profile.rules[0].evidence[0].sourceId, "local:style guide.md");
 
     const draftProfile = acceptanceStyleProfile();
     draftProfile.tone = [...draftProfile.tone, "更口语"];
@@ -724,7 +739,7 @@ function acceptanceStyleProfile() {
       priority: "hard",
       instruction: "公众号正文使用自然段，不把完整口语拆成密集短句。",
       evidence: [{
-        sourceId: "style-source-001",
+        sourceId: "local:style guide.md",
         excerpt: "不要大量使用一句一段的短句结构。",
         note: "人工改稿后确认的高优先级规则",
       }],
@@ -736,20 +751,41 @@ function acceptanceStyleProfile() {
     },
     examples: [{
       id: "style-example-001",
-      sourceId: "style-source-001",
+      sourceId: "local:style guide.md",
       title: "自然讲述样例",
       excerpt: "我之前一直以为工具选对就够了，后来真正到企业里跑了一遍，才发现问题往往不在工具。",
       purpose: "展示自然转折和第一人称判断",
       channel: "wechat_article",
     }],
     sources: [{
-      id: "style-source-001",
+      id: "local:style guide.md",
       title: "验收风格指南",
       sourceType: "local",
       role: "style_guide",
       path: "/acceptance/style-guide.md",
     }],
   };
+}
+
+function acceptanceStyleSources() {
+  return [
+    {
+      id: "local:style guide.md",
+      title: "验收风格指南",
+      source: "local",
+      role: "style_guide",
+      path: "/acceptance/style-guide.md",
+      text: "不要大量使用一句一段的短句结构。\n禁用表达：深度赋能。",
+    },
+    {
+      id: "local:approved sample.md",
+      title: "验收认可成稿",
+      source: "local",
+      role: "approved_sample",
+      path: "/acceptance/approved-sample.md",
+      text: "我之前一直以为工具选对就够了，后来真正到企业里跑了一遍，才发现问题往往不在工具。\n这只是我跑完真实项目后的阶段性判断。",
+    },
+  ];
 }
 
 async function requestJson(route, options = {}) {
