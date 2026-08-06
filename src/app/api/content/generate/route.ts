@@ -12,6 +12,7 @@ import {
   type GenerateChannelsRequest,
 } from "@/modules/content/types";
 import { getActiveAccountContext } from "@/modules/positioning/service";
+import { getActiveStyleContract } from "@/modules/style-profile/service";
 
 export const runtime = "nodejs";
 
@@ -42,7 +43,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The knowledge sources used by this brief are required" }, { status: 400 });
     }
 
-    const accountContext = existingProject?.accountSnapshot ?? await getActiveAccountContext();
+    const [accountContext, styleSnapshot] = existingProject
+      ? [existingProject.accountSnapshot, existingProject.styleSnapshot]
+      : await Promise.all([getActiveAccountContext(), getActiveStyleContract()]);
     const settled = await Promise.allSettled(
       channels.map((channel) =>
         generateChannelDraft({ channel, brief, sources, accountContext }),
@@ -62,7 +65,14 @@ export async function POST(request: Request) {
     );
     const project = body.projectId
       ? await saveChannelDrafts(body.projectId, channels, channelDrafts)
-      : await saveContentProject({ topic, accountSnapshot: accountContext, brief, channels, channelDrafts });
+      : await saveContentProject({
+          topic,
+          accountSnapshot: accountContext,
+          styleSnapshot,
+          brief,
+          channels,
+          channelDrafts,
+        });
 
     if (!project) return NextResponse.json({ error: "Content project not found" }, { status: 404 });
 

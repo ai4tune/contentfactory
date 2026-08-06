@@ -9,6 +9,7 @@ import type {
   GeneratedVisualAsset,
 } from "../types";
 import type { DraftReviewStatus } from "@/modules/drafts/types";
+import type { StyleContract } from "@/modules/style-profile/types";
 
 type StoredContentProject = ContentProject & { reviewStatus?: DraftReviewStatus };
 type ProjectStore = { projects: StoredContentProject[] };
@@ -18,13 +19,15 @@ const emptyStore: ProjectStore = { projects: [] };
 
 export async function getContentProject(projectId: string) {
   const store = await readJsonFile<ProjectStore>(projectStorePath, emptyStore);
-  return (store.projects ?? []).find((project) => project.id === projectId) ?? null;
+  const project = (store.projects ?? []).find((item) => item.id === projectId);
+  return project ? withStyleSnapshot(project) : null;
 }
 
 export async function saveContentProject(input: {
   topic: string;
   brief: ContentBrief;
   accountSnapshot: AccountContext | null;
+  styleSnapshot?: StyleContract | null;
   channels?: ContentChannel[];
   channelDrafts?: ChannelDraft[];
 }) {
@@ -33,6 +36,7 @@ export async function saveContentProject(input: {
     id: `contentProjects_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     topic: input.topic,
     accountSnapshot: input.accountSnapshot,
+    styleSnapshot: input.styleSnapshot ?? null,
     selectedKnowledgeRefs: input.brief.citations,
     brief: input.brief,
     channels: input.channels ?? [],
@@ -46,6 +50,10 @@ export async function saveContentProject(input: {
     projects: [...(store.projects ?? []), project],
   }));
   return project;
+}
+
+function withStyleSnapshot(project: StoredContentProject): StoredContentProject {
+  return { ...project, styleSnapshot: project.styleSnapshot ?? null };
 }
 
 export async function replaceChannelDraft(projectId: string, draft: ChannelDraft) {
