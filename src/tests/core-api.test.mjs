@@ -15,6 +15,7 @@ const dataFiles = [
   "data/content-projects.local.json",
   "data/knowledge-sources.local.json",
   "data/style-profiles.local.json",
+  "data/style-feedback.local.json",
 ];
 const backups = new Map();
 const processes = [];
@@ -488,11 +489,27 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       new Set(["fact", "style", "platform"]),
     );
     assert.equal(result.body.review.issues.some((issue) => issue.autoFixable), true);
+    assert.equal(
+      result.body.review.issues.some((issue) => issue.origin === "deterministic" && issue.originalText === "深度赋能"),
+      true,
+    );
   });
 
   await context.test("one safe review suggestion can be applied and the draft can be edited", async () => {
     const reviewedDraft = project.channelDrafts.find((item) => item.channel === "wechat_article");
-    const issue = reviewedDraft.review.issues.find((item) => item.autoFixable);
+    const bannedIssue = reviewedDraft.review.issues.find((item) => item.originalText === "深度赋能");
+    const deterministicApplied = await requestJson(
+      `/api/content/projects/${project.id}/channels/wechat_article/review/issues/${bannedIssue.id}/apply`,
+      { method: "POST", body: {} },
+    );
+    assert.equal(deterministicApplied.response.status, 200);
+    assert.doesNotMatch(
+      deterministicApplied.body.project.channelDrafts.find((item) => item.channel === "wechat_article").content,
+      /深度赋能/,
+    );
+    project = deterministicApplied.body.project;
+
+    const issue = project.channelDrafts.find((item) => item.channel === "wechat_article").review.issues.find((item) => item.originalText === "价格误区");
     const applied = await requestJson(
       `/api/content/projects/${project.id}/channels/wechat_article/review/issues/${issue.id}/apply`,
       { method: "POST", body: {} },
@@ -502,6 +519,19 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       applied.body.project.channelDrafts.find((item) => item.channel === "wechat_article").content,
       /单价比较误区/,
     );
+    project = applied.body.project;
+
+    const ignoredIssue = project.channelDrafts.find((item) => item.channel === "wechat_article").review.issues.find((item) => item.category === "platform");
+    const ignored = await requestJson(
+      `/api/content/projects/${project.id}/channels/wechat_article/review/issues/${ignoredIssue.id}/ignore`,
+      { method: "POST", body: {} },
+    );
+    assert.equal(ignored.response.status, 200);
+    assert.equal(
+      ignored.body.project.channelDrafts.find((item) => item.channel === "wechat_article").review.issues.find((item) => item.id === ignoredIssue.id).status,
+      "ignored",
+    );
+    project = ignored.body.project;
 
     const editedContent = "公众号人工编辑终稿\n\n保留可追溯事实，并补充人工确认后的表达。";
     const edited = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article`, {
@@ -514,6 +544,12 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       editedContent,
     );
     project = edited.body.project;
+
+    const feedback = await requestJson("/api/style-profile/feedback");
+    assert.equal(feedback.response.status, 200);
+    assert.equal(feedback.body.feedback.some((item) => item.action === "issue_applied"), true);
+    assert.equal(feedback.body.feedback.some((item) => item.action === "issue_ignored"), true);
+    assert.equal(feedback.body.feedback.some((item) => item.action === "human_edit"), true);
   });
 
   await context.test("draft history survives reload, versions edits, and exports Markdown", async () => {

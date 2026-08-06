@@ -22,6 +22,7 @@ import {
   type StyleProfileInput,
   type StyleSourceRole,
 } from "../types";
+import type { StyleFeedbackRecord } from "../feedback";
 
 type SelectableSource = Omit<BriefKnowledgeSource, "text"> & { text?: string };
 type SelectedSource = BriefKnowledgeSource & { role: StyleSourceRole };
@@ -59,6 +60,7 @@ export function StyleProfileWorkspace({
   const [localItems, setLocalItems] = useState<LocalKnowledgeItem[]>([]);
   const [remoteItems, setRemoteItems] = useState<RemoteKnowledgeSource[]>([]);
   const [selected, setSelected] = useState<SelectedSource[]>([]);
+  const [feedback, setFeedback] = useState<StyleFeedbackRecord[]>([]);
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -71,9 +73,14 @@ export function StyleProfileWorkspace({
         .then((response) => response.json())
         .then((payload: { sources?: RemoteKnowledgeSource[] }) => payload.sources ?? [])
         .catch(() => []),
-    ]).then(([local, remote]) => {
+      fetch("/api/style-profile/feedback?limit=50", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload: { feedback?: StyleFeedbackRecord[] }) => payload.feedback ?? [])
+        .catch(() => []),
+    ]).then(([local, remote, feedbackItems]) => {
       setLocalItems(local);
       setRemoteItems(remote);
+      setFeedback(feedbackItems);
     });
   }, []);
 
@@ -150,6 +157,24 @@ export function StyleProfileWorkspace({
       setEditing(true);
       setMessage("已生成可编辑的风格档案。确认前不会影响内容创作。");
     });
+  }
+
+  function addFeedbackBatch() {
+    if (!feedback.length) return;
+    const source: SelectedSource = {
+      id: "style-feedback-latest",
+      title: `近期人工改稿与审核反馈（${Math.min(feedback.length, 20)} 条）`,
+      source: "upload",
+      role: "edit_feedback",
+      text: feedback.slice(0, 20).map((item, index) => [
+        `反馈 ${index + 1}：${feedbackActionLabel(item.action)}，渠道 ${channelLabels[item.channel]}`,
+        item.issueTitle ? `问题：${item.issueTitle}` : "",
+        `原文：${item.originalText}`,
+        `用户保留或修改后：${item.revisedText}`,
+      ].filter(Boolean).join("\n")).join("\n\n"),
+    };
+    setSelected((items) => [...items.filter((item) => item.id !== source.id), source]);
+    setMessage("近期人工改稿和审核选择已加入本次分析资料。确认新档案前，当前版本继续生效。");
   }
 
   async function persist(action: "save" | "confirm") {
@@ -231,6 +256,7 @@ export function StyleProfileWorkspace({
             <div className="flex gap-2"><input className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-700" value={feishuUrl} onChange={(event) => setFeishuUrl(event.target.value)} placeholder="粘贴飞书文档或多维表格链接" /><button className={secondaryButtonClass} disabled={Boolean(busy)} onClick={addFeishuUrl} type="button">读取</button></div>
             <label className={`${secondaryButtonClass} cursor-pointer`}><input className="hidden" multiple accept=".md,.txt,.csv" type="file" onChange={(event) => uploadFiles(event.target.files)} />临时上传资料</label>
             <Link className={`${secondaryButtonClass} text-center`} href="/knowledge">管理知识库连接</Link>
+            <button className={secondaryButtonClass} disabled={!feedback.length || Boolean(busy)} onClick={addFeedbackBatch} type="button">{feedback.length ? `加入近期改稿反馈（${feedback.length}）` : "还没有改稿反馈"}</button>
           </div>
         </div>
 
@@ -273,3 +299,4 @@ function localToSource(item: LocalKnowledgeItem): SelectableSource { return { id
 function remoteToSource(item: RemoteKnowledgeSource): SelectableSource { return { id: item.id, title: item.title, source: item.source, url: item.url }; }
 function inferRole(source: Pick<SelectableSource, "title" | "path">): StyleSourceRole { const value = `${source.title} ${source.path ?? ""}`; if (/禁用|禁止|黑名单|AI味/.test(value)) return "banned_phrases"; if (/改稿|反馈|修改记录|偏好/.test(value)) return "edit_feedback"; if (/风格|表达|写作指南|叙事/.test(value)) return "style_guide"; return "approved_sample"; }
 function sourceLabel(source: BriefKnowledgeSource["source"]) { return source === "local" ? "本地文件" : source === "upload" ? "临时上传" : source === "base" ? "飞书多维表格" : "飞书文档"; }
+function feedbackActionLabel(action: StyleFeedbackRecord["action"]) { return { issue_applied: "采纳审核建议", issue_ignored: "明确保留原表达", human_edit: "人工改稿" }[action]; }

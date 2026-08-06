@@ -2,6 +2,8 @@ import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import { isContentChannel, type ContentChannel, type ContentProject } from "@/modules/content/types";
 import { normalizeBriefList } from "@/modules/content/server/normalize-brief-list";
+import { appendStyleFeedback } from "@/modules/style-profile/server/feedback-repository";
+import type { StyleContract } from "@/modules/style-profile/types";
 import type {
   ContentLibraryItem,
   ContentPublication,
@@ -67,6 +69,8 @@ export async function updateContentDraft(input: {
 }): Promise<ContentDraft | null> {
   const nextContent = input.content;
   let updatedDraft: ContentDraft | null = null;
+  let feedbackOriginalText = "";
+  let feedbackStyleSnapshot: StyleContract | null = null;
 
   await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
     projects: (store.projects ?? []).map((project) => {
@@ -81,6 +85,8 @@ export async function updateContentDraft(input: {
       }
 
       const now = new Date().toISOString();
+      feedbackOriginalText = existingChannel.content;
+      feedbackStyleSnapshot = draft.styleSnapshot;
       const version: DraftVersion = {
         id: `draftVersions_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         channel: input.channel,
@@ -101,6 +107,17 @@ export async function updateContentDraft(input: {
       return updatedDraft;
     }),
   }));
+
+  if (feedbackOriginalText) {
+    await appendStyleFeedback({
+      projectId: input.draftId,
+      channel: input.channel,
+      action: "human_edit",
+      styleSnapshot: feedbackStyleSnapshot,
+      originalText: feedbackOriginalText,
+      revisedText: nextContent,
+    });
+  }
 
   return updatedDraft;
 }

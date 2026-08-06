@@ -300,6 +300,19 @@ export function ContentCreationWorkspace({ initialStyleProfile }: { initialStyle
     });
   }
 
+  async function ignoreIssue(channel: ContentChannel, issueId: string) {
+    if (!project) return false;
+    return run(`ignore:${issueId}`, async () => {
+      const payload = await postJson<{ project?: ContentProject; error?: string }>(
+        `/api/content/projects/${encodeURIComponent(project.id)}/channels/${channel}/review/issues/${encodeURIComponent(issueId)}/ignore`,
+        {},
+      );
+      if (!payload.project) throw new Error("审核问题忽略失败。");
+      setProject(payload.project);
+      setMessage("已记录你的判断，后续更新风格档案时可以作为反馈依据。");
+    });
+  }
+
   async function generateXiaohongshuImages(assetId?: string) {
     if (!project) return false;
     return run(assetId ? `image:${assetId}` : "images", async () => {
@@ -639,6 +652,7 @@ export function ContentCreationWorkspace({ initialStyleProfile }: { initialStyle
                 drafts={project.channelDrafts}
                 generatingChannels={generatingChannels}
                 onApplyIssue={applyIssue}
+                onIgnoreIssue={ignoreIssue}
                 onGenerate={generateChannels}
                 onGenerateImages={generateXiaohongshuImages}
                 onSaveVisualAsset={saveXiaohongshuVisualAsset}
@@ -668,6 +682,7 @@ function ChannelGenerationPanel({
   drafts,
   generatingChannels,
   onApplyIssue,
+  onIgnoreIssue,
   onGenerate,
   onGenerateImages,
   onSaveVisualAsset,
@@ -686,6 +701,7 @@ function ChannelGenerationPanel({
   drafts: ChannelDraft[];
   generatingChannels: ContentChannel[];
   onApplyIssue: (channel: ContentChannel, issueId: string) => Promise<boolean>;
+  onIgnoreIssue: (channel: ContentChannel, issueId: string) => Promise<boolean>;
   onGenerate: () => void;
   onGenerateImages: (assetId?: string) => Promise<boolean>;
   onSaveVisualAsset: (
@@ -737,6 +753,13 @@ function ChannelGenerationPanel({
     if (await onApplyIssue(activeDraft.channel, issue.id)) {
       clearEditorOverride(activeDraft.channel);
       setActionNotice("建议已应用");
+    }
+  }
+
+  async function ignoreActiveIssue(issue: ReviewIssue) {
+    if (!activeDraft) return;
+    if (await onIgnoreIssue(activeDraft.channel, issue.id)) {
+      setActionNotice("已忽略并记录反馈");
     }
   }
 
@@ -869,6 +892,7 @@ function ChannelGenerationPanel({
                       dirty={dirty}
                       draft={activeDraft}
                       onApply={applyActiveIssue}
+                      onIgnore={ignoreActiveIssue}
                     />
                   </div>
                 )}
@@ -1099,11 +1123,13 @@ function ReviewResult({
   dirty,
   draft,
   onApply,
+  onIgnore,
 }: {
   busy: string | null;
   dirty: boolean;
   draft: ChannelDraft;
   onApply: (issue: ReviewIssue) => void;
+  onIgnore: (issue: ReviewIssue) => void;
 }) {
   const review = draft.review;
   if (!review) {
@@ -1136,22 +1162,15 @@ function ReviewResult({
                 <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{reviewCategoryLabel(issue.category)}</span>
                 <span className={`text-[10px] font-semibold ${riskTextClass(issue.severity)}`}>{riskLabel(issue.severity)}</span>
                 {issue.requiresConfirmation ? <span className="text-[10px] font-semibold text-amber-700">需人工确认</span> : null}
+                <span className="text-[10px] font-semibold text-slate-400">{issue.origin === "deterministic" ? "规则检查" : "AI 语义复核"}</span>
                 {issue.status === "applied" ? <span className="text-[10px] font-semibold text-emerald-800">已应用</span> : null}
+                {issue.status === "ignored" ? <span className="text-[10px] font-semibold text-slate-500">已忽略</span> : null}
               </div>
               <h5 className="mt-2 text-xs font-semibold text-slate-800">{issue.title}</h5>
               <p className="mt-1 text-xs leading-5 text-slate-600">{issue.description}</p>
               {issue.originalText ? <blockquote className="mt-2 rounded-lg border-l-2 border-slate-300 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">原文：{issue.originalText}</blockquote> : null}
               {issue.suggestedText ? <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-900">建议：{issue.suggestedText}</p> : null}
-              {issue.autoFixable && issue.status === "open" ? (
-                <button
-                  className={`${secondaryButtonClass} mt-3`}
-                  disabled={busy !== null || dirty || stale}
-                  onClick={() => onApply(issue)}
-                  type="button"
-                >
-                  {busy === `apply:${issue.id}` ? "应用中" : "应用这条建议"}
-                </button>
-              ) : issue.status === "open" ? <p className="mt-2 text-[11px] text-slate-400">请在上方编辑框中人工调整。</p> : null}
+              {issue.status === "open" ? <div className="mt-3 flex flex-wrap items-center gap-2">{issue.autoFixable ? <button className={secondaryButtonClass} disabled={busy !== null || dirty || stale} onClick={() => onApply(issue)} type="button">{busy === `apply:${issue.id}` ? "应用中" : "应用这条建议"}</button> : <p className="text-[11px] text-slate-400">请在上方编辑框中人工调整。</p>}<button className="text-xs font-semibold text-slate-400 hover:text-slate-700 disabled:opacity-50" disabled={busy !== null || dirty || stale} onClick={() => onIgnore(issue)} type="button">{busy === `ignore:${issue.id}` ? "记录中" : "这条不用改"}</button></div> : null}
             </article>
           ))}
         </div>
