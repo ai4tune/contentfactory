@@ -21,6 +21,7 @@ import {
 import type { LocalKnowledgeItem } from "@/modules/knowledge/types";
 import type { ReviewIssue, ReviewIssueCategory, ReviewRiskLevel } from "@/modules/reviews/types";
 import type { TopicSuggestion } from "@/modules/topics/types";
+import type { StyleProfile } from "@/modules/style-profile/types";
 
 type KnowledgeSource = {
   id: string;
@@ -33,11 +34,12 @@ type KnowledgeSource = {
 
 type CreationMode = "original" | "viral_rewrite";
 
-export function ContentCreationWorkspace() {
+export function ContentCreationWorkspace({ initialStyleProfile }: { initialStyleProfile: StyleProfile | null }) {
   const [creationMode, setCreationMode] = useState<CreationMode>("original");
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [topic, setTopic] = useState("");
+  const [temporaryStyle, setTemporaryStyle] = useState("");
   const [searchItems, setSearchItems] = useState<KnowledgeSource[]>([]);
   const [selectedSources, setSelectedSources] = useState<KnowledgeSource[]>([]);
   const [inspirations, setInspirations] = useState<ContentInspirationReference[]>([]);
@@ -183,7 +185,7 @@ export function ContentCreationWorkspace() {
     await run("suggest", async () => {
       const payload = await postJson<{ suggestions?: TopicSuggestion[]; error?: string }>(
         "/api/topics/suggest",
-        { sources: selectedSources },
+        { sources: selectedSources, temporaryStyleInstructions: lines(temporaryStyle) },
       );
       setSuggestions(Array.from(
         new Map((payload.suggestions ?? []).map((suggestion) => [suggestion.title, suggestion])).values(),
@@ -206,6 +208,7 @@ export function ContentCreationWorkspace() {
           topic,
           sources: selectedSources,
           inspirationId: creationMode === "viral_rewrite" ? selectedInspirationId : undefined,
+          temporaryStyleInstructions: lines(temporaryStyle),
         },
       );
       if (!payload.brief) throw new Error("没有生成可用的内容简报。");
@@ -219,7 +222,7 @@ export function ContentCreationWorkspace() {
     await run("confirm", async () => {
       const payload = await postJson<{ project?: ContentProject; error?: string }>(
         "/api/content/projects",
-        { topic, brief },
+        { topic, brief, temporaryStyleInstructions: lines(temporaryStyle) },
       );
       if (!payload.project) throw new Error("内容项目保存失败。");
       setProject(payload.project);
@@ -520,6 +523,22 @@ export function ContentCreationWorkspace() {
               : "输入预期标题，也可以先留空并点击“推荐一批”"}
             value={topic}
           />
+          <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-700">本次临时风格（可选）</summary>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+              {initialStyleProfile
+                ? `默认使用“${initialStyleProfile.name}” v${initialStyleProfile.version}。这里的要求只影响本次内容，不会改写默认风格。`
+                : "当前还没有确认写作风格。可以先填写本次要求，之后再到当前账号建立默认风格。"}
+            </p>
+            <textarea
+              className="mt-3 min-h-20 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs leading-5 outline-none focus:border-emerald-800"
+              disabled={busy !== null || Boolean(project)}
+              onChange={(event) => { setTemporaryStyle(event.target.value); setBrief(null); setProject(null); }}
+              placeholder="例如：这次更像一段真实复盘；少用行业术语；开头先讲我踩过的坑。每行一项。"
+              value={temporaryStyle}
+            />
+            {!initialStyleProfile ? <Link className="mt-2 inline-block text-xs font-semibold text-emerald-800 hover:underline" href="/style-profile">建立默认写作风格</Link> : null}
+          </details>
           {!hasKnowledge ? (
             <p className="mt-2 text-xs text-slate-400">
               {creationMode === "viral_rewrite"
@@ -1239,6 +1258,10 @@ function InputSection({ title, meta, children }: { title: string; meta?: string;
 
 function sourceLabel(source: KnowledgeSource["source"]) {
   return { local: "本地文件夹", feishu: "飞书文档", base: "飞书多维表格", upload: "兼容上传" }[source];
+}
+
+function lines(value: string) {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
 }
 
 function reviewCategoryLabel(category: ReviewIssueCategory) {

@@ -7,6 +7,8 @@ import {
 import { normalizeContentBrief, normalizeKnowledgeSources } from "@/modules/content/server/request";
 import { isContentChannel, type GenerateChannelsRequest } from "@/modules/content/types";
 import { getActiveAccountContext } from "@/modules/positioning/service";
+import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
+import { getActiveStyleContract } from "@/modules/style-profile/service";
 
 export const runtime = "nodejs";
 
@@ -42,8 +44,15 @@ export async function POST(
       return NextResponse.json({ error: "The knowledge sources used by this brief are required" }, { status: 400 });
     }
 
-    const accountContext = existingProject?.accountSnapshot ?? await getActiveAccountContext();
-    const draft = await generateChannelDraft({ channel, brief, sources, accountContext });
+    const [accountContext, styleContract] = existingProject
+      ? [existingProject.accountSnapshot, existingProject.styleSnapshot]
+      : await Promise.all([
+          getActiveAccountContext(),
+          getActiveStyleContract({
+            temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
+          }),
+        ]);
+    const draft = await generateChannelDraft({ channel, brief, sources, accountContext, styleContract });
 
     if (body.projectId) {
       const project = await replaceChannelDraft(body.projectId, draft);

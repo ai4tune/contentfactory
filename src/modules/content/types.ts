@@ -110,6 +110,7 @@ export type GenerateChannelsRequest = {
   brief: ContentBrief;
   sources: BriefKnowledgeSource[];
   projectId?: string;
+  temporaryStyleInstructions?: string[];
 };
 
 export function isContentChannel(value: unknown): value is ContentChannel {

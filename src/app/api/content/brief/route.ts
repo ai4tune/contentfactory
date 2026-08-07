@@ -3,6 +3,8 @@ import { createContentBrief } from "@/modules/content/server/brief-service";
 import { normalizeKnowledgeSources } from "@/modules/content/server/request";
 import { getInspirationReference } from "@/modules/inspirations/service";
 import { getActiveAccountContext } from "@/modules/positioning/service";
+import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
+import { getActiveStyleContract } from "@/modules/style-profile/service";
 
 export const runtime = "nodejs";
 
@@ -12,6 +14,7 @@ export async function POST(request: Request) {
       topic?: unknown;
       sources?: unknown;
       inspirationId?: unknown;
+      temporaryStyleInstructions?: unknown;
     };
     const topic = String(body.topic ?? "").trim();
     const sources = normalizeKnowledgeSources(body.sources);
@@ -27,12 +30,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const brief = await createContentBrief(
-      topic,
-      await getActiveAccountContext(),
-      sources,
-      inspiration,
-    );
+    const [account, styleContract] = await Promise.all([
+      getActiveAccountContext(),
+      getActiveStyleContract({
+        temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
+      }),
+    ]);
+    const brief = await createContentBrief(topic, account, sources, inspiration, styleContract);
     return NextResponse.json({ brief });
   } catch (error) {
     return NextResponse.json(

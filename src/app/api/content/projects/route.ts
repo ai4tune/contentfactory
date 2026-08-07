@@ -3,12 +3,13 @@ import { saveContentProject } from "@/modules/content/server/project-repository"
 import { normalizeContentBrief } from "@/modules/content/server/request";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
+import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { topic?: unknown; brief?: unknown };
+    const body = (await request.json()) as { topic?: unknown; brief?: unknown; temporaryStyleInstructions?: unknown };
     const topic = String(body.topic ?? "").trim();
     const brief = normalizeContentBrief(body.brief);
     if (!topic || !brief) {
@@ -17,7 +18,9 @@ export async function POST(request: Request) {
 
     const [accountSnapshot, styleSnapshot] = await Promise.all([
       getActiveAccountContext(),
-      getActiveStyleContract(),
+      getActiveStyleContract({
+        temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
+      }),
     ]);
     const project = await saveContentProject({
       topic,

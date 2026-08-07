@@ -182,10 +182,11 @@ function mockCompletion(system, user) {
   }
 
   if (system.includes("内容选题编辑")) {
+    const hasStyle = user.includes("风格档案:");
     return {
       suggestions: [
         {
-          title: "SPC 地板选购为什么不能只看价格？",
+          title: hasStyle ? "后来我发现，SPC 地板选购不能只看价格" : "SPC 地板选购为什么不能只看价格？",
           angle: "装修决策避坑",
           rationale: "资料给出了空间、基层、安装与售后四个判断维度",
           sourceIds: [readSourceId(user)],
@@ -213,10 +214,11 @@ function mockCompletion(system, user) {
   }
 
   if (system.includes("内容策略编辑")) {
+    const hasStyle = user.includes("风格档案:");
     return {
       targetAudience: "第一次装修、需要选择地板的家庭",
       contentGoal: "帮助读者建立完整选购清单并发起专业咨询",
-      coreMessage: "SPC 地板决策应同时考虑空间、基层、安装和售后，不能只比较单价。",
+      coreMessage: `${hasStyle ? "后来我发现，" : ""}SPC 地板决策应同时考虑空间、基层、安装和售后，不能只比较单价。`,
       keyPoints: ["先确认使用空间", "检查基层与安装条件", "明确售后边界"],
       outline: [
         { heading: "价格误区", points: ["为什么不能只比较单价"] },
@@ -273,7 +275,7 @@ function mockCompletion(system, user) {
   }
 
   if (system.includes("公众号文章编辑")) {
-    return { content: "公众号文章\n\n标题：SPC 地板选购不能只看价格\n摘要：用四项清单完成装修决策。\n\n一、价格误区\n二、空间与基层\n三、安装和售后\n\n结论：带着条件清单再咨询。" };
+    return { content: `公众号文章\n\n标题：SPC 地板选购不能只看价格\n摘要：用四项清单完成装修决策。\n\n${user.includes("风格档案:") ? "后来我发现，" : ""}一、价格误区\n二、空间与基层\n三、安装和售后\n\n结论：带着条件清单再咨询。` };
   }
   if (system.includes("小红书文案编辑")) {
     return { content: "小红书笔记\n标题1：选 SPC 地板别只看价格\n标题2：装修小白的四项清单\n前三行钩子：低价不等于省钱。\n正文：空间、基层、安装、售后逐项确认。\n#装修避坑 #SPC地板" };

@@ -1,11 +1,14 @@
 import { chatCompletionJson, parseJsonObject } from "@/lib/ai";
 import type { BriefKnowledgeSource } from "@/modules/content/types";
 import type { AccountContext } from "@/modules/positioning/types";
+import { formatStyleContractForPrompt } from "@/modules/style-profile/prompt";
+import type { StyleContract } from "@/modules/style-profile/types";
 import type { TopicSuggestion } from "./types";
 
 export async function suggestTopics(
   account: AccountContext | null,
   sources: BriefKnowledgeSource[],
+  styleContract: StyleContract | null = null,
 ): Promise<TopicSuggestion[]> {
   const sourceContext = sources
     .map((source) => `[${source.id}] ${source.title}\n${source.text.slice(0, 3500)}`)
@@ -23,6 +26,8 @@ export async function suggestTopics(
         `目标人群: ${account?.targetAudience.join("、") || "待判断"}`,
         `产品/服务: ${account?.offer || "待判断"}`,
         `内容方向: ${account?.contentDirections.join("、") || "待判断"}`,
+        "写作风格约束:",
+        formatStyleContractForPrompt(styleContract),
         "已选知识:",
         sourceContext,
       ].join("\n"),
