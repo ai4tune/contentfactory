@@ -14,6 +14,7 @@ const dataFiles = [
   "data/contentfactory.local.json",
   "data/content-projects.local.json",
   "data/knowledge-sources.local.json",
+  "data/style-profiles.local.json",
 ];
 const backups = new Map();
 const processes = [];
@@ -145,6 +146,40 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(updated.response.status, 200);
     assert.deepEqual(updated.body.context.brandVoice, ["专业", "真诚", "少说套话"]);
     assert.deepEqual(updated.body.context.analysisEvidence, current.body.context.analysisEvidence);
+  });
+
+  await context.test("a confirmed style profile requires evidence and can be reused", async () => {
+    const profile = acceptanceStyleProfile();
+    const invalid = await requestJson("/api/style-profile/current", {
+      method: "PATCH",
+      body: {
+        action: "confirm",
+        profile: { ...profile, rules: profile.rules.map((rule) => ({ ...rule, evidence: [] })) },
+      },
+    });
+    assert.equal(invalid.response.status, 422);
+    assert.match(invalid.body.issues[0], /原文依据/);
+
+    const confirmed = await requestJson("/api/style-profile/current", {
+      method: "PATCH",
+      body: { action: "confirm", profile },
+    });
+    assert.equal(confirmed.response.status, 200);
+    assert.equal(confirmed.body.profile.status, "confirmed");
+    assert.equal(confirmed.body.profile.version, 1);
+
+    const current = await requestJson("/api/style-profile/current");
+    assert.equal(current.body.profile.name, "验收账号默认风格");
+    assert.equal(current.body.profile.rules[0].evidence[0].sourceId, "style-source-001");
+
+    const draftProfile = acceptanceStyleProfile();
+    draftProfile.tone = [...draftProfile.tone, "更口语"];
+    const savedDraft = await requestJson("/api/style-profile/current", {
+      method: "PATCH",
+      body: { action: "save", profile: draftProfile },
+    });
+    assert.equal(savedDraft.body.profile.status, "draft");
+    assert.equal(savedDraft.body.profile.version, 2);
   });
 
   await context.test("knowledge source API responds without copying a local directory", async () => {
@@ -310,6 +345,21 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     project = result.body.project;
     assert.equal(project.status, "brief_confirmed");
     assert.equal(project.accountSnapshot.status, "confirmed");
+    assert.equal(project.styleSnapshot.profileVersion, 1);
+    assert.equal(project.styleSnapshot.hardRules[0].evidence[0].sourceTitle, "验收风格指南");
+    assert.deepEqual(project.styleSnapshot.bannedPhrases, ["深度赋能"]);
+
+    const nextProfile = acceptanceStyleProfile();
+    nextProfile.bannedPhrases = ["深度赋能", "革命性"];
+    const updatedStyle = await requestJson("/api/style-profile/current", {
+      method: "PATCH",
+      body: { action: "confirm", profile: nextProfile },
+    });
+    assert.equal(updatedStyle.body.profile.version, 3);
+
+    const unchangedProject = await requestJson(`/api/content-drafts/${project.id}`);
+    assert.equal(unchangedProject.body.draft.styleSnapshot.profileVersion, 1);
+    assert.deepEqual(unchangedProject.body.draft.styleSnapshot.bannedPhrases, ["深度赋能"]);
   });
 
   await context.test("one project generates four structurally distinct channel drafts", async () => {
@@ -562,14 +612,21 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   await context.test("legacy object placeholders are removed when a saved draft is read", async () => {
     const projectStorePath = path.join(repositoryRoot, "data/content-projects.local.json");
     const store = JSON.parse(await readFile(projectStorePath, "utf8"));
-    store.projects = store.projects.map((item) => item.id === project.id
-      ? { ...item, brief: { ...item.brief, outline: ["[object Object]", "[object Object]"] } }
-      : item);
+    store.projects = store.projects.map((item) => {
+      if (item.id !== project.id) return item;
+      const { styleSnapshot, ...legacyProject } = item;
+      void styleSnapshot;
+      return {
+        ...legacyProject,
+        brief: { ...legacyProject.brief, outline: ["[object Object]", "[object Object]"] },
+      };
+    });
     await writeFile(projectStorePath, JSON.stringify(store, null, 2));
 
     const result = await requestJson(`/api/content-drafts/${project.id}`);
     assert.equal(result.response.status, 200);
     assert.deepEqual(result.body.draft.brief.outline, []);
+    assert.equal(result.body.draft.styleSnapshot, null);
   });
 
   await context.test("account capture rejects unknown callers, then supports preview and confirm", async () => {
@@ -652,6 +709,47 @@ async function loadAcceptanceSource() {
 
 function acceptanceTopic() {
   return process.env.ACCEPTANCE_TOPIC || "SPC 地板选购为什么不能只看价格？";
+}
+
+function acceptanceStyleProfile() {
+  return {
+    name: "验收账号默认风格",
+    persona: "做过真实项目、能把技术讲明白的建材与 AI 实践者",
+    readerRelationship: "像和熟悉的同行复盘刚完成的真实工作",
+    values: ["事实优先", "给出具体下一步"],
+    tone: ["真诚", "克制", "技术人讲人话"],
+    rules: [{
+      id: "style-rule-001",
+      category: "rhythm",
+      priority: "hard",
+      instruction: "公众号正文使用自然段，不把完整口语拆成密集短句。",
+      evidence: [{
+        sourceId: "style-source-001",
+        excerpt: "不要大量使用一句一段的短句结构。",
+        note: "人工改稿后确认的高优先级规则",
+      }],
+    }],
+    preferredPhrases: ["后来我发现"],
+    bannedPhrases: ["深度赋能"],
+    channelOverrides: {
+      moments_post: ["像本人分享最近观察，不写成总结报告。"],
+    },
+    examples: [{
+      id: "style-example-001",
+      sourceId: "style-source-001",
+      title: "自然讲述样例",
+      excerpt: "我之前一直以为工具选对就够了，后来真正到企业里跑了一遍，才发现问题往往不在工具。",
+      purpose: "展示自然转折和第一人称判断",
+      channel: "wechat_article",
+    }],
+    sources: [{
+      id: "style-source-001",
+      title: "验收风格指南",
+      sourceType: "local",
+      role: "style_guide",
+      path: "/acceptance/style-guide.md",
+    }],
+  };
 }
 
 async function requestJson(route, options = {}) {

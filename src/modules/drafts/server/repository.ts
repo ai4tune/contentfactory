@@ -191,6 +191,7 @@ export function parseDraftFilters(values: {
 function normalizeDraft(project: ContentProject & Partial<ContentDraft>): ContentDraft {
   return {
     ...project,
+    styleSnapshot: project.styleSnapshot ?? null,
     brief: {
       ...project.brief,
       keyPoints: normalizeBriefList(project.brief.keyPoints),

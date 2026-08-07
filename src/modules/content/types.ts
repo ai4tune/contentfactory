@@ -1,5 +1,6 @@
 import type { AccountContext } from "@/modules/positioning/types";
 import type { ChannelReview } from "@/modules/reviews/types";
+import type { StyleContract } from "@/modules/style-profile/types";
 
 export type BriefKnowledgeSource = {
   id: string;
@@ -93,6 +94,7 @@ export type ContentProject = {
   id: string;
   topic: string;
   accountSnapshot: AccountContext | null;
+  styleSnapshot: StyleContract | null;
   selectedKnowledgeRefs: ContentCitation[];
   brief: ContentBrief;
   channels: ContentChannel[];

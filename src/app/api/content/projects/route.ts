@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { saveContentProject } from "@/modules/content/server/project-repository";
 import { normalizeContentBrief } from "@/modules/content/server/request";
 import { getActiveAccountContext } from "@/modules/positioning/service";
+import { getActiveStyleContract } from "@/modules/style-profile/service";
 
 export const runtime = "nodejs";
 
@@ -14,10 +15,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "请先完成并确认内容简报。" }, { status: 400 });
     }
 
+    const [accountSnapshot, styleSnapshot] = await Promise.all([
+      getActiveAccountContext(),
+      getActiveStyleContract(),
+    ]);
     const project = await saveContentProject({
       topic,
       brief,
-      accountSnapshot: await getActiveAccountContext(),
+      accountSnapshot,
+      styleSnapshot,
     });
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
