@@ -275,7 +275,7 @@ function mockCompletion(system, user) {
   }
 
   if (system.includes("公众号文章编辑")) {
-    return { content: `公众号文章\n\n标题：SPC 地板选购不能只看价格\n摘要：用四项清单完成装修决策。\n\n${user.includes("风格档案:") ? "后来我发现，" : ""}一、价格误区\n二、空间与基层\n三、安装和售后\n\n结论：带着条件清单再咨询。` };
+    return { content: `公众号文章\n\n标题：SPC 地板选购不能只看价格\n摘要：用四项清单深度赋能装修决策。\n\n${user.includes("风格档案:") ? "后来我发现，" : ""}一、价格误区\n二、空间与基层\n三、安装和售后\n\n结论：带着条件清单再咨询。` };
   }
   if (system.includes("小红书文案编辑")) {
     return { content: "小红书笔记\n标题1：选 SPC 地板别只看价格\n标题2：装修小白的四项清单\n前三行钩子：低价不等于省钱。\n正文：空间、基层、安装、售后逐项确认。\n#装修避坑 #SPC地板" };

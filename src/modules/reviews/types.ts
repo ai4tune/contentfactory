@@ -14,7 +14,8 @@ export type ReviewIssue = {
   suggestedText: string;
   autoFixable: boolean;
   requiresConfirmation: boolean;
-  status: "open" | "applied";
+  origin: "deterministic" | "ai";
+  status: "open" | "applied" | "ignored";
 };
 
 export type ChannelReview = {

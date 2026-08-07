@@ -2,6 +2,7 @@ import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import type { ContentChannel, ContentProject } from "@/modules/content/types";
 import type { ChannelReview } from "../types";
+import { appendStyleFeedback } from "@/modules/style-profile/server/feedback-repository";
 
 type ProjectStore = { projects: ContentProject[] };
 
@@ -38,8 +39,10 @@ export async function saveEditedChannel(
   content: string,
 ) {
   const normalizedContent = content.trim();
-  return updateChannel(projectId, channel, (project, draft) => {
+  let originalContent = "";
+  const project = await updateChannel(projectId, channel, (project, draft) => {
     if (draft.content === normalizedContent) return project;
+    originalContent = draft.content;
     const now = new Date().toISOString();
     return {
       ...project,
@@ -49,6 +52,17 @@ export async function saveEditedChannel(
       updatedAt: now,
     };
   });
+  if (originalContent) {
+    await appendStyleFeedback({
+      projectId,
+      channel,
+      action: "human_edit",
+      styleSnapshot: project.styleSnapshot,
+      originalText: originalContent,
+      revisedText: normalizedContent,
+    });
+  }
+  return project;
 }
 
 export async function applyReviewIssue(
@@ -56,7 +70,11 @@ export async function applyReviewIssue(
   channel: ContentChannel,
   issueId: string,
 ) {
-  return updateChannel(projectId, channel, (project, draft) => {
+  let appliedIssueId = "";
+  let appliedIssueTitle = "";
+  let appliedOriginalText = "";
+  let appliedSuggestedText = "";
+  const project = await updateChannel(projectId, channel, (project, draft) => {
     const review = draft.review;
     const issue = review?.issues.find((item) => item.id === issueId);
     if (!review || !issue) throw new ReviewUpdateError("Review issue not found", 404);
@@ -79,6 +97,10 @@ export async function applyReviewIssue(
       draft.content.slice(matchIndex + issue.originalText.length),
     ].join("");
     const now = new Date().toISOString();
+    appliedIssueId = issue.id;
+    appliedIssueTitle = issue.title;
+    appliedOriginalText = issue.originalText;
+    appliedSuggestedText = issue.suggestedText;
     return {
       ...project,
       channelDrafts: project.channelDrafts.map((item) => item.channel === channel
@@ -98,6 +120,71 @@ export async function applyReviewIssue(
       updatedAt: now,
     };
   });
+  if (appliedIssueId) {
+    await appendStyleFeedback({
+      projectId,
+      channel,
+      action: "issue_applied",
+      styleSnapshot: project.styleSnapshot,
+      issueId: appliedIssueId,
+      issueTitle: appliedIssueTitle,
+      originalText: appliedOriginalText,
+      revisedText: appliedSuggestedText,
+    });
+  }
+  return project;
+}
+
+export async function ignoreReviewIssue(
+  projectId: string,
+  channel: ContentChannel,
+  issueId: string,
+) {
+  let ignoredIssueId = "";
+  let ignoredIssueTitle = "";
+  let ignoredOriginalText = "";
+  const project = await updateChannel(projectId, channel, (project, draft) => {
+    const review = draft.review;
+    const issue = review?.issues.find((item) => item.id === issueId);
+    if (!review || !issue) throw new ReviewUpdateError("Review issue not found", 404);
+    if (issue.status !== "open") return project;
+    if (review.reviewedContent !== draft.content) {
+      throw new ReviewUpdateError("The draft has changed. Run the review again before ignoring this issue", 409);
+    }
+    ignoredIssueId = issue.id;
+    ignoredIssueTitle = issue.title;
+    ignoredOriginalText = issue.originalText;
+    const now = new Date().toISOString();
+    return {
+      ...project,
+      channelDrafts: project.channelDrafts.map((item) => item.channel === channel
+        ? {
+            ...draft,
+            review: {
+              ...review,
+              issues: review.issues.map((reviewIssue) => reviewIssue.id === issueId
+                ? { ...reviewIssue, status: "ignored" as const }
+                : reviewIssue),
+            },
+            updatedAt: now,
+          }
+        : item),
+      updatedAt: now,
+    };
+  });
+  if (ignoredIssueId) {
+    await appendStyleFeedback({
+      projectId,
+      channel,
+      action: "issue_ignored",
+      styleSnapshot: project.styleSnapshot,
+      issueId: ignoredIssueId,
+      issueTitle: ignoredIssueTitle,
+      originalText: ignoredOriginalText,
+      revisedText: ignoredOriginalText,
+    });
+  }
+  return project;
 }
 
 async function updateChannel(
@@ -107,7 +194,7 @@ async function updateChannel(
     project: ContentProject,
     draft: ContentProject["channelDrafts"][number],
   ) => ContentProject,
-) {
+): Promise<ContentProject> {
   let updatedProject: ContentProject | null = null;
 
   await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
@@ -123,7 +210,7 @@ async function updateChannel(
   }));
 
   if (!updatedProject) throw new ReviewUpdateError("Content project not found", 404);
-  return updatedProject;
+  return updatedProject as ContentProject;
 }
 
 export async function readReviewProject(projectId: string) {
