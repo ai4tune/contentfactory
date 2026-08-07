@@ -5,6 +5,7 @@ const navItems = [
   { label: "首页", href: "/", mark: "首" },
   { label: "内容创作", href: "/create", mark: "创" },
   { label: "当前账号", href: "/positioning", mark: "账" },
+  { label: "个人风格", href: "/style-profile", mark: "风" },
   { label: "知识库", href: "/knowledge", mark: "知" },
   { label: "草稿历史", href: "/drafts", mark: "稿" },
   { label: "内容库", href: "/articles", mark: "库" },
