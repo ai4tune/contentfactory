@@ -191,7 +191,7 @@ export function StyleProfileWorkspace({
   const displayProfile = profile?.status === "confirmed" ? profile : confirmedProfile;
 
   return (
-    <AppShell active="/positioning">
+    <AppShell active="/style-profile">
       <PageHeader
         eyebrow="WRITING STYLE"
         title="写作风格"
