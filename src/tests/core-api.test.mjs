@@ -247,8 +247,23 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(analyzed.body.record.metrics.likes.value, 3200);
     assert.equal(analyzed.body.record.metrics.collects.value, 980);
 
+    const captureOrigin = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+    const preflight = await fetch(`${baseUrl}/api/capture/import`, {
+      method: "OPTIONS",
+      headers: { Origin: captureOrigin },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), captureOrigin);
+
+    const unauthorizedCapture = await requestJson("/api/capture/import", {
+      method: "POST",
+      body: { platform: "小红书", title: "未授权采集", content: "正文" },
+    });
+    assert.equal(unauthorizedCapture.response.status, 403);
+
     const recaptured = await requestJson("/api/capture/import", {
       method: "POST",
+      headers: { Origin: captureOrigin },
       body: {
         platform: "小红书",
         sourceUrl: "https://www.xiaohongshu.com/explore/acceptance?xsec_token=temporary",
@@ -265,6 +280,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       },
     });
     assert.equal(recaptured.response.status, 200);
+    assert.equal(recaptured.response.headers.get("access-control-allow-origin"), captureOrigin);
     assert.equal(recaptured.body.operation, "updated");
     assert.equal(recaptured.body.record.id, analyzed.body.record.id);
     assert.equal(recaptured.body.record.metricSnapshots.length, 2);

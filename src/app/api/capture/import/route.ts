@@ -7,16 +7,35 @@ import {
 } from "@/modules/inspirations/normalization";
 import { upsertInspiration } from "@/modules/inspirations/service";
 import { getActiveAccountContext } from "@/modules/positioning/service";
+import { checkCaptureAccess } from "@/modules/positioning/capture-access";
 
 export const runtime = "nodejs";
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 405, headers: { Allow: "POST" } });
+export function OPTIONS(request: Request) {
+  const access = checkCaptureAccess(request, true);
+  return new NextResponse(null, {
+    status: access.allowed ? 204 : 403,
+    headers: access.corsHeaders,
+  });
 }
 
 export async function POST(request: Request) {
+  const access = checkCaptureAccess(request);
+  if (!access.allowed) {
+    return NextResponse.json(
+      { error: "Capture origin is not allowed" },
+      { status: 403, headers: access.corsHeaders },
+    );
+  }
   try {
-    const body: unknown = await request.json();
+    const requestText = await request.text();
+    if (requestText.length > 500_000) {
+      return NextResponse.json(
+        { error: "Capture payload is too large" },
+        { status: 413, headers: access.corsHeaders },
+      );
+    }
+    const body: unknown = JSON.parse(requestText);
     const record = body && typeof body === "object" && !Array.isArray(body)
       ? body as Record<string, unknown>
       : {};
@@ -39,14 +58,15 @@ export async function POST(request: Request) {
     });
     const saved = await upsertInspiration(input, result);
 
-    return NextResponse.json({ result, ...saved });
+    return NextResponse.json({ result, ...saved }, { headers: access.corsHeaders });
   } catch (error) {
     if (error instanceof InspirationValidationError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: error.message }, { status: 400, headers: access.corsHeaders });
     }
+    const invalidJson = error instanceof SyntaxError;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Capture import failed" },
-      { status: 500 },
+      { error: invalidJson ? "Invalid JSON payload" : error instanceof Error ? error.message : "Capture import failed" },
+      { status: invalidJson ? 400 : 500, headers: access.corsHeaders },
     );
   }
 }
