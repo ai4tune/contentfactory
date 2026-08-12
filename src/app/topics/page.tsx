@@ -284,23 +284,38 @@ function SearchTasks({ tasks }: { tasks: Array<{ platform: string; query: string
     <section>
       <h3 className="text-sm font-semibold text-neutral-900">搜索任务</h3>
       <div className="mt-2 overflow-hidden border border-neutral-200">
-        <div className="grid grid-cols-[88px_1fr_1.2fr] bg-neutral-50 px-3 py-2 text-xs font-medium text-neutral-600">
+        <div className="grid grid-cols-[88px_1fr_1.2fr_88px] bg-neutral-50 px-3 py-2 text-xs font-medium text-neutral-600">
           <span>平台</span>
           <span>搜索词</span>
           <span>目的</span>
+          <span>操作</span>
         </div>
         <div className="divide-y divide-neutral-200">
           {tasks.map((task) => (
-            <div key={`${task.platform}-${task.query}`} className="grid grid-cols-[88px_1fr_1.2fr] gap-3 px-3 py-3 text-sm">
+            <div key={`${task.platform}-${task.query}`} className="grid grid-cols-[88px_1fr_1.2fr_88px] gap-3 px-3 py-3 text-sm">
               <span className="font-medium">{task.platform}</span>
               <span>{task.query}</span>
               <span className="text-neutral-600">{task.why}</span>
+              {task.platform.includes("小红书") ? (
+                <a
+                  href={xiaohongshuSearchUrl(task.query)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-emerald-800 hover:underline"
+                >
+                  去搜索
+                </a>
+              ) : <span className="text-neutral-400">手动搜索</span>}
             </div>
           ))}
         </div>
       </div>
     </section>
   );
+}
+
+function xiaohongshuSearchUrl(keyword: string) {
+  return `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keyword)}&source=web_search_result_notes`;
 }
 
 function TopicCandidates({
