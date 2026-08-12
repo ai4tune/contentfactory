@@ -181,6 +181,29 @@ function mockCompletion(system, user) {
     };
   }
 
+  if (system.includes("选题雷达助手")) {
+    return {
+      keywordGroups: [
+        { group: "企业落地", keywords: ["AI 企业落地 第一步", "中小企业 AI 试点 复盘"], intent: "寻找真实落地场景与踩坑经验" },
+        { group: "工具应用", keywords: ["普通人 AI 工具 工作流", "AI 提效 真实案例"], intent: "寻找具体可复制的工具用法" },
+      ],
+      searchTasks: [
+        { platform: "小红书", query: "AI 企业落地 真实案例", why: "验证企业用户最关注的结果和阻力" },
+        { platform: "小红书", query: "AI 编程 普通人 实战", why: "寻找非技术用户的真实入门问题" },
+      ],
+      hotSampleInsights: [],
+      topicCandidates: [{
+        title: "企业第一次做 AI 试点，先别急着买工具",
+        platform: "小红书",
+        angle: "真实落地复盘",
+        sourceKeyword: "AI 企业落地 真实案例",
+        priority: "高",
+      }],
+      validationChecklist: ["优先打开近 7 天且点赞明显高于同关键词其他结果的笔记"],
+      nextActions: ["在小红书搜索并用插件筛选已加载结果"],
+    };
+  }
+
   if (system.includes("内容选题编辑")) {
     const hasStyle = user.includes("风格档案:");
     return {

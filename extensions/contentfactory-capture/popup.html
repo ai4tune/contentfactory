@@ -34,6 +34,15 @@
       .summary { margin-top: 9px; padding: 8px 9px; border-radius: 8px; color: #47534d; background: #f4f7f5; font-size: 11px; line-height: 1.55; white-space: pre-wrap; }
       .image-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 9px; }
       .image-grid img { width: 100%; aspect-ratio: 3 / 4; border-radius: 7px; object-fit: cover; background: #eef1ef; }
+      .inline-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .keyword-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+      .keyword-list button { width: auto; margin: 0; border: 1px solid #c7d5ce; padding: 7px 9px; color: #23483b; background: #f7faf8; font-size: 11px; font-weight: 650; }
+      .search-result-list { display: grid; gap: 8px; margin-top: 10px; }
+      .search-result { display: grid; grid-template-columns: 54px 1fr; gap: 9px; padding: 8px; border: 1px solid #e1e6e3; border-radius: 9px; background: #fff; }
+      .search-result img { width: 54px; height: 72px; border-radius: 6px; object-fit: cover; background: #eef1ef; }
+      .search-result strong { display: block; font-size: 11px; line-height: 1.45; }
+      .search-result span { display: block; margin-top: 4px; color: #68736d; font-size: 10px; line-height: 1.4; }
+      .search-result a { display: inline-block; margin-top: 5px; color: #176b50; font-size: 10px; font-weight: 700; }
       select { width: 100%; border: 1px solid #ccd4d0; border-radius: 8px; padding: 8px 9px; color: #17211d; background: #fff; font: inherit; font-size: 12px; }
       #status { margin-top: 12px; padding: 9px 10px; border-radius: 8px; color: #52605a; background: #e9efec; font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
       #status.error { color: #991b1b; background: #fef2f2; }
@@ -48,6 +57,7 @@
     <div class="mode-grid">
       <div><strong>账号采集</strong><span>在“我”的主页更新账号定位</span></div>
       <div><strong>爆款采集</strong><span>在笔记详情页预览并保存</span></div>
+      <div><strong>爆款搜索</strong><span>基于定位找长尾词并筛选结果</span></div>
     </div>
 
     <details class="card">
@@ -70,6 +80,41 @@
     </section>
 
     <button id="capture" type="button">识别并采集当前页面</button>
+
+    <section class="card" id="searchWorkbench" hidden>
+      <h2>爆款搜索工作台</h2>
+      <p class="meta">关键词来自已确认账号定位。点击关键词会打开小红书搜索；滚动加载结果后，再回插件采集当前页面。</p>
+      <button class="secondary" id="recommendKeywords" type="button">根据当前定位推荐长尾词</button>
+      <div class="keyword-list" id="keywordList"></div>
+      <div class="inline-grid">
+        <label>
+          时间范围
+          <select id="searchDays">
+            <option value="3">近 3 天</option>
+            <option value="7" selected>近 7 天</option>
+            <option value="0">不限时间</option>
+          </select>
+        </label>
+        <label>最低点赞<input id="minimumLikes" inputmode="numeric" type="number" min="0" value="100" /></label>
+      </div>
+      <div class="inline-grid">
+        <label>
+          排序
+          <select id="searchSort">
+            <option value="likes_desc">点赞从高到低</option>
+            <option value="published_desc">最新发布</option>
+          </select>
+        </label>
+        <label style="display:flex;align-items:flex-end;grid-template-columns:auto 1fr;padding-bottom:8px">
+          <input id="includeUnknownDates" type="checkbox" style="width:auto" />
+          保留时间未知
+        </label>
+      </div>
+      <button id="captureSearchResults" type="button">采集并筛选当前搜索结果</button>
+      <p class="summary" id="searchSummary" hidden></p>
+      <div class="search-result-list" id="searchResultList"></div>
+      <button class="secondary" id="saveSearchLocal" type="button" hidden>保存搜索清单到本地知识库</button>
+    </section>
 
     <section class="card" id="capturePreview" hidden>
       <h2>1. 确认采集信息</h2>

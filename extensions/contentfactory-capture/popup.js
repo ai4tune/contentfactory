@@ -1,9 +1,12 @@
 import { captureVisibleAccountPage } from "./capture-page.js";
+import { captureVisibleSearchResults } from "./capture-search-page.js";
 import {
   chooseLocalArchiveDirectory,
   getLocalArchiveStatus,
   saveCaptureLocally,
+  saveSearchSessionLocally,
 } from "./local-archive.js";
+import { filterAndSortSearchResults, xiaohongshuSearchUrl } from "./viral-search-utils.mjs";
 
 const DEFAULT_BASE_URL = "http://localhost:3000";
 
@@ -19,6 +22,7 @@ const elements = {
   capturePreview: document.getElementById("capturePreview"),
   chooseLocalArchive: document.getElementById("chooseLocalArchive"),
   confirm: document.getElementById("confirm"),
+  captureSearchResults: document.getElementById("captureSearchResults"),
   contentList: document.getElementById("contentList"),
   draftAudience: document.getElementById("draftAudience"),
   draftBusiness: document.getElementById("draftBusiness"),
@@ -41,11 +45,21 @@ const elements = {
   inspirationTags: document.getElementById("inspirationTags"),
   inspirationTitle: document.getElementById("inspirationTitle"),
   localArchiveStatus: document.getElementById("localArchiveStatus"),
+  includeUnknownDates: document.getElementById("includeUnknownDates"),
+  keywordList: document.getElementById("keywordList"),
+  minimumLikes: document.getElementById("minimumLikes"),
   openInspiration: document.getElementById("openInspiration"),
   saveDestination: document.getElementById("saveDestination"),
   saveInspiration: document.getElementById("saveInspiration"),
   saveLocal: document.getElementById("saveLocal"),
+  saveSearchLocal: document.getElementById("saveSearchLocal"),
   saveSettings: document.getElementById("saveSettings"),
+  searchDays: document.getElementById("searchDays"),
+  searchResultList: document.getElementById("searchResultList"),
+  searchSort: document.getElementById("searchSort"),
+  searchSummary: document.getElementById("searchSummary"),
+  searchWorkbench: document.getElementById("searchWorkbench"),
+  recommendKeywords: document.getElementById("recommendKeywords"),
   status: document.getElementById("status"),
 };
 
@@ -53,6 +67,7 @@ let capturedAccount = null;
 let capturedInspiration = null;
 let positioningDraft = null;
 let savedInspirationUrl = "";
+let searchSession = null;
 
 initialize();
 
@@ -64,6 +79,9 @@ elements.analyze.addEventListener("click", analyzeCapture);
 elements.confirm.addEventListener("click", confirmPositioning);
 elements.saveInspiration.addEventListener("click", saveInspiration);
 elements.openInspiration.addEventListener("click", openSavedInspiration);
+elements.recommendKeywords.addEventListener("click", recommendKeywords);
+elements.captureSearchResults.addEventListener("click", captureSearchResults);
+elements.saveSearchLocal.addEventListener("click", saveSearchLocally);
 
 async function initialize() {
   const settings = await chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL, accessToken: "" });
@@ -73,11 +91,112 @@ async function initialize() {
   elements.saveDestination.value = archiveStatus?.configured ? "both" : "website";
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const path = tab?.url ? new URL(tab.url).pathname.toLowerCase() : "";
+  const isSearchPage = path.includes("/search_result");
+  elements.searchWorkbench.hidden = !(isSearchPage || tab?.url?.includes("xiaohongshu.com"));
   elements.capture.textContent = path.includes("/user/profile/")
     ? "采集当前账号"
     : path.includes("/explore/") || path.includes("/discovery/item/")
       ? "预览当前笔记"
+      : isSearchPage ? "采集当前搜索结果"
       : "识别并采集当前页面";
+}
+
+async function recommendKeywords() {
+  setBusy(elements.recommendKeywords, true, "AI 正在生成…");
+  try {
+    const data = await callApi("/api/topics/search-plan", {});
+    renderKeywords(data.plan.keywords || []);
+    showStatus(`已根据“${data.plan.accountName}”的定位生成 ${data.plan.keywords.length} 个长尾词。`, "success");
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(elements.recommendKeywords, false, "根据当前定位再推荐一批");
+  }
+}
+
+function renderKeywords(keywords) {
+  elements.keywordList.replaceChildren(...keywords.map((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.query;
+    button.title = item.why || "打开小红书搜索";
+    button.addEventListener("click", async () => {
+      await chrome.tabs.create({ url: xiaohongshuSearchUrl(item.query) });
+    });
+    return button;
+  }));
+}
+
+async function captureSearchResults() {
+  setBusy(elements.captureSearchResults, true, "正在读取已加载结果…");
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !tab.url?.includes("xiaohongshu.com/search_result")) {
+      throw new Error("请先打开小红书搜索结果页，并滚动加载希望分析的内容");
+    }
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: captureVisibleSearchResults,
+    });
+    const filters = {
+      days: Number(elements.searchDays.value),
+      minimumLikes: Number(elements.minimumLikes.value),
+      sort: elements.searchSort.value,
+      includeUnknownDates: elements.includeUnknownDates.checked,
+    };
+    const filtered = filterAndSortSearchResults(result?.results || [], filters);
+    searchSession = { ...result, filters, results: filtered };
+    renderSearchResults(searchSession, result?.results?.length || 0);
+    showStatus(`已读取 ${result?.results?.length || 0} 条已加载结果，筛选出 ${filtered.length} 条。`, "success");
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(elements.captureSearchResults, false, "采集并筛选当前搜索结果");
+  }
+}
+
+function renderSearchResults(session, total) {
+  const unknownDates = session.results.filter((item) => !item.publishedAt).length;
+  elements.searchSummary.textContent = [
+    `关键词：${session.query || "未识别"}`,
+    `当前页面已加载 ${total} 条 · 筛选后 ${session.results.length} 条`,
+    unknownDates ? `其中 ${unknownDates} 条发布时间未知` : "发布时间均已识别",
+  ].join("\n");
+  elements.searchSummary.hidden = false;
+  elements.searchResultList.replaceChildren(...session.results.map((item) => {
+    const row = document.createElement("article");
+    row.className = "search-result";
+    const image = document.createElement("img");
+    image.src = item.coverUrl || "";
+    image.alt = "";
+    const body = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = item.title;
+    const meta = document.createElement("span");
+    meta.textContent = `${item.author || "作者未识别"} · 点赞 ${item.likes?.raw || item.likes?.value || "未公开"} · ${item.publishedText || "时间未知"}`;
+    const link = document.createElement("a");
+    link.href = item.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = "打开详情并保存 →";
+    body.append(title, meta, link);
+    row.append(image, body);
+    return row;
+  }));
+  elements.saveSearchLocal.hidden = false;
+}
+
+async function saveSearchLocally() {
+  if (!searchSession) return;
+  setBusy(elements.saveSearchLocal, true, "正在写入本地…");
+  try {
+    const saved = await saveSearchSessionLocally(searchSession);
+    showStatus(`搜索清单已保存\n${saved.rootName}/${saved.relativePath}`, "success");
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(elements.saveSearchLocal, false, "保存搜索清单到本地知识库");
+  }
 }
 
 async function chooseArchiveDirectory() {
@@ -132,6 +251,10 @@ async function captureCurrentPage() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error("没有找到当前标签页");
+    if (tab.url?.includes("xiaohongshu.com/search_result")) {
+      await captureSearchResults();
+      return;
+    }
     const [{ result }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: captureVisibleAccountPage,

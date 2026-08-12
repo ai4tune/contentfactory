@@ -801,6 +801,16 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(confirmed.response.status, 200);
     assert.equal(confirmed.body.context.source, "capture");
     assert.equal(confirmed.body.context.status, "confirmed");
+
+    const searchPlan = await requestJson("/api/topics/search-plan", {
+      method: "POST",
+      headers: { Authorization: "Bearer acceptance-capture-token", Origin: baseUrl },
+      body: {},
+    });
+    assert.equal(searchPlan.response.status, 200);
+    assert.equal(searchPlan.body.plan.accountName, "崔总建材账号");
+    assert.ok(searchPlan.body.plan.keywords.length >= 4);
+    assert.ok(searchPlan.body.plan.keywords.some((item) => item.query.includes("AI 企业落地")));
   });
 });
 

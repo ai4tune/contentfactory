@@ -1,4 +1,4 @@
-import { buildLocalArchive } from "./local-archive-format.mjs";
+import { buildLocalArchive, buildSearchArchive } from "./local-archive-format.mjs";
 
 const DATABASE_NAME = "contentfactory-capture";
 const STORE_NAME = "directory-handles";
@@ -25,6 +25,25 @@ export async function getLocalArchiveStatus() {
 export async function saveCaptureLocally(capture) {
   const handle = await requireWritableHandle();
   const archive = buildLocalArchive(capture);
+  let directory = handle;
+  for (const segment of archive.directorySegments) {
+    directory = await directory.getDirectoryHandle(segment, { create: true });
+  }
+  await Promise.all([
+    writeTextFile(directory, `${archive.baseName}.md`, archive.markdown),
+    writeTextFile(directory, `${archive.baseName}.json`, archive.json),
+  ]);
+  await ensureReadme(handle);
+  return {
+    ...archive,
+    rootName: handle.name,
+    relativePath: [...archive.directorySegments, archive.baseName].join("/"),
+  };
+}
+
+export async function saveSearchSessionLocally(session) {
+  const handle = await requireWritableHandle();
+  const archive = buildSearchArchive(session);
   let directory = handle;
   for (const segment of archive.directorySegments) {
     directory = await directory.getDirectoryHandle(segment, { create: true });
@@ -71,6 +90,7 @@ async function ensureReadme(root) {
       "",
       "- `账号/`：账号定位所需的公开账号信息和可见作品列表。",
       "- `爆款/YYYY-MM/`：采集的文章或笔记正文、指标、标签和图片链接。",
+      "- `搜索任务/YYYY-MM/`：按关键词采集、筛选和排序后的搜索结果。",
       "- 每条内容同时保存 Markdown 与 JSON；Markdown 便于阅读，JSON 便于 Codex、WorkBuddy 和其他工具处理。",
       "- 图片默认保留原始链接，不自动下载本地文件。",
       "",

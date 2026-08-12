@@ -46,6 +46,59 @@ export function safeFileName(value) {
   return cleaned || "未命名";
 }
 
+export function buildSearchArchive(session, now = new Date()) {
+  const capturedAt = validIso(session?.capturedAt) || now.toISOString();
+  const query = String(session?.query || "未命名搜索").trim();
+  const results = Array.isArray(session?.results) ? session.results : [];
+  const record = {
+    schema: "contentfactory.search-session.v1",
+    kind: "search-session",
+    capturedAt,
+    platform: session?.platform || "小红书",
+    query,
+    sourceUrl: session?.sourceUrl || "",
+    filters: session?.filters || {},
+    results,
+  };
+  const markdown = [
+    "---",
+    `schema: ${record.schema}`,
+    "kind: search-session",
+    `query: ${yamlString(query)}`,
+    `platform: ${yamlString(record.platform)}`,
+    `captured_at: ${yamlString(capturedAt)}`,
+    "---",
+    "",
+    `# 爆款搜索：${escapeHeading(query)}`,
+    "",
+    `- 来源：[打开搜索页](${record.sourceUrl})`,
+    `- 时间范围：${record.filters.days ? `近 ${record.filters.days} 天` : "不限"}`,
+    `- 最低点赞：${record.filters.minimumLikes || 0}`,
+    `- 排序：${record.filters.sort === "published_desc" ? "最新发布" : "点赞从高到低"}`,
+    `- 结果数：${results.length}`,
+    "",
+    "## 搜索结果",
+    "",
+    ...(results.length ? results.map((item, index) => [
+      `${index + 1}. [${escapeInline(item.title || "未命名笔记")}](${item.url || ""})`,
+      `   - 作者：${item.author || "未识别"}`,
+      `   - 点赞：${item.likes?.raw || item.likes?.value || "未公开"}`,
+      `   - 发布时间：${item.publishedText || item.publishedAt || "未公开"}`,
+    ].join("\n")) : ["没有符合筛选条件的已加载结果。"]),
+    "",
+    "完整结构化结果保存在同名 JSON 文件中。",
+    "",
+  ].join("\n");
+  const baseName = `${capturedAt.slice(0, 10)}-${safeFileName(query)}-${shortHash(record.sourceUrl || query)}`;
+  return {
+    kind: record.kind,
+    baseName,
+    directorySegments: ["内容工厂采集", "搜索任务", capturedAt.slice(0, 7)],
+    markdown,
+    json: `${JSON.stringify(record, null, 2)}\n`,
+  };
+}
+
 function renderAccountMarkdown(record) {
   const capture = record.capture || {};
   const metrics = capture.accountMetrics || {};
