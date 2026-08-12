@@ -6,11 +6,12 @@ import { reviewChannelDraft } from "@/modules/reviews/service";
 export const runtime = "nodejs";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string; channel: string }> },
 ) {
   try {
     const { id, channel } = await context.params;
+    const body = await request.json().catch(() => ({})) as { humanWritingQa?: unknown };
     if (!isContentChannel(channel)) {
       return NextResponse.json({ error: "Unknown content channel" }, { status: 400 });
     }
@@ -22,7 +23,7 @@ export async function POST(
       return NextResponse.json({ error: "Generated channel draft not found" }, { status: 404 });
     }
 
-    const review = await reviewChannelDraft({ project, draft });
+    const review = await reviewChannelDraft({ project, draft, humanWritingQa: body.humanWritingQa === true });
     const updatedProject = await saveChannelReview(id, channel, review);
     return NextResponse.json({ project: updatedProject, review });
   } catch (error) {
