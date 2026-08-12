@@ -49,7 +49,12 @@ export function safeFileName(value) {
 export function buildSearchArchive(session, now = new Date()) {
   const capturedAt = validIso(session?.capturedAt) || now.toISOString();
   const query = String(session?.query || "未命名搜索").trim();
-  const results = Array.isArray(session?.results) ? session.results : [];
+  const results = Array.isArray(session?.results)
+    ? session.results.map((item) => {
+      const url = portableResultUrl(item);
+      return { ...item, url, canonicalUrl: url };
+    })
+    : [];
   const record = {
     schema: "contentfactory.search-session.v1",
     kind: "search-session",
@@ -218,6 +223,18 @@ function escapeHeading(value) {
 
 function escapeInline(value) {
   return String(value || "").replace(/[\[\]|]/g, (char) => `\\${char}`);
+}
+
+function portableResultUrl(item) {
+  const value = String(item?.canonicalUrl || item?.url || "");
+  try {
+    const url = new URL(value);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return value.split(/[?#]/)[0];
+  }
 }
 
 function shortHash(value) {

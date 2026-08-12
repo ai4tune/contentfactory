@@ -294,7 +294,8 @@ export function captureVisibleAccountPage() {
     }
     return cards;
   };
-  const findXiaohongshuNote = (state) => {
+  const findXiaohongshuNote = (state, currentNoteId) => {
+    if (!currentNoteId) return null;
     const maps = [];
     const visit = (value, depth = 0) => {
       if (!value || typeof value !== "object" || depth > 5) return;
@@ -303,8 +304,15 @@ export function captureVisibleAccountPage() {
     };
     visit(state);
     for (const noteMap of maps) {
+      const directMatch = noteMap[currentNoteId]?.note;
+      if (directMatch && typeof directMatch === "object") return directMatch;
       for (const detail of Object.values(noteMap)) {
-        if (detail?.note && typeof detail.note === "object") return detail.note;
+        const note = detail?.note;
+        if (
+          note
+          && typeof note === "object"
+          && clean(note.noteId || note.note_id || note.id) === currentNoteId
+        ) return note;
       }
     }
     return null;
@@ -312,10 +320,12 @@ export function captureVisibleAccountPage() {
   const xiaohongshuCapture = () => {
     const state = parseInitialState();
     const bodyText = visibleText(document.body).slice(0, 100_000);
-    const path = location.pathname.toLowerCase();
+    const rawPath = location.pathname;
+    const path = rawPath.toLowerCase();
     const isCreator = location.hostname.startsWith("creator.") || /creator|dashboard|platform/.test(path);
     const isAccount = path.includes("/user/profile/");
     const isContent = path.includes("/explore/") || path.includes("/discovery/item/");
+    const currentNoteId = clean(rawPath.match(/\/(?:explore|discovery\/item)\/([^/?]+)/i)?.[1]);
     const pageType = isCreator ? "creator_backend" : isAccount ? "account" : isContent ? "content" : "unknown";
     const userPageData = state?.user?.userPageData || {};
     const basic = userPageData.basicInfo || {};
@@ -362,8 +372,10 @@ export function captureVisibleAccountPage() {
       } : card);
     }
     const cards = [...cardsById.values()];
-    const detailNote = findXiaohongshuNote(state);
-    const detailContent = buildXiaohongshuNote(detailNote) || (isContent ? buildXiaohongshuDomNote() : null);
+    const detailNote = isContent ? findXiaohongshuNote(state, currentNoteId) : null;
+    const detailContent = isContent
+      ? buildXiaohongshuNote(detailNote) || buildXiaohongshuDomNote()
+      : null;
     const contents = detailContent ? [detailContent] : cards.slice(0, 20);
     const accountName = clean(
       basic.nickname

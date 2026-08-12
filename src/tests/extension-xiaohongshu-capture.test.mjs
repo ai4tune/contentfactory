@@ -16,6 +16,16 @@ test("Xiaohongshu note capture keeps body, author, images, tags, date, and metri
   const initialState = {
     note: {
       noteDetailMap: {
+        "cached-note": {
+          note: {
+            noteId: "cached-note",
+            title: "上一条缓存笔记",
+            desc: "这条内容不应被当前页面采集。",
+            type: "normal",
+            interactInfo: { likedCount: "9.9万" },
+            user: { userId: "old-author", nickname: "旧作者" },
+          },
+        },
         "note-001": {
           note: {
             noteId: "note-001",
@@ -64,6 +74,7 @@ test("Xiaohongshu note capture keeps body, author, images, tags, date, and metri
     const note = capture.contents[0];
     assert.equal(capture.pageType, "content");
     assert.equal(capture.sourceUrl, "https://www.xiaohongshu.com/explore/note-001");
+    assert.notEqual(note.noteId, "cached-note");
     assert.equal(note.title, "企业 AI 落地先做什么");
     assert.equal(note.description, "先确认经营目标，再选择一个真实场景完成试点。");
     assert.equal(note.author.name, "杏仁聊AI");

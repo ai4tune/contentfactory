@@ -144,7 +144,11 @@ async function captureSearchResults() {
       sort: elements.searchSort.value,
       includeUnknownDates: elements.includeUnknownDates.checked,
     };
-    const filtered = filterAndSortSearchResults(result?.results || [], filters);
+    const filtered = filterAndSortSearchResults(
+      result?.results || [],
+      filters,
+      result?.capturedAt ? new Date(result.capturedAt) : new Date(),
+    );
     searchSession = { ...result, filters, results: filtered };
     renderSearchResults(searchSession, result?.results?.length || 0);
     showStatus(`已读取 ${result?.results?.length || 0} 条已加载结果，筛选出 ${filtered.length} 条。`, "success");

@@ -1,4 +1,5 @@
 export function captureVisibleSearchResults() {
+  const capturedAt = new Date();
   const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
   const metric = (value) => {
     const raw = clean(value);
@@ -11,7 +12,7 @@ export function captureVisibleSearchResults() {
   };
   const parsePublishedAt = (text) => {
     const value = clean(text);
-    const now = new Date();
+    const now = capturedAt;
     const relative = value.match(/(\d+)\s*(分钟|小时|天)前/);
     if (relative) {
       const unitMs = relative[2] === "分钟" ? 60_000 : relative[2] === "小时" ? 3_600_000 : 86_400_000;
@@ -71,7 +72,8 @@ export function captureVisibleSearchResults() {
       noteId,
       title,
       author,
-      url: noteId ? `https://www.xiaohongshu.com/explore/${noteId}` : `${url.origin}${url.pathname}`,
+      url: url.toString(),
+      canonicalUrl: noteId ? `https://www.xiaohongshu.com/explore/${noteId}` : `${url.origin}${url.pathname}`,
       coverUrl: image?.currentSrc || image?.src || "",
       likes,
       publishedAt: parsePublishedAt(publishedText),
@@ -86,7 +88,7 @@ export function captureVisibleSearchResults() {
     pageType: "search-results",
     sourceUrl: location.href,
     query,
-    capturedAt: new Date().toISOString(),
+    capturedAt: capturedAt.toISOString(),
     results,
   };
 }
