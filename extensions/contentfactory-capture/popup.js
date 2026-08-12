@@ -1,4 +1,9 @@
 import { captureVisibleAccountPage } from "./capture-page.js";
+import {
+  chooseLocalArchiveDirectory,
+  getLocalArchiveStatus,
+  saveCaptureLocally,
+} from "./local-archive.js";
 
 const DEFAULT_BASE_URL = "http://localhost:3000";
 
@@ -12,6 +17,7 @@ const elements = {
   captureMeta: document.getElementById("captureMeta"),
   captureMetrics: document.getElementById("captureMetrics"),
   capturePreview: document.getElementById("capturePreview"),
+  chooseLocalArchive: document.getElementById("chooseLocalArchive"),
   confirm: document.getElementById("confirm"),
   contentList: document.getElementById("contentList"),
   draftAudience: document.getElementById("draftAudience"),
@@ -24,6 +30,8 @@ const elements = {
   draftTopics: document.getElementById("draftTopics"),
   draftVoice: document.getElementById("draftVoice"),
   followerCount: document.getElementById("followerCount"),
+  localArchiveStatus: document.getElementById("localArchiveStatus"),
+  saveLocal: document.getElementById("saveLocal"),
   saveSettings: document.getElementById("saveSettings"),
   status: document.getElementById("status"),
 };
@@ -35,6 +43,8 @@ initialize();
 
 elements.saveSettings.addEventListener("click", saveSettings);
 elements.capture.addEventListener("click", captureCurrentPage);
+elements.chooseLocalArchive.addEventListener("click", chooseArchiveDirectory);
+elements.saveLocal.addEventListener("click", saveCurrentCaptureLocally);
 elements.analyze.addEventListener("click", analyzeCapture);
 elements.confirm.addEventListener("click", confirmPositioning);
 
@@ -42,6 +52,35 @@ async function initialize() {
   const settings = await chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL, accessToken: "" });
   elements.baseUrl.value = settings.baseUrl;
   elements.accessToken.value = settings.accessToken;
+  await refreshArchiveStatus();
+}
+
+async function chooseArchiveDirectory() {
+  setBusy(elements.chooseLocalArchive, true, "正在选择…");
+  try {
+    const status = await chooseLocalArchiveDirectory();
+    renderArchiveStatus(status);
+    showStatus(`已连接本地资料库：${status.name}`, "success");
+  } catch (error) {
+    if (error?.name !== "AbortError") showError(error);
+  } finally {
+    setBusy(elements.chooseLocalArchive, false, "更换本地资料库文件夹");
+  }
+}
+
+async function saveCurrentCaptureLocally() {
+  if (!capturedAccount) return;
+  setBusy(elements.saveLocal, true, "正在写入本地…");
+  try {
+    capturedAccount = editedCapture();
+    const saved = await saveCaptureLocally(capturedAccount);
+    showStatus(`已保存 Markdown + JSON\n${saved.rootName}/${saved.relativePath}`, "success");
+    await refreshArchiveStatus();
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(elements.saveLocal, false, "保存账号到本地资料库");
+  }
 }
 
 async function saveSettings() {
@@ -91,12 +130,7 @@ async function analyzeCapture() {
   if (!capturedAccount) return;
   setBusy(elements.analyze, true, "AI 正在分析…");
   try {
-    capturedAccount = {
-      ...capturedAccount,
-      accountName: elements.accountName.value.trim(),
-      bio: elements.bio.value.trim(),
-      followerCount: elements.followerCount.value.trim(),
-    };
+    capturedAccount = editedCapture();
     if (!capturedAccount.accountName) throw new Error("账号名称不能为空");
     const data = await callCaptureApi({ action: "analyze", capture: capturedAccount });
     positioningDraft = data.draft;
@@ -107,6 +141,39 @@ async function analyzeCapture() {
   } finally {
     setBusy(elements.analyze, false, "确认采集并生成 AI 定位预览");
   }
+}
+
+function editedCapture() {
+  return {
+    ...capturedAccount,
+    accountName: elements.accountName.value.trim(),
+    bio: elements.bio.value.trim(),
+    followerCount: elements.followerCount.value.trim(),
+  };
+}
+
+async function refreshArchiveStatus() {
+  try {
+    renderArchiveStatus(await getLocalArchiveStatus());
+  } catch (error) {
+    elements.localArchiveStatus.textContent = `本地资料库状态读取失败：${error.message}`;
+  }
+}
+
+function renderArchiveStatus(status) {
+  if (!status.supported) {
+    elements.localArchiveStatus.textContent = "当前浏览器不支持文件夹直写，请使用最新版桌面版 Chrome。";
+    elements.chooseLocalArchive.disabled = true;
+    return;
+  }
+  if (!status.configured) {
+    elements.localArchiveStatus.textContent = "尚未选择。可选择 Obsidian 仓库、Git 仓库或任意知识库文件夹。";
+    elements.chooseLocalArchive.textContent = "选择本地资料库文件夹";
+    return;
+  }
+  const permissionText = status.permission === "granted" ? "可直接写入" : "保存时需重新授权";
+  elements.localArchiveStatus.textContent = `${status.name} · ${permissionText}`;
+  elements.chooseLocalArchive.textContent = "更换本地资料库文件夹";
 }
 
 async function confirmPositioning() {
