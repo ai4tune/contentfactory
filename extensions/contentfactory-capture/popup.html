@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>内容工厂账号采集助手</title>
+    <title>内容工厂采集助手</title>
     <style>
       * { box-sizing: border-box; }
       body { width: 380px; max-height: 600px; margin: 0; overflow-y: auto; padding: 16px; color: #17211d; background: #f5f6f3; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -34,8 +34,8 @@
     </style>
   </head>
   <body>
-    <h1>账号采集助手</h1>
-    <p class="subtitle">只读取当前已打开页面中可见的账号信息，不绕过登录或平台权限。</p>
+    <h1>内容工厂采集助手</h1>
+    <p class="subtitle">采集当前页面可见信息，可送入内容工厂，也可保存到自己的本地知识库。</p>
 
     <details class="card">
       <summary>连接设置</summary>
@@ -50,6 +50,12 @@
       <button class="secondary" id="saveSettings" type="button">保存并授权该地址</button>
     </details>
 
+    <section class="card">
+      <h2>本地资料库</h2>
+      <p class="meta" id="localArchiveStatus">正在检查本地目录…</p>
+      <button class="secondary" id="chooseLocalArchive" type="button">选择本地资料库文件夹</button>
+    </section>
+
     <button id="capture" type="button">采集当前页面</button>
 
     <section class="card" id="capturePreview" hidden>
@@ -60,6 +66,7 @@
       <p class="meta" id="captureMeta"></p>
       <div class="metric-grid" id="captureMetrics"></div>
       <ul class="content-list" id="contentList"></ul>
+      <button class="secondary" id="saveLocal" type="button">保存账号到本地资料库</button>
       <button id="analyze" type="button">确认采集并生成 AI 定位预览</button>
     </section>
 
