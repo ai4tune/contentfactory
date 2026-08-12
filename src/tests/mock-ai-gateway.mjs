@@ -225,6 +225,20 @@ function mockCompletion(system, user) {
         { heading: "四项判断清单", points: ["空间", "基层", "安装", "售后"] },
         { heading: "咨询前准备", description: "整理真实使用条件" },
       ],
+      ...(user.includes("\"hook\": \"低价不等于省钱\"") ? {
+        inspirationPlan: {
+          items: [
+            { kind: "hook", sourceIndex: 0, sourceElement: "低价不等于省钱", decision: "adapt", plannedUse: "用企业内容日更不等于有效增长的反常识开头", rationale: "保留反常识机制，替换为当前账号和选题。" },
+            { kind: "section", sourceIndex: 0, sourceElement: "反常识开场", decision: "adopt", plannedUse: "开头指出日更不等于有效内容", rationale: "适合快速建立问题意识。" },
+            { kind: "section", sourceIndex: 1, sourceElement: "解释常见误区", decision: "adapt", plannedUse: "解释企业把频率当成果的三个误区", rationale: "需要结合企业场景重新组织。" },
+            { kind: "section", sourceIndex: 2, sourceElement: "给出四项判断清单", decision: "adapt", plannedUse: "给出内容生产的四项检查清单", rationale: "保留可收藏机制，事实来自自己的知识。" },
+            { kind: "section", sourceIndex: 3, sourceElement: "行动引导", decision: "discard", plannedUse: "", rationale: "参考文章的咨询动作不适合当前目标。" },
+            { kind: "section", sourceIndex: 4, sourceElement: "互动提问", decision: "adopt", plannedUse: "询问读者当前最难坚持的内容环节", rationale: "适合当前账号的互动目标。" },
+            { kind: "pacing", sourceIndex: 0, sourceElement: "痛点开场，清单拆解，案例收束", decision: "adapt", plannedUse: "先提出反常识，再用清单拆解，最后以问题收束", rationale: "不使用参考案例，只保留节奏。" },
+          ],
+          boundaries: ["不得照抄参考原句。", "不得继承参考中的事实、案例和数据。"],
+        },
+      } : {}),
       callToAction: "整理空间、预算和安装条件后再咨询专业人员。",
       citations: [{
         sourceId: readSourceId(user),

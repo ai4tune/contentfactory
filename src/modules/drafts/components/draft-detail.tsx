@@ -164,6 +164,21 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
             <p className="text-xs font-semibold leading-5 text-slate-800">{draft.brief.inspiration.title}</p>
             <p className="mt-2 text-xs leading-5 text-slate-600">钩子：{draft.brief.inspiration.hook || "未提取"}</p>
             <ListBlock label="参考结构" items={draft.brief.inspiration.structure} />
+            {draft.brief.inspirationPlan ? (
+              <div className="mt-4 border-t border-slate-200 pt-4">
+                <p className="text-xs font-semibold text-slate-800">已确认的采用计划</p>
+                <div className="mt-2 grid gap-2">
+                  {draft.brief.inspirationPlan.items.map((item) => (
+                    <div className="rounded-xl bg-slate-50 p-3" key={`${item.kind}:${item.sourceIndex}`}>
+                      <p className="text-[11px] font-semibold text-emerald-800">{{ adopt: "采用", adapt: "改造", discard: "舍弃" }[item.decision]} · {item.sourceElement}</p>
+                      {item.plannedUse ? <p className="mt-1 text-xs leading-5 text-slate-700">本文：{item.plannedUse}</p> : null}
+                      <p className="mt-1 text-[11px] leading-5 text-slate-500">理由：{item.rationale}</p>
+                    </div>
+                  ))}
+                </div>
+                <ListBlock label="不可继承边界" items={draft.brief.inspirationPlan.boundaries} />
+              </div>
+            ) : null}
             <p className="mt-3 text-[11px] leading-5 text-amber-700">仅学习结构和表达方法，不作为事实依据。</p>
             {draft.brief.inspiration.sourceUrl ? <a className="mt-2 inline-block text-xs font-semibold text-emerald-800 hover:underline" href={draft.brief.inspiration.sourceUrl} rel="noreferrer" target="_blank">查看原文 ↗</a> : null}
           </InfoCard>

@@ -31,10 +31,27 @@ export type ContentInspirationReference = {
   targetAudience: string;
   painPoint: string;
   hook: string;
+  pacing: string;
   structure: string[];
   reusablePatterns: string[];
   adaptationIdeas: string[];
   riskNotes: string[];
+};
+
+export type InspirationPlanDecision = "adopt" | "adapt" | "discard";
+
+export type ContentInspirationPlanItem = {
+  kind: "hook" | "section" | "pacing";
+  sourceIndex: number;
+  sourceElement: string;
+  decision: InspirationPlanDecision;
+  plannedUse: string;
+  rationale: string;
+};
+
+export type ContentInspirationPlan = {
+  items: ContentInspirationPlanItem[];
+  boundaries: string[];
 };
 
 export type ContentBrief = {
@@ -47,6 +64,7 @@ export type ContentBrief = {
   citations: ContentCitation[];
   openQuestions: string[];
   inspiration?: ContentInspirationReference;
+  inspirationPlan?: ContentInspirationPlan;
 };
 
 export const contentChannels = [

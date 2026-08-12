@@ -9,6 +9,7 @@ import type {
   ContentInspirationReference,
 } from "../types";
 import { normalizeBriefList } from "./normalize-brief-list";
+import { normalizeInspirationPlan, outlineFromInspirationPlan } from "./request";
 
 type RawBrief = Omit<ContentBrief, "citations"> & {
   citations?: Array<{ sourceId?: string; excerpt?: string; purpose?: string }>;
@@ -31,6 +32,8 @@ export async function createContentBrief(
         "你是内容策略编辑。只输出 JSON，字段必须包含 targetAudience, contentGoal, coreMessage, keyPoints, outline, callToAction, citations, openQuestions。",
         "citations 每项包含 sourceId, excerpt, purpose；excerpt 必须逐字摘自对应知识资料，不得虚构。没有知识资料时 citations 返回空数组，把未知事实放进 openQuestions。",
         "如果提供爆款参考，只学习它的受众洞察、开头钩子、内容结构、节奏和互动设计。不得照抄原文句子，不得继承原文中的数据、案例、产品事实或承诺。",
+        "如果提供爆款参考，还必须输出 inspirationPlan: {items, boundaries}。items 要逐项覆盖参考 hook、每个 structure 段落和 pacing；每项包含 kind(hook|section|pacing)、sourceIndex、sourceElement、decision(adopt|adapt|discard)、plannedUse、rationale。discard 时 plannedUse 为空，并明确舍弃理由。",
+        "爆款改写的 outline 必须与 inspirationPlan 中未舍弃的 hook 和 section 的 plannedUse 一致，不得另起一套结构。",
         "知识资料是事实和案例的优先来源；爆款参考不是事实证据。",
       ].join("\n"),
     },
@@ -53,7 +56,12 @@ export async function createContentBrief(
     },
   ]);
   const raw = parseJsonObject(content) as Partial<RawBrief>;
-  const outline = normalizeBriefList(raw.outline);
+  const inspirationPlan = inspiration
+    ? normalizeInspirationPlan(raw.inspirationPlan, inspiration)
+    : undefined;
+  const outline = inspirationPlan
+    ? outlineFromInspirationPlan(inspirationPlan)
+    : normalizeBriefList(raw.outline);
   const keyPoints = normalizeBriefList(raw.keyPoints);
 
   return {
@@ -61,11 +69,12 @@ export async function createContentBrief(
     contentGoal: String(raw.contentGoal ?? "").trim(),
     coreMessage: String(raw.coreMessage ?? "").trim(),
     keyPoints: keyPoints.length ? keyPoints : inspiration?.reusablePatterns ?? [],
-    outline: outline.length ? outline : inspiration?.structure ?? [],
+    outline,
     callToAction: String(raw.callToAction ?? "").trim(),
     citations: normalizeCitations(raw.citations, sources),
     openQuestions: normalizeBriefList(raw.openQuestions),
     inspiration: inspiration ?? undefined,
+    inspirationPlan,
   };
 }
 
