@@ -284,7 +284,7 @@ function mockCompletion(system, user) {
           autoFixable: false,
           requiresConfirmation: true,
         },
-        ...(system.includes("Human Writing 专项检查") ? [{
+        ...[{
           category: "human_writing",
           severity: "low",
           title: "段落没有新增信息",
@@ -293,7 +293,7 @@ function mockCompletion(system, user) {
           suggestedText: "",
           autoFixable: false,
           requiresConfirmation: true,
-        }] : []),
+        }],
       ],
     };
   }

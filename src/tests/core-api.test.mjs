@@ -497,6 +497,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(result.response.status, 200);
     assert.equal(result.body.review.humanWritingQa, false);
+    assert.equal(result.body.review.issues.some((issue) => issue.category === "human_writing"), false);
     project = result.body.project;
     assert.deepEqual(
       new Set(result.body.review.issues.map((issue) => issue.category)),

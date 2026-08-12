@@ -43,7 +43,7 @@ export async function reviewChannelDraft(input: ReviewChannelInput): Promise<Cha
       },
       { role: "user", content: buildReviewContext(input) },
     ]);
-    const aiReview = normalizeReview(parseJsonObject(response), input.draft.content);
+    const aiReview = normalizeReview(parseJsonObject(response), input.draft.content, humanWritingQa);
     const issues = dedupeIssues([...deterministicIssues, ...aiReview.issues]);
     return {
       ...aiReview,
@@ -92,10 +92,10 @@ function buildReviewContext({ project, draft }: ReviewChannelInput) {
   ].join("\n\n");
 }
 
-function normalizeReview(value: unknown, content: string): ChannelReview {
+function normalizeReview(value: unknown, content: string, humanWritingQa: boolean): ChannelReview {
   const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const issues = Array.isArray(record.issues)
-    ? record.issues.flatMap((item, index) => normalizeIssue(item, content, index)).slice(0, 20)
+    ? record.issues.flatMap((item, index) => normalizeIssue(item, content, index, humanWritingQa)).slice(0, 20)
     : [];
   const requestedRisk = isReviewRiskLevel(record.riskLevel) ? record.riskLevel : "low";
 
@@ -109,10 +109,11 @@ function normalizeReview(value: unknown, content: string): ChannelReview {
   };
 }
 
-function normalizeIssue(value: unknown, content: string, index: number): ReviewIssue[] {
+function normalizeIssue(value: unknown, content: string, index: number, humanWritingQa: boolean): ReviewIssue[] {
   if (!value || typeof value !== "object") return [];
   const record = value as Record<string, unknown>;
   if (!isReviewIssueCategory(record.category)) return [];
+  if (record.category === "human_writing" && !humanWritingQa) return [];
 
   const title = limitedString(record.title, 120);
   const description = limitedString(record.description, 600);
