@@ -89,6 +89,7 @@ export function toInspirationReference(record: InspirationRecord): ContentInspir
     targetAudience: record.analysis.targetAudience,
     painPoint: record.analysis.painPoint,
     hook: record.analysis.hook,
+    pacing: record.analysis.pacing,
     structure: record.analysis.structure,
     reusablePatterns: record.analysis.reusablePatterns,
     adaptationIdeas: record.analysis.adaptationIdeas.length

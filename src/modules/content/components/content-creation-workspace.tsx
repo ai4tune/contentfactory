@@ -14,6 +14,7 @@ import {
   type ChannelDraft,
   type ContentBrief,
   type ContentChannel,
+  type ContentInspirationPlan,
   type ContentInspirationReference,
   type ContentProject,
   type GeneratedVisualAsset,
@@ -629,7 +630,19 @@ export function ContentCreationWorkspace({ initialStyleProfile }: { initialStyle
             <BriefField label="内容目标" value={brief.contentGoal} onChange={(value) => updateBrief(setBrief, "contentGoal", value)} />
             <BriefField label="核心观点" value={brief.coreMessage} onChange={(value) => updateBrief(setBrief, "coreMessage", value)} multiline />
             <BriefListField label="关键论点" value={brief.keyPoints} onChange={(value) => updateBrief(setBrief, "keyPoints", value)} />
-            <BriefListField label="内容结构" value={brief.outline} onChange={(value) => updateBrief(setBrief, "outline", value)} />
+            {brief.inspiration && brief.inspirationPlan ? (
+              <BriefInspirationPlan
+                plan={brief.inspirationPlan}
+                onChange={(inspirationPlan) => setBrief((current) => current ? {
+                  ...current,
+                  inspirationPlan,
+                  outline: inspirationPlan.items
+                    .filter((item) => item.kind !== "pacing" && item.decision !== "discard")
+                    .map((item) => item.plannedUse)
+                    .filter(Boolean),
+                } : current)}
+              />
+            ) : <BriefListField label="内容结构" value={brief.outline} onChange={(value) => updateBrief(setBrief, "outline", value)} />}
             <BriefField label="行动引导" value={brief.callToAction} onChange={(value) => updateBrief(setBrief, "callToAction", value)} />
             {brief.inspiration ? <BriefInspiration inspiration={brief.inspiration} /> : null}
             <div>
@@ -1229,6 +1242,63 @@ function BriefInspiration({ inspiration }: { inspiration: ContentInspirationRefe
         </div>
       ) : null}
       <p className="mt-3 text-[11px] leading-5 text-amber-800">仅用于学习钩子、结构和节奏，不作为事实、案例或数据来源。</p>
+    </section>
+  );
+}
+
+function BriefInspirationPlan({
+  plan,
+  onChange,
+}: {
+  plan: ContentInspirationPlan;
+  onChange: (plan: ContentInspirationPlan) => void;
+}) {
+  const decisionLabels = { adopt: "采用", adapt: "改造", discard: "舍弃" } as const;
+  const kindLabels = { hook: "开头钩子", section: "参考段落", pacing: "内容节奏" } as const;
+  const updateItem = (index: number, patch: Partial<ContentInspirationPlan["items"][number]>) => {
+    onChange({
+      ...plan,
+      items: plan.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item),
+    });
+  };
+
+  return (
+    <section className="rounded-xl border border-emerald-900/15 bg-[#f7faf8] p-4">
+      <div>
+        <p className="text-xs font-semibold text-slate-800">爆款结构采用计划</p>
+        <p className="mt-1 text-[11px] leading-5 text-slate-500">逐项决定采用、改造或舍弃。最终内容结构会自动由这份计划生成。</p>
+      </div>
+      <div className="mt-4 grid gap-3">
+        {plan.items.map((item, index) => (
+          <article className="rounded-xl border border-slate-200 bg-white p-3" key={`${item.kind}:${item.sourceIndex}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold text-emerald-800">{kindLabels[item.kind]} {item.kind === "section" ? item.sourceIndex + 1 : ""}</p>
+              <select
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+                onChange={(event) => updateItem(index, {
+                  decision: event.target.value as typeof item.decision,
+                  plannedUse: event.target.value === "discard" ? "" : item.plannedUse || item.sourceElement,
+                })}
+                value={item.decision}
+              >
+                {Object.entries(decisionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </div>
+            <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">参考元素：{item.sourceElement}</p>
+            {item.decision !== "discard" ? (
+              <label className="mt-3 grid gap-1.5 text-[11px] font-semibold text-slate-600">
+                本文如何使用
+                <input className="h-9 rounded-lg border border-slate-200 px-2.5 text-xs font-normal" onChange={(event) => updateItem(index, { plannedUse: event.target.value })} value={item.plannedUse} />
+              </label>
+            ) : null}
+            <label className="mt-3 grid gap-1.5 text-[11px] font-semibold text-slate-600">
+              判断理由
+              <textarea className="min-h-16 resize-y rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-normal leading-5" onChange={(event) => updateItem(index, { rationale: event.target.value })} value={item.rationale} />
+            </label>
+          </article>
+        ))}
+      </div>
+      <BriefListField label="不可继承边界" value={plan.boundaries} onChange={(boundaries) => onChange({ ...plan, boundaries })} />
     </section>
   );
 }

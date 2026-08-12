@@ -28,6 +28,20 @@ export function renderDraftMarkdown(draft: ContentDraft, channel?: ContentChanne
     "",
     ...toMarkdownList(draft.brief.outline),
     "",
+    ...(draft.brief.inspirationPlan ? [
+      "### 爆款结构采用计划",
+      "",
+      ...draft.brief.inspirationPlan.items.map((item) => {
+        const decision = { adopt: "采用", adapt: "改造", discard: "舍弃" }[item.decision];
+        const plannedUse = item.plannedUse ? ` → ${item.plannedUse}` : "";
+        return `- ${decision}：${item.sourceElement}${plannedUse}（${item.rationale}）`;
+      }),
+      "",
+      "### 爆款参考边界",
+      "",
+      ...toMarkdownList(draft.brief.inspirationPlan.boundaries),
+      "",
+    ] : []),
     "## 引用来源",
     "",
     ...(draft.brief.citations.length

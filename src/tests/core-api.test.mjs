@@ -329,6 +329,18 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(viralBriefResult.response.status, 200, serverOutput);
     assert.equal(viralBriefResult.body.brief.inspiration.id, analyzed.body.record.id);
     assert.equal(viralBriefResult.body.brief.citations.length, 0);
+    assert.equal(viralBriefResult.body.brief.inspirationPlan.items.length, 7);
+    assert.equal(viralBriefResult.body.brief.inspirationPlan.items[0].sourceElement, "低价不等于省钱");
+    assert.equal(viralBriefResult.body.brief.inspirationPlan.items.some((item) => item.decision === "discard"), true);
+    assert.deepEqual(
+      viralBriefResult.body.brief.outline,
+      viralBriefResult.body.brief.inspirationPlan.items
+        .filter((item) => item.kind !== "pacing" && item.decision !== "discard")
+        .map((item) => item.plannedUse),
+    );
+    assert.equal(viralBriefResult.body.brief.outline.some((item) => item.includes("四项检查清单")), true);
+    assert.equal(viralBriefResult.body.brief.inspirationPlan.boundaries.some((item) => item.includes("事实")), true);
+    assert.equal(viralBriefResult.body.brief.inspirationPlan.boundaries.some((item) => item.includes("产品承诺")), true);
 
     const viralProjectResult = await requestJson("/api/content/projects", {
       method: "POST",
@@ -351,6 +363,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(generated.response.status, 200, serverOutput);
     assert.equal(generated.body.project.brief.inspiration.title, "低价不等于省钱");
+    assert.equal(generated.body.project.brief.inspirationPlan.items.length, 7);
     assert.equal(generated.body.project.channelDrafts[0].status, "generated");
   });
 
