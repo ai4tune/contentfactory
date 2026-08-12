@@ -496,6 +496,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       body: {},
     });
     assert.equal(result.response.status, 200);
+    assert.equal(result.body.review.humanWritingQa, false);
     project = result.body.project;
     assert.deepEqual(
       new Set(result.body.review.issues.map((issue) => issue.category)),
@@ -506,6 +507,32 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       result.body.review.issues.some((issue) => issue.origin === "deterministic" && issue.originalText === "深度赋能"),
       true,
     );
+  });
+
+  await context.test("optional Human Writing QA checks model-like writing without replacing the normal review", async () => {
+    const draft = project.channelDrafts.find((item) => item.channel === "wechat_article");
+    const edited = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article`, {
+      method: "PATCH",
+      body: { content: `${draft.content}\n\n接下来让我们看看四项条件。` },
+    });
+    assert.equal(edited.response.status, 200);
+    project = edited.body.project;
+
+    const result = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article/review`, {
+      method: "POST",
+      body: { humanWritingQa: true },
+    });
+    assert.equal(result.response.status, 200);
+    project = result.body.project;
+    assert.equal(result.body.review.humanWritingQa, true);
+    assert.equal(result.body.review.issues.some((issue) => issue.category === "human_writing"), true);
+    assert.equal(
+      result.body.review.issues.some((issue) => issue.category === "human_writing" && issue.origin === "deterministic" && issue.originalText === "接下来让我们"),
+      true,
+    );
+    assert.equal(result.body.review.issues.some((issue) => issue.category === "fact"), true);
+    assert.equal(result.body.review.issues.some((issue) => issue.category === "style"), true);
+    assert.equal(result.body.review.issues.some((issue) => issue.category === "platform"), true);
   });
 
   await context.test("one safe review suggestion can be applied and the draft can be edited", async () => {

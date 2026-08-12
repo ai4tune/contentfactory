@@ -43,6 +43,29 @@ export function auditDeterministicStyle(project: ContentProject, content: string
   return issues;
 }
 
+export function auditDeterministicHumanWriting(content: string): ReviewIssue[] {
+  const patterns = [
+    { phrase: "接下来让我们", title: "模型式路标", description: "这句在提示读者内容流程，但没有推进观点。可以直接进入下一段的具体判断。" },
+    { phrase: "让我们一起来", title: "模型式邀请", description: "这类通用邀请容易削弱作者本人语气，建议直接说要讨论的事情。" },
+    { phrase: "不难发现", title: "空泛结论", description: "这句话没有说明证据和推理过程，建议直接写出你观察到的具体变化。" },
+    { phrase: "毋庸置疑", title: "无依据的确定判断", description: "强确定性表达需要材料支撑；没有证据时应改为可验证的具体判断。" },
+  ] as const;
+
+  return patterns.flatMap((pattern, index) => content.includes(pattern.phrase) ? [{
+    id: `humanWritingRules_${Date.now()}_${index}`,
+    category: "human_writing" as const,
+    severity: "low" as const,
+    title: pattern.title,
+    description: pattern.description,
+    originalText: pattern.phrase,
+    suggestedText: "",
+    autoFixable: false,
+    requiresConfirmation: true,
+    origin: "deterministic" as const,
+    status: "open" as const,
+  }] : []);
+}
+
 function createIssue(
   input: {
     phrase: string;

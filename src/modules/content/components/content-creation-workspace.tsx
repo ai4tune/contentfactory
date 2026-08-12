@@ -275,12 +275,12 @@ export function ContentCreationWorkspace({ initialStyleProfile }: { initialStyle
     });
   }
 
-  async function reviewChannel(channel: ContentChannel) {
+  async function reviewChannel(channel: ContentChannel, humanWritingQa = false) {
     if (!project) return false;
     return run(`review:${channel}`, async () => {
       const payload = await postJson<{ project?: ContentProject; error?: string }>(
         `/api/content/projects/${encodeURIComponent(project.id)}/channels/${channel}/review`,
-        {},
+        { humanWritingQa },
       );
       if (!payload.project) throw new Error("AI 审核没有返回结果。");
       setProject(payload.project);
@@ -721,7 +721,7 @@ function ChannelGenerationPanel({
     assetId: string,
     input: { title: string; body: string; points: string[] },
   ) => Promise<boolean>;
-  onReview: (channel: ContentChannel) => Promise<boolean>;
+  onReview: (channel: ContentChannel, humanWritingQa?: boolean) => Promise<boolean>;
   onRetry: (channel: ContentChannel) => void;
   onSave: (channel: ContentChannel, content: string) => Promise<boolean>;
   onSelect: (channel: ContentChannel) => void;
@@ -732,6 +732,7 @@ function ChannelGenerationPanel({
 }) {
   const [editorContents, setEditorContents] = useState<Partial<Record<ContentChannel, string>>>({});
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [humanWritingQa, setHumanWritingQa] = useState(false);
   const activeDraft = drafts.find((draft) => draft.channel === activeChannel) ?? drafts[0];
   const generating = generatingChannels.length > 0;
   const locked = busy !== null || generating;
@@ -879,12 +880,25 @@ function ChannelGenerationPanel({
                       <button className={primaryButtonClass} disabled={!dirty || locked || !editorContent.trim()} onClick={saveActiveDraft} type="button">
                         {busy === `save:${activeDraft.channel}` ? "保存中" : "保存修改"}
                       </button>
-                      <button className={secondaryButtonClass} disabled={dirty || locked} onClick={() => onReview(activeDraft.channel)} type="button">
+                      <button className={secondaryButtonClass} disabled={dirty || locked} onClick={() => onReview(activeDraft.channel, humanWritingQa)} type="button">
                         {busy === `review:${activeDraft.channel}` ? "审核中" : activeDraft.review ? "重新审核" : "AI 审核"}
                       </button>
                       <button className={secondaryButtonClass} disabled={!editorContent} onClick={copyActiveDraft} type="button">复制</button>
                       <button className={secondaryButtonClass} disabled={!editorContent} onClick={downloadActiveDraft} type="button">下载 Markdown</button>
                     </div>
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                      <input
+                        checked={humanWritingQa}
+                        className="mt-0.5 size-4 accent-emerald-800"
+                        disabled={locked}
+                        onChange={(event) => setHumanWritingQa(event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>
+                        <span className="block font-semibold text-slate-800">同时执行 Human Writing 专项检查</span>
+                        <span className="mt-1 block leading-5">可选检查材料不足、事实无来源、重复空话、段落没有新增信息和模型式路标；已确认的个人风格优先。</span>
+                      </span>
+                    </label>
                     {actionNotice ? <p className="text-xs text-emerald-800" role="status">{actionNotice}</p> : null}
 
                     {activeDraft.channel === "xiaohongshu_note" ? (
@@ -1146,7 +1160,7 @@ function ReviewResult({
 }) {
   const review = draft.review;
   if (!review) {
-    return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-700">待 AI 审核</p><p className="mt-1 text-xs leading-5 text-slate-500">保存人工修改后，独立检查事实、账号风格和平台风险。</p></div>;
+    return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-700">待 AI 审核</p><p className="mt-1 text-xs leading-5 text-slate-500">保存人工修改后，独立检查事实、账号风格和平台风险；需要时可打开 Human Writing 专项检查。</p></div>;
   }
 
   const stale = review.reviewedContent !== draft.content;
@@ -1159,6 +1173,7 @@ function ReviewResult({
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-semibold text-slate-900">AI 审核结果</h4>
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${riskClass(review.riskLevel)}`}>{riskLabel(review.riskLevel)}</span>
+            {review.humanWritingQa ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800">已检查 AI 味</span> : null}
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-600">{review.conclusion}</p>
         </div>
@@ -1354,7 +1369,7 @@ function lines(value: string) {
 }
 
 function reviewCategoryLabel(category: ReviewIssueCategory) {
-  return { fact: "事实", style: "风格", platform: "平台" }[category];
+  return { fact: "事实", style: "风格", platform: "平台", human_writing: "Human Writing" }[category];
 }
 
 function riskLabel(risk: ReviewRiskLevel) {

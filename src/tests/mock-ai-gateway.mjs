@@ -251,7 +251,7 @@ function mockCompletion(system, user) {
 
   if (system.includes("独立审核员")) {
     return {
-      conclusion: "发现一项可自动优化的表达，以及两项需要人工确认的问题。",
+      conclusion: `发现一项可自动优化的表达，以及${system.includes("Human Writing 专项检查") ? "三" : "两"}项需要人工确认的问题。`,
       riskLevel: "medium",
       issues: [
         {
@@ -284,6 +284,16 @@ function mockCompletion(system, user) {
           autoFixable: false,
           requiresConfirmation: true,
         },
+        ...(system.includes("Human Writing 专项检查") ? [{
+          category: "human_writing",
+          severity: "low",
+          title: "段落没有新增信息",
+          description: "这句话只是重复上文结论，没有加入新的观察、证据或判断。",
+          originalText: "结论：带着条件清单再咨询。",
+          suggestedText: "",
+          autoFixable: false,
+          requiresConfirmation: true,
+        }] : []),
       ],
     };
   }

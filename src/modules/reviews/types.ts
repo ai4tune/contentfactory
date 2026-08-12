@@ -1,4 +1,4 @@
-export const reviewIssueCategories = ["fact", "style", "platform"] as const;
+export const reviewIssueCategories = ["fact", "style", "platform", "human_writing"] as const;
 export const reviewRiskLevels = ["low", "medium", "high", "blocked"] as const;
 
 export type ReviewIssueCategory = (typeof reviewIssueCategories)[number];
@@ -22,6 +22,7 @@ export type ChannelReview = {
   conclusion: string;
   riskLevel: ReviewRiskLevel;
   issues: ReviewIssue[];
+  humanWritingQa: boolean;
   reviewedContent: string;
   reviewedAt: string;
 };
