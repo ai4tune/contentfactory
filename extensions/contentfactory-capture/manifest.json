@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "内容工厂采集助手",
-  "version": "0.5.2",
-  "description": "Capture visible account information into Content Factory or a user-owned local knowledge folder.",
+  "version": "0.6.0",
+  "description": "Preview Xiaohongshu notes and save them to Content Factory, a user-owned local knowledge folder, or both.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://www.xiaohongshu.com/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],

@@ -30,14 +30,29 @@ const elements = {
   draftTopics: document.getElementById("draftTopics"),
   draftVoice: document.getElementById("draftVoice"),
   followerCount: document.getElementById("followerCount"),
+  inspirationContent: document.getElementById("inspirationContent"),
+  inspirationDirection: document.getElementById("inspirationDirection"),
+  inspirationImages: document.getElementById("inspirationImages"),
+  inspirationKeyword: document.getElementById("inspirationKeyword"),
+  inspirationMedia: document.getElementById("inspirationMedia"),
+  inspirationMetrics: document.getElementById("inspirationMetrics"),
+  inspirationPreview: document.getElementById("inspirationPreview"),
+  inspirationSource: document.getElementById("inspirationSource"),
+  inspirationTags: document.getElementById("inspirationTags"),
+  inspirationTitle: document.getElementById("inspirationTitle"),
   localArchiveStatus: document.getElementById("localArchiveStatus"),
+  openInspiration: document.getElementById("openInspiration"),
+  saveDestination: document.getElementById("saveDestination"),
+  saveInspiration: document.getElementById("saveInspiration"),
   saveLocal: document.getElementById("saveLocal"),
   saveSettings: document.getElementById("saveSettings"),
   status: document.getElementById("status"),
 };
 
 let capturedAccount = null;
+let capturedInspiration = null;
 let positioningDraft = null;
+let savedInspirationUrl = "";
 
 initialize();
 
@@ -47,12 +62,22 @@ elements.chooseLocalArchive.addEventListener("click", chooseArchiveDirectory);
 elements.saveLocal.addEventListener("click", saveCurrentCaptureLocally);
 elements.analyze.addEventListener("click", analyzeCapture);
 elements.confirm.addEventListener("click", confirmPositioning);
+elements.saveInspiration.addEventListener("click", saveInspiration);
+elements.openInspiration.addEventListener("click", openSavedInspiration);
 
 async function initialize() {
   const settings = await chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL, accessToken: "" });
   elements.baseUrl.value = settings.baseUrl;
   elements.accessToken.value = settings.accessToken;
-  await refreshArchiveStatus();
+  const archiveStatus = await refreshArchiveStatus();
+  elements.saveDestination.value = archiveStatus?.configured ? "both" : "website";
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const path = tab?.url ? new URL(tab.url).pathname.toLowerCase() : "";
+  elements.capture.textContent = path.includes("/user/profile/")
+    ? "采集当前账号"
+    : path.includes("/explore/") || path.includes("/discovery/item/")
+      ? "预览当前笔记"
+      : "识别并采集当前页面";
 }
 
 async function chooseArchiveDirectory() {
@@ -60,6 +85,7 @@ async function chooseArchiveDirectory() {
   try {
     const status = await chooseLocalArchiveDirectory();
     renderArchiveStatus(status);
+    if (elements.saveDestination.value === "website") elements.saveDestination.value = "both";
     showStatus(`已连接本地资料库：${status.name}`, "success");
   } catch (error) {
     if (error?.name !== "AbortError") showError(error);
@@ -110,20 +136,125 @@ async function captureCurrentPage() {
       target: { tabId: tab.id },
       func: captureVisibleAccountPage,
     });
-    if (!result?.accountName) throw new Error("未识别到账号名称，请确认当前打开的是账号页或作品详情");
-    if (result.platform === "小红书" && result.pageType !== "account") {
-      throw new Error("请先点击小红书左侧“我”，进入自己的账号主页后再采集");
+    if (result?.platform === "小红书" && result.pageType === "content") {
+      const note = result.contents?.[0];
+      if (!note?.title) throw new Error("没有识别到笔记标题，请刷新笔记详情页后重试");
+      capturedAccount = null;
+      capturedInspiration = { capture: result, note };
+      positioningDraft = null;
+      renderInspiration(result, note);
+      elements.capturePreview.hidden = true;
+      elements.draftPreview.hidden = true;
+      showStatus("已读取当前笔记。请核对正文、指标和图片，再选择保存位置。", "success");
+      return;
     }
+    if (result?.platform === "小红书" && result.pageType !== "account") {
+      throw new Error("当前页面不支持。请打开小红书“我”的主页或一篇笔记详情");
+    }
+    if (!result?.accountName) throw new Error("未识别到账号名称，请确认当前打开的是账号主页");
     capturedAccount = result;
+    capturedInspiration = null;
     positioningDraft = null;
     renderCapture(result);
+    elements.inspirationPreview.hidden = true;
     elements.draftPreview.hidden = true;
     showStatus("已采集。请先检查可见信息，确认后再进行 AI 定位。", "success");
   } catch (error) {
     showError(error);
   } finally {
-    setBusy(elements.capture, false, "采集当前页面");
+    setBusy(elements.capture, false, "重新采集当前页面");
   }
+}
+
+async function saveInspiration() {
+  if (!capturedInspiration) return;
+  const destination = elements.saveDestination.value;
+  let noteCapture;
+  try {
+    noteCapture = editedInspirationCapture();
+  } catch (error) {
+    showError(error);
+    return;
+  }
+  setBusy(elements.saveInspiration, true, destination === "local" ? "正在写入本地…" : "正在保存并拆解…");
+  elements.openInspiration.hidden = true;
+  let websiteSaved = false;
+  let localSaved = false;
+  let websiteError = null;
+  let localError = null;
+  if (destination === "local" || destination === "both") {
+    try {
+      await saveCaptureLocally(noteCapture);
+      localSaved = true;
+      await refreshArchiveStatus();
+    } catch (error) {
+      localError = error;
+    }
+  }
+  if (destination === "website" || destination === "both") {
+    try {
+      const note = noteCapture.contents[0];
+      const data = await callApi("/api/capture/import", {
+        platform: noteCapture.platform,
+        sourceUrl: note.url || noteCapture.sourceUrl,
+        platformContentId: note.noteId,
+        title: note.title,
+        content: note.description,
+        contentType: note.type,
+        tags: note.tags || [],
+        imageUrls: note.imageUrls || [],
+        coverUrl: note.coverUrl,
+        publishedAt: note.publishedAt,
+        capturedAt: noteCapture.capturedAt,
+        author: note.author || { name: noteCapture.accountName },
+        metrics: note.metrics || {},
+        metricsSummary: note.metricSummary,
+        sourceKeyword: elements.inspirationKeyword.value.trim(),
+        contentDirection: elements.inspirationDirection.value.trim(),
+      });
+      websiteSaved = true;
+      savedInspirationUrl = `/inspirations/${data.record.id}`;
+      elements.openInspiration.hidden = false;
+    } catch (error) {
+      websiteError = error;
+    }
+  }
+  try {
+    const targets = [websiteSaved ? "网站爆款库（已生成 AI 拆解）" : "", localSaved ? "本地知识库（Markdown + JSON）" : ""]
+      .filter(Boolean).join(" + ");
+    if (!targets) throw websiteError || localError || new Error("没有完成任何保存操作");
+    const warning = [
+      websiteError ? `网站保存失败：${errorMessage(websiteError)}` : "",
+      localError ? `本地保存失败：${errorMessage(localError)}` : "",
+    ].filter(Boolean).join("\n");
+    showStatus(`保存成功：${targets}`, "success");
+    if (warning) showStatus(`部分保存成功：${targets}\n${warning}`, "error");
+  } catch (error) {
+    showStatus(`操作失败：${errorMessage(error)}`, "error");
+  } finally {
+    setBusy(elements.saveInspiration, false, "保存笔记");
+  }
+}
+
+function editedInspirationCapture() {
+  const { capture, note } = capturedInspiration;
+  const title = elements.inspirationTitle.value.trim();
+  const description = elements.inspirationContent.value.trim();
+  if (!title) throw new Error("标题不能为空");
+  if (!description) throw new Error("正文不能为空；如果页面没有自动识别，可以先粘贴补充");
+  const editedNote = {
+    ...note,
+    title,
+    description,
+    tags: elements.inspirationTags.value.split(/[，,]/).map((item) => item.trim().replace(/^#/, "")).filter(Boolean),
+  };
+  return { ...capture, sourceUrl: editedNote.url || capture.sourceUrl, contents: [editedNote] };
+}
+
+async function openSavedInspiration() {
+  if (!savedInspirationUrl) return;
+  const settings = await chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL });
+  await chrome.tabs.create({ url: `${normalizeBaseUrl(settings.baseUrl)}${savedInspirationUrl}` });
 }
 
 async function analyzeCapture() {
@@ -154,7 +285,9 @@ function editedCapture() {
 
 async function refreshArchiveStatus() {
   try {
-    renderArchiveStatus(await getLocalArchiveStatus());
+    const status = await getLocalArchiveStatus();
+    renderArchiveStatus(status);
+    return status;
   } catch (error) {
     elements.localArchiveStatus.textContent = `本地资料库状态读取失败：${error.message}`;
   }
@@ -207,11 +340,15 @@ async function confirmPositioning() {
 }
 
 async function callCaptureApi(body) {
+  return callApi("/api/capture/account", body);
+}
+
+async function callApi(path, body) {
   const settings = await chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL, accessToken: "" });
   const baseUrl = normalizeBaseUrl(settings.baseUrl);
   const headers = { "Content-Type": "application/json" };
   if (settings.accessToken) headers.Authorization = `Bearer ${settings.accessToken}`;
-  const response = await fetch(`${baseUrl}/api/capture/account`, {
+  const response = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -240,6 +377,53 @@ function renderCapture(capture) {
     elements.contentList.append(row);
   }
   elements.capturePreview.hidden = false;
+}
+
+function renderInspiration(capture, note) {
+  savedInspirationUrl = "";
+  elements.inspirationTitle.value = note.title || "";
+  elements.inspirationContent.value = note.description || "";
+  elements.inspirationTags.value = (note.tags || []).join("，");
+  elements.inspirationKeyword.value = "";
+  elements.inspirationDirection.value = "";
+  elements.inspirationSource.textContent = [
+    `${capture.platform} · ${note.type === "video" ? "视频" : "图文"}`,
+    note.author?.name ? `作者：${note.author.name}` : "作者未识别",
+    note.publishedAt ? `发布：${formatDate(note.publishedAt)}` : "发布时间未公开",
+    `原文：${note.url || capture.sourceUrl}`,
+  ].join("\n");
+  elements.inspirationMetrics.replaceChildren(...contentMetricRows(note.metrics));
+  elements.inspirationImages.replaceChildren(...(note.imageUrls || []).map((url, index) => {
+    const image = document.createElement("img");
+    image.src = url;
+    image.alt = `笔记图片 ${index + 1}`;
+    image.loading = "lazy";
+    return image;
+  }));
+  elements.inspirationMedia.textContent = note.imageUrls?.length
+    ? `已识别 ${note.imageUrls.length} 张图片，原图链接会写入本地档案和网站爆款库。`
+    : "当前页面未识别到图片。";
+  elements.openInspiration.hidden = true;
+  elements.inspirationPreview.hidden = false;
+}
+
+function contentMetricRows(metrics = {}) {
+  return [
+    ["点赞", metrics.likes],
+    ["收藏", metrics.collects],
+    ["评论", metrics.comments],
+    ["分享", metrics.shares],
+    ["阅读/播放", metrics.views],
+  ].map(([label, value]) => {
+    const item = document.createElement("div");
+    const name = document.createElement("span");
+    const number = document.createElement("strong");
+    name.textContent = label;
+    number.textContent = value?.raw || (Number.isFinite(value?.value) ? String(value.value) : "当前页面未公开");
+    if (!value || value.value === null) item.className = "missing";
+    item.append(name, number);
+    return item;
+  });
 }
 
 function metricRows(capture) {
@@ -303,9 +487,17 @@ function showStatus(message, type = "") {
 }
 
 function showError(error) {
-  showStatus(`操作失败：${error instanceof Error ? error.message : String(error)}`, "error");
+  showStatus(`操作失败：${errorMessage(error)}`, "error");
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function pageTypeLabel(type) {
   return { account: "账号主页", creator_backend: "创作者后台", content: "内容页", unknown: "未知页面" }[type] || "未知页面";
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
 }

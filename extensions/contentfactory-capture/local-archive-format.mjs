@@ -91,7 +91,7 @@ function renderInspirationMarkdown(record) {
     "## 来源信息",
     "",
     `- 平台：${capture.platform || "未识别"}`,
-    capture.accountName ? `- 作者：${capture.accountName}` : "",
+    note.author?.name || capture.accountName ? `- 作者：${note.author?.name || capture.accountName}` : "",
     `- 原文：[打开原页面](${note.url || capture.sourceUrl || ""})`,
     `- 发布时间：${note.publishedAt || "页面未公开"}`,
     `- 采集时间：${record.capturedAt}`,
