@@ -13,6 +13,7 @@ import {
   contentChannels,
   type ChannelDraft,
   type ContentBrief,
+  type ContentIdeaContext,
   type ContentChannel,
   type ContentInspirationPlan,
   type ContentInspirationReference,
@@ -38,23 +39,24 @@ type CreationMode = "original" | "viral_rewrite";
 export function ContentCreationWorkspace({
   initialStyleProfile,
   ideaTitle,
-  ideaSourceUrl,
+  ideaContext,
+  initialInspiration,
 }: {
   initialStyleProfile: StyleProfile | null;
   /** 从选题池带入的标题 */
   ideaTitle?: string;
-  /** 从选题池带入的参考来源 URL（预留，后续用于自动关联参考） */
-  ideaSourceUrl?: string;
+  ideaContext?: ContentIdeaContext | null;
+  initialInspiration?: ContentInspirationReference | null;
 }) {
-  const [creationMode, setCreationMode] = useState<CreationMode>("original");
+  const [creationMode, setCreationMode] = useState<CreationMode>(initialInspiration ? "viral_rewrite" : "original");
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [topic, setTopic] = useState(ideaTitle || "");
   const [temporaryStyle, setTemporaryStyle] = useState("");
   const [searchItems, setSearchItems] = useState<KnowledgeSource[]>([]);
   const [selectedSources, setSelectedSources] = useState<KnowledgeSource[]>([]);
-  const [inspirations, setInspirations] = useState<ContentInspirationReference[]>([]);
-  const [selectedInspirationId, setSelectedInspirationId] = useState("");
+  const [inspirations, setInspirations] = useState<ContentInspirationReference[]>(initialInspiration ? [initialInspiration] : []);
+  const [selectedInspirationId, setSelectedInspirationId] = useState(initialInspiration?.id ?? "");
   const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
   const [brief, setBrief] = useState<ContentBrief | null>(null);
   const [project, setProject] = useState<ContentProject | null>(null);
@@ -217,6 +219,7 @@ export function ContentCreationWorkspace({
         "/api/content/brief",
         {
           topic,
+          ideaId: ideaContext?.id,
           sources: selectedSources,
           inspirationId: creationMode === "viral_rewrite" ? selectedInspirationId : undefined,
           temporaryStyleInstructions: lines(temporaryStyle),
@@ -233,7 +236,7 @@ export function ContentCreationWorkspace({
     await run("confirm", async () => {
       const payload = await postJson<{ project?: ContentProject; error?: string }>(
         "/api/content/projects",
-        { topic, brief, temporaryStyleInstructions: lines(temporaryStyle) },
+        { topic, brief, ideaId: ideaContext?.id, temporaryStyleInstructions: lines(temporaryStyle) },
       );
       if (!payload.project) throw new Error("内容项目保存失败。");
       setProject(payload.project);
@@ -375,6 +378,13 @@ export function ContentCreationWorkspace({
 
   return (
     <section className="mt-5 grid gap-5">
+      {ideaContext ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+        <p className="font-semibold">来自选题池：{ideaContext.title}</p>
+        <p className="mt-1 text-xs text-slate-600">市场参考只用于选题和表达角度，不作为企业事实证据。确认简报后才会记为已使用。</p>
+        {ideaContext.sourceUrl && /^https?:\/\//i.test(ideaContext.sourceUrl) ? <a className="mt-2 inline-block text-emerald-800 underline" href={ideaContext.sourceUrl} target="_blank" rel="noopener noreferrer">查看参考原文</a> : null}
+        {ideaContext.summary ? <p className="mt-2 text-slate-600">{ideaContext.summary}</p> : null}
+        {!ideaContext.excerpt ? <p className="mt-1 text-xs text-amber-800">尚无原文正文，只会参考现有标题和摘要，不会自动读取链接。</p> : null}
+      </div> : null}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-950">创作输入</h2>

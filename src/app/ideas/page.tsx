@@ -169,9 +169,9 @@ function DiscoverTab() {
           最近在各平台受到关注的话题。
         </p>
         <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-          <p className="text-sm text-slate-400">热榜功能即将上线</p>
+          <Link href="/radar?tab=hot" className="text-sm text-emerald-800">前往市场雷达查看热榜 →</Link>
           <p className="mt-1 text-xs text-slate-400">
-            配置 RedFox API 后可自动获取各平台热榜数据
+            支持作品榜、平台热搜及聚合热点；需配置 RedFox 密钥并具备接口权限和额度。
           </p>
         </div>
       </div>
@@ -204,32 +204,37 @@ type Idea = {
   platform?: string;
   status: string;
   created_at: string;
+  contentProjectIds?: string[];
 };
 
-function PoolTab() {
+function PoolTab({ used = false }: { used?: boolean }) {
   const router = useRouter();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
   const [startingId, setStartingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/ideas?status=pool")
-      .then((res) => res.json())
+    fetch(`/api/ideas?status=${used ? "used" : "pool"}`)
+      .then((res) => { if (!res.ok) throw new Error("选题读取失败，请刷新重试。"); return res.json(); })
       .then((data) => setIdeas(data.data || []))
-      .catch(() => {})
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [used]);
 
   const handleStartCreation = async (ideaId: string) => {
     setStartingId(ideaId);
+    setError(null);
     try {
       const res = await fetch(`/api/ideas/${ideaId}/create-project`, { method: "POST" });
       const data = await res.json();
       if (res.ok && data.data?.createUrl) {
         router.push(data.data.createUrl);
+      } else {
+        throw new Error(data.error || "无法打开创作页，请重试。");
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "无法打开创作页，请重试。");
     } finally {
       setStartingId(null);
     }
@@ -239,20 +244,21 @@ function PoolTab() {
     <div className="rounded-2xl border border-slate-200 bg-white p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">选题池</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{used ? "已使用选题" : "选题池"}</h2>
           <p className="mt-2 text-sm text-slate-500">
-            已收藏待创作的选题。从市场搜索或推荐中收藏选题，然后进入创作流程。
+            {used ? "已确认简报并保存内容项目的选题。" : "已收藏待创作的选题。打开创作页或取消操作不会移除选题。"}
           </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
           {ideas.length} 个选题
         </span>
       </div>
+      {error ? <p role="alert" className="mt-4 text-sm text-red-700">{error}</p> : null}
       {loading ? (
         <div className="mt-6 text-center text-sm text-slate-400">加载中…</div>
       ) : ideas.length === 0 ? (
         <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-          <p className="text-sm text-slate-400">还没有收藏的选题</p>
+          <p className="text-sm text-slate-400">{used ? "还没有保存内容项目的选题" : "还没有收藏的选题"}</p>
           <p className="mt-1 text-xs text-slate-400">
             从市场搜索中收藏感兴趣的选题
           </p>
@@ -275,6 +281,7 @@ function PoolTab() {
                 </p>
               </div>
               <div className="ml-4 flex gap-2">
+                {idea.contentProjectIds?.map((id) => <Link key={id} href={`/drafts/${encodeURIComponent(id)}`} className="text-sm text-emerald-800 underline">查看内容项目</Link>)}
                 {idea.source_url && (
                   <a
                     href={idea.source_url}
@@ -317,7 +324,7 @@ function ViralTab() {
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
-          <p className="text-sm text-slate-400">从市场搜索中收藏内容，AI 会自动拆解</p>
+          <p className="text-sm text-slate-400">从市场搜索中收藏内容，再到爆款库补充正文并发起 AI 拆解</p>
         </div>
       </div>
     </div>
@@ -325,18 +332,5 @@ function ViralTab() {
 }
 
 function UsedTab() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-slate-900">已使用选题</h2>
-      <p className="mt-2 text-sm text-slate-500">
-        已进入创作流程的选题。可以查看创作进度和发布状态。
-      </p>
-      <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-        <p className="text-sm text-slate-400">还没有使用过的选题</p>
-        <p className="mt-1 text-xs text-slate-400">
-          从选题池中选择选题开始创作
-        </p>
-      </div>
-    </div>
-  );
+  return <PoolTab used />;
 }

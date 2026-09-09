@@ -1,12 +1,13 @@
 // 选题 API
 import { NextRequest, NextResponse } from "next/server";
-import { saveIdeaToDb, listIdeasFromDb } from "@/lib/db";
+import { saveIdeaToDb } from "@/lib/db";
+import { listIdeas } from "@/modules/ideas/service";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") || undefined;
-    const ideas = listIdeasFromDb(status);
+    const ideas = await listIdeas(status);
     return NextResponse.json({ success: true, data: ideas });
   } catch (error) {
     console.error("获取选题列表失败:", error);

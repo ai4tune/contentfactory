@@ -4,15 +4,15 @@
 import type {
   MarketItem,
   MarketAccount,
-  MarketComment,
   SearchWorksInput,
   TrendingInput,
   AccountInput,
   AccountWorksInput,
-  CommentsInput,
 } from "../types";
-import type { MarketDataProvider, ProviderConfig } from "./types";
+import type { ProviderConfig } from "./types";
 import { generateCacheKey } from "./types";
+import { createHash } from "node:crypto";
+import { normalizeRedfoxSearch, redfoxSearchRequest, unwrapRedfoxResponse, marketNumber, safeMarketUrl } from "./redfox-search";
 import {
   getProviderCache,
   setProviderCache,
@@ -21,17 +21,12 @@ import {
 
 // RedFox API 端点
 const REDFOX_ENDPOINTS: Record<string, string> = {
-  xhsSearch: "xhs/search/search",
+  xhsSearch: "xhs/ability/searchWork",
   xhsUserSearch: "xhsUser/searchArticle",
-  xhsUserQuery: "xhsUser/query",
-  xhsUserQueryWithWorks: "xhsUser/queryAccountDetail",
   dySearch: "dyData/searchArticle",
-  dyUserQuery: "dyData/queryUser",
-  dyUserQueryWithWorks: "dyData/queryUserWithWorks",
   gzhSearch: "gzhData/searchArticle",
-  gzhUserQuery: "gzhData/queryUser",
   hotKeyword: "hotKeyword/list",
-  hotSpot: "hotSpot/getListByPlatform",
+  hotSpot: "hotSpot/getListByPlatformWithKeyword",
 };
 
 // 缓存 TTL 配置（毫秒）
@@ -42,11 +37,12 @@ const CACHE_TTL: Record<string, number> = {
   [REDFOX_ENDPOINTS.gzhSearch]: 30 * 60 * 1000,
   [REDFOX_ENDPOINTS.hotKeyword]: 10 * 60 * 1000, // 10 分钟
   [REDFOX_ENDPOINTS.hotSpot]: 30 * 60 * 1000,
+  "sphAllData/searchWork": 30 * 60 * 1000,
   default: 60 * 60 * 1000, // 1 小时
 };
 
 // 创建 RedFox 提供者
-export function createRedFoxProvider(config: ProviderConfig): MarketDataProvider {
+export function createRedFoxProvider(config: ProviderConfig) {
   const { apiKey, baseUrl = "https://redfox.hk" } = config;
 
   if (!apiKey) {
@@ -59,15 +55,17 @@ export function createRedFoxProvider(config: ProviderConfig): MarketDataProvider
     params: Record<string, unknown>,
     method: "GET" | "POST" = "POST"
   ): Promise<unknown> {
-    const url = `${baseUrl}/story/api/${endpoint}`;
+    const url = new URL(`${baseUrl.replace(/\/$/, "")}/story/api/${endpoint}`);
+    if (method === "GET") for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      "REDFOX_API_KEY": apiKey!,
     };
 
     const options: RequestInit = {
       method,
       headers,
+      signal: AbortSignal.timeout(30_000),
     };
 
     if (method === "POST") {
@@ -81,7 +79,7 @@ export function createRedFoxProvider(config: ProviderConfig): MarketDataProvider
     }
 
     const data = await response.json();
-    return data;
+    return unwrapRedfoxResponse(data);
   }
 
   // 带缓存的 API 调用
@@ -90,15 +88,15 @@ export function createRedFoxProvider(config: ProviderConfig): MarketDataProvider
     params: Record<string, unknown>,
     method: "GET" | "POST" = "POST"
   ): Promise<T> {
-    void method; // 预留 GET 支持
-    const cacheKey = generateCacheKey(endpoint, params);
+    const accountKey = createHash("sha256").update(`${baseUrl}:${apiKey}`).digest("hex").slice(0, 16);
+    const cacheKey = `v3:${method}:${accountKey}:${generateCacheKey(endpoint, params)}`;
     const startTime = new Date().toISOString();
 
     // 检查缓存
     const cached = getProviderCache(cacheKey);
     if (cached) {
       const ttl = CACHE_TTL[endpoint] || CACHE_TTL.default;
-      const cachedAt = new Date(cached.updated_at as string).getTime();
+      const cachedAt = new Date(`${String(cached.updated_at).replace(" ", "T")}Z`).getTime();
       if (Date.now() - cachedAt < ttl) {
         // 记录缓存命中
         saveProviderCallLog({
@@ -145,309 +143,117 @@ export function createRedFoxProvider(config: ProviderConfig): MarketDataProvider
         cacheHit: false,
         itemCount: 0,
         errorCode: "API_ERROR",
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: (error instanceof Error ? error.message : String(error)).replaceAll(apiKey!, "[redacted]"),
       });
 
-      throw error;
+      throw new Error((error instanceof Error ? error.message : String(error)).replaceAll(apiKey!, "[redacted]"));
     }
   }
 
-  // 搜索作品
+  // 搜索仅使用官方文档已核对的三个端点，不自动扩散付费请求。
   async function searchWorks(input: SearchWorksInput): Promise<MarketItem[]> {
-    const { platform, keyword, filters, page = 1, pageSize = 20 } = input;
-
-    let endpoint: string;
-    let params: Record<string, unknown>;
-
-    switch (platform) {
-      case "xiaohongshu":
-        endpoint = REDFOX_ENDPOINTS.xhsSearch;
-        params = {
-          keyword,
-          page,
-          pageSize,
-          sort: "hot",
-          ...filters,
-        };
-        break;
-
-      case "douyin":
-        endpoint = REDFOX_ENDPOINTS.dySearch;
-        params = {
-          keyword,
-          pageNum: page,
-          pageSize,
-          sortType: "like",
-          ...filters,
-        };
-        break;
-
-      case "wechat":
-        endpoint = REDFOX_ENDPOINTS.gzhSearch;
-        params = {
-          keyword,
-          pageNum: page,
-          pageSize,
-          ...filters,
-        };
-        break;
-
-      default:
-        throw new Error(`不支持的平台: ${platform}`);
-    }
-
-    const response = await callWithCache<{
-      list?: Array<Record<string, unknown>>;
-      articles?: Array<Record<string, unknown>>;
-      data?: Array<Record<string, unknown>>;
-    }>(endpoint, params);
-
-    // 提取列表数据
-    const items = response.list || response.articles || response.data || [];
-
-    // 转换为 MarketItem 格式
-    return items.map((item, index) => {
-      const platformContentId = String(item.workId || item.awemeId || item.id || "");
-      const stableId = platformContentId ? `${platform}_${platformContentId}` : `${platform}_${Date.now()}_${index}`;
-      return {
-      id: stableId,
-      provider: "redfox",
-      platform,
-      title: String(item.title || item.workTitle || "").trim() || "(无标题)",
-      summary: item.summary ? String(item.summary) : item.desc ? String(item.desc) : item.digest ? String(item.digest) : undefined,
-      contentType: item.type === "video" ? "video" as const : "article" as const,
-      author: {
-        id: String(item.authorId || item.userId || ""),
-        name: String(item.authorName || item.nickname || item.author || ""),
-        followers: Number(item.fans || item.followers) || null,
-        profileUrl: item.profileUrl ? String(item.profileUrl) : item.homePageUrl ? String(item.homePageUrl) : undefined,
-      },
-      publishedAt: item.publishTime ? String(item.publishTime) : item.createTime ? String(item.createTime) : item.publicTime ? String(item.publicTime) : undefined,
-      capturedAt: new Date().toISOString(),
-      metrics: {
-        views: Number(item.readCount || item.playCount || item.views) || null,
-        likes: Number(item.likeCount || item.diggCount || item.likedCount) || null,
-        collects: Number(item.collectCount || item.collectedCount) || null,
-        comments: Number(item.commentCount) || null,
-        shares: Number(item.shareCount) || null,
-      },
-      keywords: Array.isArray(item.keywords) ? item.keywords : [keyword],
-      tags: Array.isArray(item.tags) ? item.tags : [],
-      sourceUrl: item.url ? String(item.url) : item.shareUrl ? String(item.shareUrl) : item.link ? String(item.link) : undefined,
-      canonicalUrl: String(item.url || item.shareUrl || item.link || ""),
-      platformContentId,
-    };
-    });
+    const { endpoint, params } = redfoxSearchRequest(input);
+    const response = await callWithCache<unknown>(endpoint, params);
+    return normalizeRedfoxSearch(response, input);
   }
 
-  // 获取热榜
+  // 官方契约：日榜、账号详情及作品列表。每个操作最多一次付费请求。
   async function getTrending(input: TrendingInput): Promise<MarketItem[]> {
-    const { platform, date, category } = input;
-
-    let endpoint: string;
-    let params: Record<string, unknown>;
-
-    switch (platform) {
-      case "xiaohongshu":
-        endpoint = "cozeSkill/getXhsCozeSkillDataOne";
-        params = {
-          rankDate: date || new Date().toISOString().split("T")[0],
-          source: "小红书单日数据爆款文章-GitHub",
-          category: category || "综合全部",
-        };
-        break;
-
-      case "douyin":
-        endpoint = "dy/search/likesRank";
-        params = {
-          source: "抖音",
-          type: category || "全部",
-          startTime: date || new Date().toISOString().split("T")[0],
-          endTime: date || new Date().toISOString().split("T")[0],
-        };
-        break;
-
-      case "wechat":
-        endpoint = "gzh/search/hotArticle";
-        params = {
-          source: "公众号",
-          keyword: "",
-          startDate: date || new Date().toISOString().split("T")[0],
-          endDate: date || new Date().toISOString().split("T")[0],
-          pageNum: 1,
-          pageSize: 50,
-        };
-        break;
-
-      default:
-        throw new Error(`不支持的平台: ${platform}`);
+    const date = input.date || new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const platform = input.platform;
+    let response: unknown;
+    if (platform === "xiaohongshu") {
+      response = await callWithCache("cozeSkill/getXhsCozeSkillDataOne", {
+        rankDate: date, category: input.category || "综合全部",
+      }, "GET");
+    } else if (platform === "douyin") {
+      response = await callWithCache("dy/search/likesRank", {
+        source: "抖音每日热门作品榜-GitHub", type: input.category || "全部", startTime: date, endTime: date,
+      });
+    } else if (platform === "wechat") {
+      response = await callWithCache("gzh/search/hotArticle", { keyword: input.category || "", startDate: date, endDate: date });
+    } else {
+      throw new Error("该平台暂无已核实的作品热榜接口，请使用主题搜索。");
     }
-
-    const response = await callWithCache<{
-      list?: Array<Record<string, unknown>>;
-      articles?: Array<Record<string, unknown>>;
-      data?: Array<Record<string, unknown>>;
-    }>(endpoint, params);
-
-    const items = response.list || response.articles || response.data || [];
-
-    return items.map((item, index) => {
-      const platformContentId = String(item.workId || item.awemeId || item.id || "");
-      const stableId = platformContentId ? `${platform}_${platformContentId}` : `${platform}_hot_${Date.now()}_${index}`;
-      return {
-      id: stableId,
-      provider: "redfox",
-      platform,
-      title: String(item.title || item.workTitle || "").trim() || "(无标题)",
-      summary: item.summary ? String(item.summary) : item.desc ? String(item.desc) : item.digest ? String(item.digest) : undefined,
-      contentType: item.type === "video" ? "video" as const : "article" as const,
-      author: {
-        id: String(item.authorId || item.userId || ""),
-        name: String(item.authorName || item.nickname || item.author || ""),
-        followers: Number(item.fans || item.followers) || null,
-        profileUrl: item.profileUrl ? String(item.profileUrl) : item.homePageUrl ? String(item.homePageUrl) : undefined,
-      },
-      publishedAt: item.publishTime ? String(item.publishTime) : item.createTime ? String(item.createTime) : item.publicTime ? String(item.publicTime) : undefined,
-      capturedAt: new Date().toISOString(),
-      metrics: {
-        views: Number(item.readCount || item.playCount || item.views) || null,
-        likes: Number(item.likeCount || item.diggCount || item.likedCount) || null,
-        collects: Number(item.collectCount || item.collectedCount) || null,
-        comments: Number(item.commentCount) || null,
-        shares: Number(item.shareCount) || null,
-      },
-      keywords: Array.isArray(item.keywords) ? item.keywords : [],
-      tags: Array.isArray(item.tags) ? item.tags : [],
-      sourceUrl: item.url ? String(item.url) : item.shareUrl ? String(item.shareUrl) : item.link ? String(item.link) : undefined,
-      canonicalUrl: String(item.url || item.shareUrl || item.link || ""),
-      platformContentId,
-    };
-    });
+    const rows = listResponse(response, ["list", "articles", "records"]);
+    const list = rows.map(row => ({ ...row, ...(row.anaAdd ? record(row.anaAdd) : {}) }));
+    return normalizeRedfoxSearch({ list }, { platform, keyword: input.category || "", pageSize: 50 });
   }
 
-  // 获取账号信息
   async function getAccount(input: AccountInput): Promise<MarketAccount> {
     const { platform, accountId } = input;
-
-    let endpoint: string;
-    let params: Record<string, unknown>;
-
-    switch (platform) {
-      case "xiaohongshu":
-        endpoint = REDFOX_ENDPOINTS.xhsUserQuery;
-        params = { userId: accountId };
-        break;
-
-      case "douyin":
-        endpoint = REDFOX_ENDPOINTS.dyUserQuery;
-        params = { uid: accountId };
-        break;
-
-      case "wechat":
-        endpoint = REDFOX_ENDPOINTS.gzhUserQuery;
-        params = { userId: accountId };
-        break;
-
-      default:
-        throw new Error(`不支持的平台: ${platform}`);
-    }
-
-    const response = await callWithCache<Record<string, unknown>>(endpoint, params);
-
+    let response: unknown;
+    if (platform === "xiaohongshu") response = await callWithCache("xhsUser/queryAccountDetail", { accountId });
+    else if (platform === "douyin") response = await callWithCache("dyData/queryUser", { accountId });
+    else if (platform === "wechat") response = await callWithCache("gzhData/queryUser", { account: accountId });
+    else throw new Error("账号追踪暂支持小红书、抖音和公众号；视频号请使用作品搜索。");
+    const data = record(response);
+    const name = textField(data.accountName ?? data.nickname);
+    if (!name) throw new Error("数据源未返回账号信息，请核对平台账号 ID 和收录范围。");
     return {
-      id: `${platform}_${accountId}`,
-      provider: "redfox",
-      platform,
-      platformAccountId: accountId,
-      name: String(response.nickname || response.name || response.authorName || ""),
-      profileUrl: response.profileUrl ? String(response.profileUrl) : response.homePageUrl ? String(response.homePageUrl) : undefined,
-      followers: Number(response.fans || response.followers) || null,
-      worksCount: Number(response.worksCount || response.videoCount) || null,
-      accountType: "benchmark",
-      latestPostAt: response.latestPostAt as string,
-      averageEngagement: Number(response.averageEngagement) || null,
-      medianEngagement: Number(response.medianEngagement) || null,
-      viralCount: Number(response.viralCount) || 0,
-      mainTopics: Array.isArray(response.mainTopics) ? response.mainTopics : [],
-      capturedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      id: `${platform}_${textField(data.userId ?? data.uid ?? data.account ?? data.accountId) || accountId}`,
+      provider: "redfox", platform, platformAccountId: accountId, name,
+      profileUrl: safeMarketUrl(data.profileUrl) || undefined,
+      followers: marketNumber(data.accountFans ?? data.followerCount),
+      worksCount: marketNumber(data.accountTotalWorks ?? data.awemeCount),
+      accountType: "benchmark", mainTopics: [],
+      capturedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
   }
 
-  // 获取账号作品
   async function getAccountWorks(input: AccountWorksInput): Promise<MarketItem[]> {
     const { platform, accountId, page = 1, pageSize = 20 } = input;
+    const endpoint = { xiaohongshu: "xhsUser/queryWorkList", douyin: "dyData/queryWorkList", wechat: "gzhData/queryWorkList", channels: "sphAllData/queryWorkList" }[platform as "xiaohongshu" | "douyin" | "wechat" | "channels"];
+    if (!endpoint) throw new Error("该平台不支持账号作品查询");
+    const params = platform === "channels"
+      ? { nickname: accountId, page, size: pageSize }
+      : { ...(platform === "xiaohongshu" ? { redId: accountId } : platform === "wechat" ? { account: accountId } : { accountId }), offset: (page - 1) * 20, sortType: "_2" };
+    const response = await callWithCache(endpoint, params);
+    return normalizeRedfoxSearch({ list: listResponse(response, ["list"]) }, { platform, keyword: "", pageSize });
+  }
 
-    let endpoint: string;
-    let params: Record<string, unknown>;
-
-    switch (platform) {
-      case "xiaohongshu":
-        endpoint = REDFOX_ENDPOINTS.xhsUserQueryWithWorks;
-        params = { userId: accountId, page, pageSize };
-        break;
-
-      case "douyin":
-        endpoint = REDFOX_ENDPOINTS.dyUserQueryWithWorks;
-        params = { uid: accountId, pageNum: page, pageSize };
-        break;
-
-      default:
-        throw new Error(`不支持的平台: ${platform}`);
-    }
-
-    const response = await callWithCache<{
-      list?: Array<Record<string, unknown>>;
-      works?: Array<Record<string, unknown>>;
-      data?: Array<Record<string, unknown>>;
-    }>(endpoint, params);
-
-    const items = response.list || response.works || response.data || [];
-
-    return items.map((item, index) => {
-      const platformContentId = String(item.workId || item.awemeId || item.id || "");
-      const stableId = platformContentId ? `${platform}_${platformContentId}` : `${platform}_${accountId}_${Date.now()}_${index}`;
-      return {
-      id: stableId,
-      provider: "redfox",
-      platform,
-      title: String(item.title || item.workTitle || "").trim() || "(无标题)",
-      summary: item.summary ? String(item.summary) : item.desc ? String(item.desc) : undefined,
-      contentType: item.type === "video" ? "video" as const : "article" as const,
-      author: {
-        id: accountId,
-        name: String(item.authorName || item.nickname || ""),
-        followers: null,
-      },
-      publishedAt: item.publishTime ? String(item.publishTime) : item.createTime ? String(item.createTime) : undefined,
-      capturedAt: new Date().toISOString(),
-      metrics: {
-        views: Number(item.readCount || item.playCount) || null,
-        likes: Number(item.likeCount || item.diggCount) || null,
-        collects: Number(item.collectCount) || null,
-        comments: Number(item.commentCount) || null,
-        shares: Number(item.shareCount) || null,
-      },
-      keywords: Array.isArray(item.keywords) ? item.keywords : [],
-      tags: Array.isArray(item.tags) ? item.tags : [],
-      sourceUrl: item.url ? String(item.url) : item.shareUrl ? String(item.shareUrl) : undefined,
-      canonicalUrl: String(item.url || item.shareUrl || ""),
-      platformContentId,
-    };
+  async function getHotspots(input: { startDate: string; endDate: string; keyword?: string; platform?: string }): Promise<Hotspot[]> {
+    const codes: Record<string, number> = { kuaishou: 1, douyin: 2, weibo: 5, baidu: 7, bilibili: 8, zhihu: 9, toutiao: 10 };
+    if (input.platform && !(input.platform in codes)) throw new Error("该平台不支持热搜查询");
+    const response = record(await callWithCache("hotSpot/getListByPlatformWithKeyword", {
+      platforms: input.platform ? [codes[input.platform]] : [], keywords: input.keyword ? [input.keyword] : [],
+      startDate: input.startDate, endDate: input.endDate,
+    }));
+    const lists: Record<string, string> = { ksList: "kuaishou", dyList: "douyin", wbList: "weibo", bdList: "baidu", bzList: "bilibili", zhList: "zhihu", ttList: "toutiao" };
+    if (!Object.keys(lists).some(key => Array.isArray(response[key]))) throw new Error("RedFox 热搜返回缺少榜单");
+    return Object.entries(lists).flatMap(([key, platform]) => {
+      if (input.platform && input.platform !== platform) return [];
+      if (response[key] === undefined) return [];
+      return listResponse(response[key], []).map(row => ({
+        id: createHash("sha256").update(`${platform}:${textField(row.title)}:${textField(row.url)}`).digest("hex"),
+        platform, title: textField(row.title), url: safeMarketUrl(row.url),
+        heat: marketNumber(row.hotCount), heatLabel: textField(row.hotCount),
+        rank: marketNumber(row.index), observedAt: textField(row.gmtCreate),
+      }));
     });
   }
 
-  // 获取评论（可选）
-  const getComments = async (_input: CommentsInput): Promise<MarketComment[]> => {
-    // TODO: 实现评论获取
-    return [];
-  };
+  async function getHotKeywords(input: { startDate: string; endDate: string }): Promise<HotKeyword[]> {
+    const response = await callWithCache("hotKeyword/list", { startDate: `${input.startDate} 00:00:00`, endDate: `${input.endDate} 00:00:00` });
+    return listResponse(response, []).map(row => ({
+      keyword: textField(row.keyword),
+      sources: listResponse(row.hotSpotList, []).map(spot => ({ title: textField(spot.title), platform: textField(spot.platName), url: safeMarketUrl(spot.url) })),
+    })).slice(0, 10);
+  }
 
-  return {
-    searchWorks,
-    getTrending,
-    getAccount,
-    getAccountWorks,
-    getComments,
-  };
+  return { searchWorks, getTrending, getAccount, getAccountWorks, getHotspots, getHotKeywords };
+}
+
+export type HotKeyword = { keyword: string; sources: { title: string; platform: string; url: string }[] };
+export type Hotspot = { id: string; platform: string; title: string; url: string; heat: number | null; heatLabel: string; rank: number | null; observedAt: string };
+
+function record(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("RedFox 返回对象格式错误");
+  return value as Record<string, unknown>;
+}
+function textField(value: unknown) { return typeof value === "string" || typeof value === "number" ? String(value) : ""; }
+function listResponse(value: unknown, keys: string[]): Record<string, unknown>[] {
+  const rows = Array.isArray(value) ? value : keys.map(key => record(value)[key]).find(Array.isArray);
+  if (!Array.isArray(rows)) throw new Error("RedFox 返回缺少作品列表");
+  return rows.map(record);
 }

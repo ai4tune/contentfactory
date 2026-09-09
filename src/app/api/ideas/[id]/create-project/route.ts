@@ -1,6 +1,6 @@
 // Idea 一键创建内容项目
 import { NextRequest, NextResponse } from "next/server";
-import { getIdeaFromDb, updateIdeaStatus } from "@/lib/db";
+import { getIdeaFromDb } from "@/lib/db";
 
 export async function POST(
   request: NextRequest,
@@ -18,11 +18,8 @@ export async function POST(
       );
     }
 
-    // 更新 Idea 状态
-    updateIdeaStatus(id, "creating");
-
-    // 生成创建链接，携带选题信息
-    const createUrl = `/create?ideaId=${id}&title=${encodeURIComponent(String(idea.title))}${idea.source_url ? `&sourceUrl=${encodeURIComponent(String(idea.source_url))}` : ""}`;
+    // 打开编辑器不等于创建项目；状态由实际保存的内容项目推导。
+    const createUrl = `/create?ideaId=${encodeURIComponent(id)}`;
 
     return NextResponse.json({
       success: true,

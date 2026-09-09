@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:api": "node --test src/tests/core-api.test.mjs",
     "test:extension": "node --test src/tests/extension-*.test.mjs",
-    "test:acceptance": "npm run lint && npm run test:extension && npm run test:api && npm run build"
+    "test:v2": "npm run build && node --test src/tests/v2-handoff.test.mjs",
+    "test:acceptance": "npm run lint && npm run test:extension && npm run test:api && npm run test:v2"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

@@ -32,6 +32,7 @@ export async function POST(
       summary: inspiration.analysis.summary || undefined,
       sourceUrl: inspiration.source.sourceUrl || inspiration.source.canonicalUrl,
       platform: inspiration.source.platform,
+      inspirationId: id,
       status: "pool",
     });
 

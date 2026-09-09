@@ -483,7 +483,7 @@ function extractPlatformContentId(platform: string, sourceUrl?: string) {
 }
 
 function parseCaptureMethod(value: unknown): InspirationCaptureMethod | undefined {
-  return value === "manual" || value === "plugin" ? value : undefined;
+  return value === "manual" || value === "plugin" || value === "api" ? value : undefined;
 }
 
 function parseContentType(value: unknown): InspirationContentType {

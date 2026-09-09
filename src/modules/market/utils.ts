@@ -69,7 +69,7 @@ export function deduplicateItems(items: MarketItem[]): MarketItem[] {
 
 // 格式化数字
 export function formatNumber(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "0";
+  if (value === null || value === undefined) return "未知";
 
   if (value >= 10000) {
     return `${(value / 10000).toFixed(1)}万`;

@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   AppShell,
   PageHeader,
@@ -14,6 +14,8 @@ import {
   formatTimeAgo,
   formatPlatformName,
 } from "@/modules/market/utils";
+
+import { HotPanel, TrendsPanel, AccountsPanel } from "@/modules/market/radar-panels";
 
 type RadarTab = "hot" | "search" | "trends" | "accounts";
 
@@ -34,9 +36,9 @@ export default function RadarPage() {
 
 function RadarPageContent() {
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get("tab") as RadarTab) || "hot";
+  const activeTab = tabs.find(tab => tab.id === searchParams.get("tab"))?.id || "hot";
+  const router = useRouter();
   const initialQuery = searchParams.get("q") || "";
-  const [activeTab, setActiveTab] = useState<RadarTab>(initialTab);
 
   return (
     <AppShell active="/radar">
@@ -56,7 +58,7 @@ function RadarPageContent() {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => router.push(`/radar?tab=${tab.id}`)}
             className={`shrink-0 px-4 py-2.5 text-sm font-medium transition ${
               activeTab === tab.id
                 ? "border-b-2 border-emerald-700 text-emerald-800"
@@ -70,70 +72,12 @@ function RadarPageContent() {
 
       {/* Tab 内容 */}
       <div className="mt-6">
-        {activeTab === "hot" && <HotTab />}
-        {activeTab === "search" && <SearchTab initialQuery={initialQuery} />}
-        {activeTab === "trends" && <TrendsTab />}
-        {activeTab === "accounts" && <AccountsTab />}
+        {activeTab === "hot" && <HotPanel ItemCard={SearchResultCard} />}
+        {activeTab === "search" && <SearchTab key={initialQuery} initialQuery={initialQuery} />}
+        {activeTab === "trends" && <TrendsPanel />}
+        {activeTab === "accounts" && <AccountsPanel ItemCard={SearchResultCard} />}
       </div>
     </AppShell>
-  );
-}
-
-function HotTab() {
-  return (
-    <div className="space-y-6">
-      {/* 热词示例 */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">全网热词</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          以下为示例关键词，配置 RedFox API 后将显示实时热词。
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {["AI员工", "超级个体", "AI获客", "一人公司", "销售自动化"].map((keyword) => (
-            <span
-              key={keyword}
-              className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-500"
-            >
-              {keyword}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* 平台状态 */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">平台热榜</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          配置 RedFox API Key 后，可自动获取各平台热榜数据。
-        </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {["小红书", "抖音", "视频号", "公众号"].map((name) => (
-            <div
-              key={name}
-              className="rounded-xl border border-dashed border-slate-200 p-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-slate-900">{name}</span>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-                  待配置
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">
-                配置后自动获取热榜
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 配置提示 */}
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-        <h3 className="font-semibold text-slate-900">配置市场数据源</h3>
-        <p className="mt-2 text-sm text-slate-500">
-          在 <code className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">.env.local</code> 中配置 <code className="rounded bg-slate-200 px-1.5 py-0.5 text-xs">REDFOX_API_KEY</code> 后，系统可以自动获取各平台热榜、搜索和趋势数据。
-        </p>
-      </div>
-    </div>
   );
 }
 
@@ -167,7 +111,7 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "搜索失败");
+        throw new Error(data.message || data.error || "搜索失败");
       }
 
       setSearchResults(data.data?.items || []);
@@ -197,6 +141,7 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
             <option value="xiaohongshu">小红书</option>
             <option value="douyin">抖音</option>
             <option value="wechat">公众号</option>
+            <option value="channels">视频号</option>
           </select>
 
           {/* 关键词输入 */}
@@ -250,11 +195,10 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
         <h2 className="text-lg font-semibold text-slate-900">搜索流程</h2>
         <div className="mt-4 space-y-3">
           {[
-            { step: 1, title: "关键词扩展", desc: "AI 自动生成 5-10 个相关关键词" },
-            { step: 2, title: "全网搜索", desc: "从小红书、抖音、视频号等平台搜索" },
-            { step: 3, title: "数据标准化", desc: "统一数据格式，去重排序" },
-            { step: 4, title: "机会评分", desc: "根据热度、匹配度、商业价值评分" },
-            { step: 5, title: "AI 分析", desc: "生成选题建议和创作方向" },
+            { step: 1, title: "输入关键词", desc: "选择平台，搜索你想了解的主题" },
+            { step: 2, title: "查询内容", desc: "支持小红书、抖音、公众号和视频号，结果取决于数据源覆盖范围" },
+            { step: 3, title: "查看结果", desc: "统一展示来源和可用指标，缺失数据不会补造" },
+            { step: 4, title: "进入创作", desc: "收藏到爆款库，或转为选题后结合知识库创作" },
           ].map((item) => (
             <div key={item.step} className="flex items-start gap-3">
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">
@@ -272,35 +216,22 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
   );
 }
 
-function TrendsTab() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-slate-900">趋势分析</h2>
-      <p className="mt-2 text-sm text-slate-500">
-        找到正在上涨的方向。分析 7 天、14 天、30 天的趋势变化。
-      </p>
-      <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-        <p className="text-sm text-slate-400">趋势分析功能即将上线</p>
-        <p className="mt-1 text-xs text-slate-400">
-          配置 RedFox API 后可自动分析趋势数据
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function SearchResultCard({ item }: { item: MarketItem }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [creatingIdea, setCreatingIdea] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSaveToInspiration = async () => {
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/market/items/${item.id}/save-to-inspiration`, { method: "POST" });
-      if (res.ok) setSaved(true);
-    } catch {
-      // ignore
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || "收藏失败，请重试。");
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "收藏失败，请重试。");
     } finally {
       setSaving(false);
     }
@@ -308,6 +239,7 @@ function SearchResultCard({ item }: { item: MarketItem }) {
 
   const handleCreateIdea = async () => {
     setCreatingIdea(true);
+    setError(null);
     try {
       const res = await fetch("/api/ideas", {
         method: "POST",
@@ -325,9 +257,12 @@ function SearchResultCard({ item }: { item: MarketItem }) {
         if (data.data?.id) {
           window.location.href = `/ideas?tab=pool`;
         }
+      } else {
+        const data = await res.json();
+        throw new Error(data.error || "创建选题失败，请重试。");
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建选题失败，请重试。");
     } finally {
       setCreatingIdea(false);
     }
@@ -335,6 +270,7 @@ function SearchResultCard({ item }: { item: MarketItem }) {
 
   return (
     <div className="rounded-xl border border-slate-200 p-4 transition hover:border-emerald-200 hover:bg-emerald-50/30">
+      {error ? <p role="alert" className="mb-3 text-sm text-red-700">{error}</p> : null}
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -397,23 +333,6 @@ function SearchResultCard({ item }: { item: MarketItem }) {
         >
           {creatingIdea ? "创建中…" : "创建选题"}
         </button>
-      </div>
-    </div>
-  );
-}
-
-function AccountsTab() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-slate-900">对标账号</h2>
-      <p className="mt-2 text-sm text-slate-500">
-        追踪竞争对手和参考账号，学习他们的内容策略。
-      </p>
-      <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-        <p className="text-sm text-slate-400">账号追踪功能即将上线</p>
-        <p className="mt-1 text-xs text-slate-400">
-          配置 RedFox API 后可追踪对标账号
-        </p>
       </div>
     </div>
   );

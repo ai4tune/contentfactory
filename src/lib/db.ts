@@ -4,29 +4,34 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import type { MarketAccount, MarketItem } from "@/modules/market/types";
 
 // 数据目录
 const DATA_DIR = path.join(process.cwd(), "data");
 
-// 确保数据目录存在
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
 // 数据库文件路径
 const DB_PATH = path.join(DATA_DIR, "contentfactory.db");
 
-// 创建数据库连接
-const db = new Database(DB_PATH);
+let connection: Database.Database | undefined;
 
-// 启用 WAL 模式
-db.pragma("journal_mode = WAL");
-
-// 启用外键约束
-db.pragma("foreign_keys = ON");
+// 模块被构建进程加载时不打开数据库；迁移在首次业务访问时串行执行。
+function getDatabase(): Database.Database {
+  if (connection) return connection;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const database = new Database(DB_PATH, { timeout: 10_000 });
+  try {
+    database.pragma("foreign_keys = ON");
+    database.transaction(() => initializeDatabase(database)).immediate();
+    connection = database;
+    return database;
+  } catch (error) {
+    database.close();
+    throw error;
+  }
+}
 
 // 确保列存在（增量迁移）
-function ensureColumn(table: string, column: string, type: string): void {
+function ensureColumn(db: Database.Database, table: string, column: string, type: string): void {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   const exists = columns.some((col) => col.name === column);
   if (!exists) {
@@ -35,7 +40,7 @@ function ensureColumn(table: string, column: string, type: string): void {
 }
 
 // 初始化数据库表
-function initializeDatabase(): void {
+function initializeDatabase(db: Database.Database): void {
   // 市场项目表
   db.exec(`
     CREATE TABLE IF NOT EXISTS market_items (
@@ -177,6 +182,8 @@ function initializeDatabase(): void {
   `);
 
   // 创建索引
+  ensureColumn(db, "ideas", "inspiration_id", "TEXT");
+  ensureColumn(db, "tracked_accounts", "payload_json", "TEXT");
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_market_items_platform ON market_items(platform);
     CREATE INDEX IF NOT EXISTS idx_market_items_captured_at ON market_items(captured_at);
@@ -199,11 +206,32 @@ function initializeDatabase(): void {
   }
 }
 
-// 初始化数据库
-initializeDatabase();
+export type TrackedAccountBundle = { account: MarketAccount; items: MarketItem[] };
 
-// 导出数据库实例和工具函数
-export { db, ensureColumn, DATA_DIR, DB_PATH };
+export function listTrackedAccountBundles(): TrackedAccountBundle[] {
+  const rows = getDatabase().prepare("SELECT payload_json FROM tracked_accounts WHERE payload_json IS NOT NULL ORDER BY updated_at DESC").all() as { payload_json: string }[];
+  return rows.map(row => JSON.parse(row.payload_json) as TrackedAccountBundle);
+}
+
+export function saveTrackedAccountBundle(bundle: TrackedAccountBundle) {
+  const account = bundle.account;
+  getDatabase().prepare(`INSERT INTO tracked_accounts
+    (id, provider, platform, platform_account_id, name, captured_at, updated_at, payload_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name, platform_account_id=excluded.platform_account_id,
+      updated_at=excluded.updated_at, payload_json=excluded.payload_json`).run(
+    account.id, account.provider, account.platform, account.platformAccountId, account.name,
+    account.capturedAt, account.updatedAt, JSON.stringify(bundle));
+}
+
+export function deleteTrackedAccountBundle(id: string) {
+  const db = getDatabase();
+  db.transaction(() => {
+    db.prepare("DELETE FROM tracked_account_posts WHERE account_id = ?").run(id);
+    db.prepare("DELETE FROM tracked_accounts WHERE id = ?").run(id);
+  })();
+}
+
 
 // 保存市场项目
 export function saveMarketItemToDb(item: {
@@ -234,7 +262,7 @@ export function saveMarketItemToDb(item: {
   rawPayloadRef?: string;
   opportunityScore?: number;
 }): void {
-  const stmt = db.prepare(`
+  const stmt = getDatabase().prepare(`
     INSERT OR REPLACE INTO market_items (
       id, provider, provider_item_id, platform, platform_content_id,
       canonical_url, source_url, title, summary, body, content_type,
@@ -264,19 +292,19 @@ export function saveMarketItemToDb(item: {
     item.contentType,
     item.authorId || null,
     item.authorName || null,
-    item.authorFollowers || null,
+    item.authorFollowers ?? null,
     item.authorProfileUrl || null,
     item.publishedAt || null,
     item.capturedAt,
-    item.views || null,
-    item.likes || null,
-    item.collects || null,
-    item.comments || null,
-    item.shares || null,
+    item.views ?? null,
+    item.likes ?? null,
+    item.collects ?? null,
+    item.comments ?? null,
+    item.shares ?? null,
     item.keywords ? JSON.stringify(item.keywords) : null,
     item.tags ? JSON.stringify(item.tags) : null,
     item.rawPayloadRef || null,
-    item.opportunityScore || null
+    item.opportunityScore ?? null
   );
 }
 
@@ -308,24 +336,29 @@ export function upsertMarketItemToDb(item: {
   tags?: string[];
   rawPayloadRef?: string;
   opportunityScore?: number;
-}): void {
+}): string {
   // 先尝试按 platform_content_id 查找已有记录
   let existingId: string | null = null;
   if (item.platformContentId) {
-    const existing = db.prepare(
+    const existing = getDatabase().prepare(
       "SELECT id FROM market_items WHERE platform = ? AND platform_content_id = ?"
     ).get(item.platform, item.platformContentId) as { id: string } | undefined;
     existingId = existing?.id ?? null;
   }
 
+  if (!existingId) {
+    const existing = getDatabase().prepare("SELECT id FROM market_items WHERE id = ?").get(item.id) as { id: string } | undefined;
+    existingId = existing?.id ?? null;
+  }
+
   if (existingId) {
     // 更新：只覆盖指标和基础信息，保护已有正文
-    const stmt = db.prepare(`
+    const stmt = getDatabase().prepare(`
       UPDATE market_items SET
-        title = ?, summary = COALESCE(?, summary),
+        title = ?, summary = COALESCE(?, summary), body = COALESCE(NULLIF(body, ''), ?),
         source_url = COALESCE(?, source_url), canonical_url = COALESCE(?, canonical_url),
         author_name = COALESCE(?, author_name), author_followers = COALESCE(?, author_followers),
-        published_at = COALESCE(?, published_at),
+        published_at = COALESCE(?, published_at), captured_at = ?,
         views = COALESCE(?, views), likes = COALESCE(?, likes),
         collects = COALESCE(?, collects), comments = COALESCE(?, comments), shares = COALESCE(?, shares),
         opportunity_score = COALESCE(?, opportunity_score),
@@ -333,24 +366,25 @@ export function upsertMarketItemToDb(item: {
       WHERE id = ?
     `);
     stmt.run(
-      item.title, item.summary || null,
+      item.title, item.summary || null, item.body || null,
       item.sourceUrl || null, item.canonicalUrl || null,
-      item.authorName || null, item.authorFollowers || null,
-      item.publishedAt || null,
-      item.views || null, item.likes || null,
-      item.collects || null, item.comments || null, item.shares || null,
-      item.opportunityScore || null,
+      item.authorName || null, item.authorFollowers ?? null,
+      item.publishedAt || null, item.capturedAt,
+      item.views ?? null, item.likes ?? null,
+      item.collects ?? null, item.comments ?? null, item.shares ?? null,
+      item.opportunityScore ?? null,
       existingId
     );
   } else {
     // 新记录：直接插入
     saveMarketItemToDb(item);
   }
+  return existingId ?? item.id;
 }
 
 // 获取市场项目
 export function getMarketItemFromDb(id: string): Record<string, unknown> | null {
-  const stmt = db.prepare("SELECT * FROM market_items WHERE id = ?");
+  const stmt = getDatabase().prepare("SELECT * FROM market_items WHERE id = ?");
   return stmt.get(id) as Record<string, unknown> | null;
 }
 
@@ -393,7 +427,7 @@ export function listMarketItemsFromDb(filters?: {
     params.push(filters.offset);
   }
 
-  return db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return getDatabase().prepare(sql).all(...params) as Record<string, unknown>[];
 }
 
 // 保存提供者调用日志
@@ -409,7 +443,7 @@ export function saveProviderCallLog(log: {
   errorCode?: string;
   errorMessage?: string;
 }): void {
-  const stmt = db.prepare(`
+  const stmt = getDatabase().prepare(`
     INSERT INTO provider_call_logs (
       provider, endpoint, started_at, finished_at,
       success, cache_hit, item_count, cost_estimate,
@@ -433,13 +467,13 @@ export function saveProviderCallLog(log: {
 
 // 获取提供者缓存
 export function getProviderCache(cacheKey: string): Record<string, unknown> | null {
-  const stmt = db.prepare("SELECT * FROM provider_cache WHERE cache_key = ?");
+  const stmt = getDatabase().prepare("SELECT * FROM provider_cache WHERE cache_key = ?");
   return stmt.get(cacheKey) as Record<string, unknown> | null;
 }
 
 // 设置提供者缓存
 export function setProviderCache(cacheKey: string, provider: string, endpoint: string, response: string, statusCode?: number): void {
-  const stmt = db.prepare(`
+  const stmt = getDatabase().prepare(`
     INSERT OR REPLACE INTO provider_cache (cache_key, provider, endpoint, response, status_code, updated_at)
     VALUES (?, ?, ?, ?, ?, datetime('now'))
   `);
@@ -448,7 +482,7 @@ export function setProviderCache(cacheKey: string, provider: string, endpoint: s
 
 // 清理过期缓存
 export function cleanupExpiredCache(maxAgeHours: number = 24): number {
-  const stmt = db.prepare(`
+  const stmt = getDatabase().prepare(`
     DELETE FROM provider_cache
     WHERE updated_at < datetime('now', ? || ' hours')
   `);
@@ -465,11 +499,12 @@ export function saveIdeaToDb(idea: {
   sourceUrl?: string;
   platform?: string;
   marketItemId?: string;
+  inspirationId?: string;
   status?: string;
 }): void {
-  const stmt = db.prepare(`
-    INSERT INTO ideas (id, title, summary, source_url, platform, market_item_id, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+  const stmt = getDatabase().prepare(`
+    INSERT INTO ideas (id, title, summary, source_url, platform, market_item_id, inspiration_id, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     idea.id,
@@ -478,22 +513,23 @@ export function saveIdeaToDb(idea: {
     idea.sourceUrl || null,
     idea.platform || null,
     idea.marketItemId || null,
+    idea.inspirationId || null,
     idea.status || "pool"
   );
 }
 
 export function getIdeaFromDb(id: string): Record<string, unknown> | null {
-  const stmt = db.prepare("SELECT * FROM ideas WHERE id = ?");
+  const stmt = getDatabase().prepare("SELECT * FROM ideas WHERE id = ?");
   return stmt.get(id) as Record<string, unknown> | null;
 }
 
 export function listIdeasFromDb(status?: string): Record<string, unknown>[] {
   if (status) {
-    return db.prepare("SELECT * FROM ideas WHERE status = ? ORDER BY created_at DESC").all(status) as Record<string, unknown>[];
+    return getDatabase().prepare("SELECT * FROM ideas WHERE status = ? ORDER BY created_at DESC").all(status) as Record<string, unknown>[];
   }
-  return db.prepare("SELECT * FROM ideas ORDER BY created_at DESC").all() as Record<string, unknown>[];
+  return getDatabase().prepare("SELECT * FROM ideas ORDER BY created_at DESC").all() as Record<string, unknown>[];
 }
 
 export function updateIdeaStatus(id: string, status: string): void {
-  db.prepare("UPDATE ideas SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
+  getDatabase().prepare("UPDATE ideas SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
 }

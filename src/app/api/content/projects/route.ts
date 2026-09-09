@@ -4,16 +4,23 @@ import { normalizeContentBrief } from "@/modules/content/server/request";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
 import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
+import { getIdeaContext } from "@/modules/ideas/service";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { topic?: unknown; brief?: unknown; temporaryStyleInstructions?: unknown };
+    const body = (await request.json()) as { topic?: unknown; brief?: unknown; ideaId?: unknown; temporaryStyleInstructions?: unknown };
     const topic = String(body.topic ?? "").trim();
     const brief = normalizeContentBrief(body.brief);
     if (!topic || !brief) {
       return NextResponse.json({ error: "请先完成并确认内容简报。" }, { status: 400 });
+    }
+    const ideaId = String(body.ideaId ?? "").trim();
+    if (ideaId) {
+      const ideaContext = await getIdeaContext(ideaId);
+      if (!ideaContext) return NextResponse.json({ error: "选题不存在。" }, { status: 404 });
+      brief.ideaContext = ideaContext;
     }
 
     const [accountSnapshot, styleSnapshot] = await Promise.all([

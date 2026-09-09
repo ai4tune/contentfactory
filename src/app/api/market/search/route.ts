@@ -15,6 +15,7 @@ function getRedFoxProvider() {
     name: "redfox",
     apiKey,
     enabled: true,
+    baseUrl: process.env.REDFOX_BASE_URL || (process.env.REDFOX_HOST ? `https://${process.env.REDFOX_HOST}` : undefined),
   });
 }
 
@@ -23,9 +24,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { platform, keyword, page = 1, pageSize = 20 } = body;
 
-    if (!platform || !keyword) {
+    if (!["xiaohongshu", "douyin", "wechat", "channels"].includes(platform) || typeof keyword !== "string" || !keyword.trim() || keyword.length > 100
+      || !Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 20) {
       return NextResponse.json(
-        { error: "缺少必要参数: platform, keyword" },
+        { error: "请选择已支持的平台并填写关键词；页码从 1 开始，每页 1–20 条。" },
         { status: 400 }
       );
     }
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
     // 保存到数据库
     try {
       for (const item of rankedItems) {
-        upsertMarketItemToDb({
+        item.id = upsertMarketItemToDb({
           id: item.id,
           provider: item.provider,
           providerItemId: item.providerItemId,
@@ -91,7 +93,7 @@ export async function POST(request: NextRequest) {
       }
     } catch (dbError) {
       console.error("保存到数据库失败:", dbError);
-      // 不影响返回结果
+      return NextResponse.json({ error: "搜索结果保存失败，请重试后再收藏。" }, { status: 500 });
     }
 
     return NextResponse.json({
