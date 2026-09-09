@@ -23,10 +23,13 @@ export function PositioningClient({
   initialContext,
   initialCapture,
   extensionPath,
+  bare = false,
 }: {
   initialContext: AccountContext | null;
   initialCapture: AccountCapture | null;
   extensionPath: string;
+  /** 为 true 时只渲染业务内容，不包裹 AppShell（用于嵌入其他页面） */
+  bare?: boolean;
 }) {
   const router = useRouter();
   const [context, setContext] = useState(initialContext);
@@ -143,8 +146,8 @@ export function PositioningClient({
   }
 
   if (context?.status === "confirmed" && !editing) {
-    return (
-      <AppShell active="/positioning">
+    const content = (
+      <>
         <PageHeader eyebrow="CURRENT ACCOUNT" title="当前账号" description="这份已确认的账号上下文会自动进入选题、简报和内容生成。" actions={<button className={secondaryButtonClass} onClick={startManualEdit}>编辑定位</button>} />
         <CaptureExtensionCard
           capture={initialCapture}
@@ -166,8 +169,9 @@ export function PositioningClient({
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2"><div className="grid gap-7 lg:grid-cols-2"><ResultGroup title="内容支柱" items={context.contentPillars} /><ResultGroup title="常用表达" items={context.preferredPhrases} tags /><ResultGroup title="下一阶段内容方向" items={context.contentDirections} /></div></section>
           <AnalysisDetails analysisEvidence={context.analysisEvidence} informationGaps={context.informationGaps} />
         </div>
-      </AppShell>
+      </>
     );
+    return bare ? content : <AppShell active="/positioning">{content}</AppShell>;
   }
 
   const pageTitle = draft
@@ -181,8 +185,8 @@ export function PositioningClient({
       : "AI 结果还没有生效。核对并修改后，确认才会覆盖当前定位。"
     : "只填写关键业务信息即可；也可以先跳过，账号定位不会阻止创作。";
 
-  return (
-    <AppShell active="/positioning">
+  const content = (
+    <>
       <PageHeader eyebrow={editSource === "manual" ? "EDIT POSITIONING" : "QUICK POSITIONING"} title={pageTitle} description={pageDescription} />
       {!draft ? <CaptureExtensionCard capture={initialCapture} extensionPath={extensionPath} refreshing={busy === "analyze"} onRefresh={refreshCapture} /> : null}
       {context?.status === "skipped" && !draft ? <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">你上次选择了暂时跳过。现在可以补充定位，也可以继续直接创作。</div> : null}
@@ -192,8 +196,9 @@ export function PositioningClient({
       <div className="mt-6 flex flex-wrap gap-3">
         {draft ? <><button className={primaryButtonClass} disabled={Boolean(busy)} onClick={confirm}>{busy === "confirm" ? "正在保存…" : editSource === "manual" ? "保存定位修改" : "确认并更新当前定位"}</button><button className={secondaryButtonClass} disabled={Boolean(busy)} onClick={context?.status === "confirmed" ? cancelEditing : () => { setDraft(null); setEditSource(null); }}>取消</button></> : <><button className={primaryButtonClass} disabled={Boolean(busy)} onClick={analyze}>{busy === "analyze" ? "AI 正在分析…" : "生成定位预览"}</button>{context?.status === "confirmed" ? <button className={secondaryButtonClass} onClick={cancelEditing}>取消</button> : <button className={secondaryButtonClass} disabled={Boolean(busy)} onClick={skip}>{busy === "skip" ? "正在跳过…" : "先跳过，直接创作"}</button>}</>}
       </div>
-    </AppShell>
+    </>
   );
+  return bare ? content : <AppShell active="/positioning">{content}</AppShell>;
 }
 
 function CaptureExtensionCard({

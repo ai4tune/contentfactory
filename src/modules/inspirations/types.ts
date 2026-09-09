@@ -2,7 +2,7 @@ import type { InspirationResult } from "@/lib/ai";
 
 export const inspirationSchemaVersion = 2 as const;
 
-export type InspirationCaptureMethod = "manual" | "plugin";
+export type InspirationCaptureMethod = "manual" | "plugin" | "api";
 export type InspirationContentType = "article" | "image" | "video" | "unknown";
 export type InspirationAnalysisStatus = "completed" | "failed";
 

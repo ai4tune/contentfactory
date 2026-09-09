@@ -54,7 +54,18 @@ export type ContentInspirationPlan = {
   boundaries: string[];
 };
 
+export type ContentIdeaContext = {
+  id: string;
+  title: string;
+  sourceUrl?: string;
+  marketItemId?: string;
+  inspirationId?: string;
+  summary: string;
+  excerpt: string;
+};
+
 export type ContentBrief = {
+  ideaContext?: ContentIdeaContext;
   targetAudience: string;
   contentGoal: string;
   coreMessage: string;
@@ -110,6 +121,7 @@ export type ChannelDraft = {
 
 export type ContentProject = {
   id: string;
+  sourceIdeaId?: string;
   topic: string;
   accountSnapshot: AccountContext | null;
   styleSnapshot: StyleContract | null;

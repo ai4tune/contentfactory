@@ -17,6 +17,11 @@ type ProjectStore = { projects: StoredContentProject[] };
 const projectStorePath = path.join(process.cwd(), "data", "content-projects.local.json");
 const emptyStore: ProjectStore = { projects: [] };
 
+export async function listContentProjects() {
+  const store = await readJsonFile<ProjectStore>(projectStorePath, emptyStore);
+  return store.projects ?? [];
+}
+
 export async function getContentProject(projectId: string) {
   const store = await readJsonFile<ProjectStore>(projectStorePath, emptyStore);
   const project = (store.projects ?? []).find((item) => item.id === projectId);
@@ -35,6 +40,7 @@ export async function saveContentProject(input: {
   const project: ContentProject = {
     id: `contentProjects_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     topic: input.topic,
+    sourceIdeaId: input.brief.ideaContext?.id,
     accountSnapshot: input.accountSnapshot,
     styleSnapshot: input.styleSnapshot ?? null,
     selectedKnowledgeRefs: input.brief.citations,

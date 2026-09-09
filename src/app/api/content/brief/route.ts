@@ -5,6 +5,7 @@ import { getInspirationReference } from "@/modules/inspirations/service";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
+import { getIdeaContext } from "@/modules/ideas/service";
 
 export const runtime = "nodejs";
 
@@ -14,10 +15,14 @@ export async function POST(request: Request) {
       topic?: unknown;
       sources?: unknown;
       inspirationId?: unknown;
+      ideaId?: unknown;
       temporaryStyleInstructions?: unknown;
     };
     const topic = String(body.topic ?? "").trim();
     const sources = normalizeKnowledgeSources(body.sources);
+    const ideaId = String(body.ideaId ?? "").trim();
+    const ideaContext = ideaId ? await getIdeaContext(ideaId) : null;
+    if (ideaId && !ideaContext) return NextResponse.json({ error: "选题不存在。" }, { status: 404 });
     const inspirationId = String(body.inspirationId ?? "").trim();
     const inspiration = await getInspirationReference(inspirationId);
     if (inspirationId && !inspiration) {
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
         temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
       }),
     ]);
-    const brief = await createContentBrief(topic, account, sources, inspiration, styleContract);
+    const brief = await createContentBrief(topic, account, sources, inspiration, styleContract, ideaContext);
     return NextResponse.json({ brief });
   } catch (error) {
     return NextResponse.json(

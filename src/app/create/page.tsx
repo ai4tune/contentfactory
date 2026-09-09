@@ -4,6 +4,9 @@ import { getConfigStatus } from "@/lib/config";
 import { ContentCreationWorkspace } from "@/modules/content/components/content-creation-workspace";
 import { getCurrentAccountContext } from "@/modules/positioning/repository";
 import { getConfirmedStyleProfile } from "@/modules/style-profile/repository";
+import { getIdeaContext } from "@/modules/ideas/service";
+import { getInspirationReference } from "@/modules/inspirations/service";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +17,17 @@ const creationSteps = [
   { title: "人工确认", description: "确认后创建本次内容项目" },
 ];
 
-export default async function ContentCreationPage() {
+export default async function ContentCreationPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ ideaId?: string; title?: string; sourceUrl?: string }>;
+}) {
+  const params = await searchParams;
+  const ideaContext = params?.ideaId ? await getIdeaContext(params.ideaId) : null;
+  if (params?.ideaId && !ideaContext) notFound();
+  const inspiration = ideaContext?.inspirationId
+    ? await getInspirationReference(ideaContext.inspirationId) : null;
+
   const [accountContext, styleProfile, status] = await Promise.all([
     getCurrentAccountContext(),
     getConfirmedStyleProfile(),
@@ -68,7 +81,13 @@ export default async function ContentCreationPage() {
         </div>
       </section>
 
-      <ContentCreationWorkspace initialStyleProfile={styleProfile} />
+      <ContentCreationWorkspace
+        key={ideaContext?.id ?? params?.title ?? "new"}
+        initialStyleProfile={styleProfile}
+        ideaTitle={ideaContext?.title ?? params?.title}
+        ideaContext={ideaContext}
+        initialInspiration={inspiration}
+      />
     </AppShell>
   );
 }
