@@ -35,11 +35,21 @@ type KnowledgeSource = {
 
 type CreationMode = "original" | "viral_rewrite";
 
-export function ContentCreationWorkspace({ initialStyleProfile }: { initialStyleProfile: StyleProfile | null }) {
+export function ContentCreationWorkspace({
+  initialStyleProfile,
+  ideaTitle,
+  ideaSourceUrl,
+}: {
+  initialStyleProfile: StyleProfile | null;
+  /** 从选题池带入的标题 */
+  ideaTitle?: string;
+  /** 从选题池带入的参考来源 URL（预留，后续用于自动关联参考） */
+  ideaSourceUrl?: string;
+}) {
   const [creationMode, setCreationMode] = useState<CreationMode>("original");
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
-  const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState(ideaTitle || "");
   const [temporaryStyle, setTemporaryStyle] = useState("");
   const [searchItems, setSearchItems] = useState<KnowledgeSource[]>([]);
   const [selectedSources, setSelectedSources] = useState<KnowledgeSource[]>([]);

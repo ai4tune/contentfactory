@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 /data/*.local.json
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
 
 # debug
 npm-debug.log*

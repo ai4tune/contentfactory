@@ -140,7 +140,7 @@ export function mergeInspirationRecord(
     },
     content: {
       title: input.title,
-      body: input.content,
+      body: input.content || current.content.body,
       contentType: input.contentType === "unknown" ? current.content.contentType : input.contentType,
       tags: input.tags.length ? input.tags : current.content.tags,
       imageUrls: input.imageUrls.length ? input.imageUrls : current.content.imageUrls,
@@ -157,7 +157,7 @@ export function mergeInspirationRecord(
     metricSnapshots: snapshot
       ? [...current.metricSnapshots, snapshot].slice(-50)
       : current.metricSnapshots,
-    analysis,
+    analysis: mergeAnalysis(current.analysis, analysis),
   };
 }
 
@@ -393,6 +393,24 @@ function mergeMetrics(current: InspirationMetrics, incoming: InspirationMetrics)
     key,
     incoming[key].value !== null || incoming[key].raw ? incoming[key] : current[key],
   ])) as InspirationMetrics;
+}
+
+function mergeAnalysis(current: InspirationResult, incoming: InspirationResult): InspirationResult {
+  return {
+    summary: incoming.summary || current.summary,
+    targetAudience: incoming.targetAudience || current.targetAudience,
+    painPoint: incoming.painPoint || current.painPoint,
+    hook: incoming.hook || current.hook,
+    pacing: incoming.pacing || current.pacing,
+    evidence: incoming.evidence.length ? incoming.evidence : current.evidence,
+    callToAction: incoming.callToAction || current.callToAction,
+    structure: incoming.structure.length ? incoming.structure : current.structure,
+    reusablePatterns: incoming.reusablePatterns.length ? incoming.reusablePatterns : current.reusablePatterns,
+    keywords: incoming.keywords.length ? incoming.keywords : current.keywords,
+    adaptationIdeas: incoming.adaptationIdeas.length ? incoming.adaptationIdeas : current.adaptationIdeas,
+    topicCandidates: incoming.topicCandidates.length ? incoming.topicCandidates : current.topicCandidates,
+    riskNotes: incoming.riskNotes.length ? incoming.riskNotes : current.riskNotes,
+  };
 }
 
 function createMetricSnapshot(input: InspirationCaptureInput) {

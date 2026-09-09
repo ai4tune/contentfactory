@@ -14,7 +14,15 @@ const creationSteps = [
   { title: "人工确认", description: "确认后创建本次内容项目" },
 ];
 
-export default async function ContentCreationPage() {
+export default async function ContentCreationPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ ideaId?: string; title?: string; sourceUrl?: string }>;
+}) {
+  const params = await searchParams;
+  const ideaTitle = params?.title ? decodeURIComponent(params.title) : undefined;
+  const ideaSourceUrl = params?.sourceUrl ? decodeURIComponent(params.sourceUrl) : undefined;
+
   const [accountContext, styleProfile, status] = await Promise.all([
     getCurrentAccountContext(),
     getConfirmedStyleProfile(),
@@ -68,7 +76,11 @@ export default async function ContentCreationPage() {
         </div>
       </section>
 
-      <ContentCreationWorkspace initialStyleProfile={styleProfile} />
+      <ContentCreationWorkspace
+        initialStyleProfile={styleProfile}
+        ideaTitle={ideaTitle}
+        ideaSourceUrl={ideaSourceUrl}
+      />
     </AppShell>
   );
 }
