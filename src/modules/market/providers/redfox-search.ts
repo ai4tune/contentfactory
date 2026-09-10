@@ -55,6 +55,7 @@ export function normalizeRedfoxSearch(value: unknown, input: SearchWorksInput): 
       sourceUrl: sourceUrl || undefined, canonicalUrl: sourceUrl || undefined,
       title, summary: str(item.summary ?? item.desc ?? item.workDesc ?? item.digest ?? item.description) || undefined,
       body: str(item.content) || undefined,
+      coverUrl: safeMarketUrl(item.coverImage ?? item.coverUrl ?? item.cover ?? (Array.isArray(item.picUrls) ? item.picUrls[0] : undefined)) || undefined,
       contentType: input.platform === "channels" || type === "video" || type === "视频" ? "video" : type === "normal" || type === "图文" ? "image" : "article",
       author: {
         id: str(item.authorUid ?? item.authorId ?? item.accountUserid ?? item.userId) || undefined,

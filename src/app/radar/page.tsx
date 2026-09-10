@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   AppShell,
@@ -87,23 +88,24 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
   const [searchResults, setSearchResults] = useState<MarketItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [searched, setSearched] = useState<{ platform: MarketPlatform; keyword: string } | null>(null);
 
 
-  const handleSearch = async () => {
-    if (!keyword.trim()) return;
+  const handleSearch = async (nextPage = 1, query = { platform, keyword: keyword.trim() }) => {
+    if (!query.keyword || isSearching) return;
 
     setIsSearching(true);
     setSearchError(null);
-    setSearchResults([]);
 
     try {
       const response = await fetch("/api/market/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform,
-          keyword: keyword.trim(),
-          page: 1,
+          platform: query.platform,
+          keyword: query.keyword,
+          page: nextPage,
           pageSize: 20,
         }),
       });
@@ -115,6 +117,8 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
       }
 
       setSearchResults(data.data?.items || []);
+      setPage(nextPage);
+      setSearched(query);
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "搜索失败");
     } finally {
@@ -158,7 +162,7 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
 
           {/* 搜索按钮 */}
           <button
-            onClick={handleSearch}
+            onClick={() => handleSearch()}
             disabled={isSearching || !keyword.trim()}
             className={`${primaryButtonClass} ${isSearching ? "opacity-50 cursor-not-allowed" : ""}`}
           >
@@ -175,20 +179,27 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
       )}
 
       {/* 搜索结果 */}
-      {searchResults.length > 0 && (
+      {searched && (
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">搜索结果</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{searched.keyword} · 第 {page} 页</h2>
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
               {searchResults.length} 条结果
             </span>
           </div>
 
-          <div className="mt-4 space-y-4">
+          <div aria-busy={isSearching} className={`mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 ${isSearching ? "opacity-50" : ""}`}>
             {searchResults.map((item) => (
-              <SearchResultCard key={item.id} item={item} />
+              <SearchResultCard key={`${searched.platform}:${searched.keyword}:${page}:${item.id}`} item={item} compact />
             ))}
           </div>
+          {!searchResults.length && <p className="py-10 text-center text-slate-500">这一页没有结果，可返回上一页或换个关键词。</p>}
+          <nav aria-label="搜索结果翻页" className="mt-6 flex flex-wrap items-center justify-center gap-4 border-t border-slate-100 pt-5">
+            <button className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40" disabled={isSearching || page <= 1} onClick={() => handleSearch(page - 1, searched)}>上一页</button>
+            <span className="text-sm text-slate-500">第 {page} 页 · 每页最多 20 条</span>
+            <button className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40" disabled={isSearching || !searchResults.length} onClick={() => handleSearch(page + 1, searched)}>下一页</button>
+          </nav>
+          <p className="mt-3 text-center text-xs text-slate-400">数据源未提供总页数；下一页可能为空。翻页会查询新数据，可能消耗积分。</p>
         </div>
       )}
 
@@ -218,7 +229,8 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
   );
 }
 
-function SearchResultCard({ item }: { item: MarketItem }) {
+function SearchResultCard({ item, compact = false }: { item: MarketItem; compact?: boolean }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [creatingIdea, setCreatingIdea] = useState(false);
@@ -271,7 +283,11 @@ function SearchResultCard({ item }: { item: MarketItem }) {
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 p-4 transition hover:border-emerald-200 hover:bg-emerald-50/30">
+    <div className={`rounded-xl border border-slate-200 p-4 transition hover:border-emerald-200 hover:bg-emerald-50/30 ${compact ? "flex min-w-0 flex-col" : ""}`}>
+      {compact && <div className="relative mb-4 aspect-square overflow-hidden rounded-lg bg-slate-100">
+        {item.coverUrl && !imageFailed ? <Image src={item.coverUrl} alt={item.title} fill unoptimized sizes="(min-width: 1536px) 25vw, (min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} /> : <div className="flex h-full items-center justify-center p-6 text-center text-sm text-slate-400">{imageFailed ? "封面暂时无法加载" : "暂无封面"}</div>}
+        <span className="absolute bottom-3 left-3 rounded-md bg-black/65 px-2 py-1 text-xs text-white">{item.contentType === "video" ? "视频 · 前往原文观看" : item.contentType === "image" ? "图文" : "文章"}</span>
+      </div>}
       {error ? <p role="alert" className="mb-3 text-sm text-red-700">{error}</p> : null}
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
@@ -298,15 +314,15 @@ function SearchResultCard({ item }: { item: MarketItem }) {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-4 text-xs text-slate-400">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-400">
         <span>阅读 {formatNumber(item.metrics.views)}</span>
         <span>收藏 {formatNumber(item.metrics.collects)}</span>
         <span>评论 {formatNumber(item.metrics.comments)}</span>
-        {item.publishedAt && <span>{formatTimeAgo(item.publishedAt)}</span>}
+        <span>{item.publishedAt ? formatTimeAgo(item.publishedAt) : "日期未知"}</span>
       </div>
 
       {/* 操作按钮 */}
-      <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+      <div className={`flex flex-wrap gap-2 border-t border-slate-100 pt-3 ${compact ? "mt-auto" : "mt-3"}`}>
         {(item.sourceUrl || item.canonicalUrl) && (
           <a
             href={item.sourceUrl || item.canonicalUrl}
@@ -314,7 +330,7 @@ function SearchResultCard({ item }: { item: MarketItem }) {
             rel="noopener noreferrer"
             className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
           >
-            查看原文 ↗
+            {item.contentType === "video" ? "查看视频 ↗" : "查看原文 ↗"}
           </a>
         )}
         <button
