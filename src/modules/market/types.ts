@@ -36,6 +36,7 @@ export type MarketItem = {
   title: string;
   summary?: string;
   body?: string;
+  coverUrl?: string;
 
   contentType: "article" | "image" | "video" | "unknown";
 

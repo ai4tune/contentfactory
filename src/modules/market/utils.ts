@@ -80,7 +80,9 @@ export function formatNumber(value: number | null | undefined): string {
 
 // 格式化时间
 export function formatTimeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
+  const raw = dateStr.trim();
+  const date = /^\d{10,13}$/.test(raw) ? new Date(Number(raw) * (raw.length === 10 ? 1000 : 1)) : new Date(raw);
+  if (!Number.isFinite(date.getTime())) return "日期未知";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMinutes = Math.floor(diffMs / (1000 * 60));

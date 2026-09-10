@@ -69,6 +69,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
     if (url.pathname === "/story/api/sphAllData/searchWork") { assert.equal(body.size, 20); return ok({ list: [{ videoId: "sph-1", description: "视频号AI案例", nickname: "视频号作者", favCount: 0, likeCount: 5, forwardCount: 3, videoUrl: "https://findermp.video.qq.com/video/1" }] }); }
     if (body.keyword === "余额测试") return res.end(JSON.stringify({ code: 3201, msg: "积分不足" }));
     if (req.url === "/story/api/xhs/ability/searchWork") {
+      if (body.keyword === "分页测试") return res.end(JSON.stringify({ workList: body.page === 1 ? [{ noteId: "page-1", noteTitle: "封面测试", coverImage: "https://example.com/cover.jpg", noteType: "video", releaseTime: "invalid" }] : [] }));
       return res.end(JSON.stringify({ workList: [{ noteId: "note-1", noteTitle: "效率提升100%", noteType: "normal", noteUrl: "https://www.xiaohongshu.com/explore/note-1?token=a%25", authorName: "作者", authorUid: "author-1", thumbCount: 10, favoriteCount: 0, replyCount: 2, forwardCount: 1, releaseTime: "2026-09-08 10:00:00" }] }));
     }
     if (["/story/api/dyData/searchArticle", "/story/api/gzhData/searchArticle"].includes(url.pathname)) return ok({ list: [{ workId: "work-1", workUuid: "uuid-1", title: "企业AI获客", workType: "视频", workUrl: "https://www.douyin.com/video/work-1", author: "公众号作者", accountName: "作者", followerCount: 100, content: "市场摘录标记：这是外部经验，不是企业事实。", likeCount: 80, collectCount: 0, commentCount: 3, shareCount: 1, publishTime: "2026-09-08 10:00:00" }] });
@@ -219,6 +220,16 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       assert.equal(Object.hasOwn(dyAll.body, "type"), false, "all categories omit the optional Douyin type");
       assert.equal((await request("/api/market/hot", { platform: "channels", date })).status, 400);
       assert.equal((await request("/api/market/hot", { platform: "douyin", date: "2026-02-31" })).status, 400);
+    });
+    await t.test("search preserves media and forwards page numbers without inventing totals", async () => {
+      const first = await request("/api/market/search", { platform: "xiaohongshu", keyword: "分页测试", page: 1 });
+      assert.equal(first.status, 200);
+      assert.equal(first.body.data.items[0].coverUrl, "https://example.com/cover.jpg");
+      assert.equal(first.body.data.items[0].contentType, "video");
+      const second = await request("/api/market/search", { platform: "xiaohongshu", keyword: "分页测试", page: 2 });
+      assert.equal(second.status, 200);
+      assert.deepEqual(second.body.data.items, []);
+      assert.equal(second.body.data.page, 2);
     });
     await t.test("channels search preserves video identity and missing views", async () => {
       const result = await request("/api/market/search", { platform: "channels", keyword: "AI" });
