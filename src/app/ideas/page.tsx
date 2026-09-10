@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import TopicWorkspace from "@/modules/topics/components/topic-workspace";
+import { IdeasAssets } from "@/modules/ideas/assets";
 import {
   AppShell,
   PageHeader,
@@ -34,7 +36,8 @@ function IdeasPageContent() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const initialTab = tabParam && VALID_TABS.includes(tabParam as IdeasTab) ? (tabParam as IdeasTab) : "discover";
-  const [activeTab, setActiveTab] = useState<IdeasTab>(initialTab);
+  const activeTab = initialTab;
+  const router = useRouter();
 
   return (
     <AppShell active="/ideas">
@@ -44,8 +47,8 @@ function IdeasPageContent() {
         description="什么值得写。从市场趋势、爆款内容和企业知识中发现最佳选题。"
         actions={
           <div className="flex gap-2">
-            <Link className={secondaryButtonClass} href="/topics">
-              选题雷达
+            <Link className={secondaryButtonClass} href="/ideas?tab=recommend">
+              AI 选题推荐
             </Link>
             <Link className={primaryButtonClass} href="/create">
               开始创作
@@ -59,7 +62,7 @@ function IdeasPageContent() {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => router.push(`/ideas?tab=${tab.id}`)}
             className={`shrink-0 px-4 py-2.5 text-sm font-medium transition ${
               activeTab === tab.id
                 ? "border-b-2 border-emerald-700 text-emerald-800"
@@ -162,9 +165,10 @@ function DiscoverTab() {
         </Link>
       </div>
 
-      {/* 热门话题 */}
+      <IdeasAssets kind="history" />
+      {/* 热榜入口 */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">热门话题</h2>
+        <h2 className="text-lg font-semibold text-slate-900">查询新的热门话题</h2>
         <p className="mt-2 text-sm text-slate-500">
           最近在各平台受到关注的话题。
         </p>
@@ -180,20 +184,7 @@ function DiscoverTab() {
 }
 
 function RecommendTab() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-slate-900">系统推荐</h2>
-      <p className="mt-2 text-sm text-slate-500">
-        系统根据你的账号定位、目标客户、企业知识和历史表现，自动推荐今天值得写的选题。
-      </p>
-      <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-        <p className="text-sm text-slate-400">智能推荐功能即将上线</p>
-        <p className="mt-1 text-xs text-slate-400">
-          需要先配置市场数据源和企业知识库
-        </p>
-      </div>
-    </div>
-  );
+  return <TopicWorkspace />;
 }
 
 type Idea = {
@@ -309,26 +300,7 @@ function PoolTab({ used = false }: { used?: boolean }) {
 }
 
 function ViralTab() {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">爆款库</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            已拆解的高表现内容。学习结构，不照抄原文。
-          </p>
-        </div>
-        <Link className={secondaryButtonClass} href="/inspirations">
-          查看完整爆款库
-        </Link>
-      </div>
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
-          <p className="text-sm text-slate-400">从市场搜索中收藏内容，再到爆款库补充正文并发起 AI 拆解</p>
-        </div>
-      </div>
-    </div>
-  );
+  return <IdeasAssets kind="viral" />;
 }
 
 function UsedTab() {

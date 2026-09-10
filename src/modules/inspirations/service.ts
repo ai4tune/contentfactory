@@ -63,12 +63,14 @@ export async function upsertInspiration(
     ));
     if (existingIndex === -1) {
       const record = buildInspirationRecord(input, analysis, createInspirationId());
+      record.usage.analysisStatus = analysis.structure.length || analysis.reusablePatterns.length ? "completed" : "pending";
       result = { operation: "created", record };
       return { ...store, inspirations: [...store.inspirations, record] };
     }
 
     const inspirations = [...store.inspirations];
     const record = mergeInspirationRecord(inspirations[existingIndex], input, analysis);
+    record.usage.analysisStatus = record.analysis.structure.length || record.analysis.reusablePatterns.length ? "completed" : "pending";
     inspirations[existingIndex] = record;
     result = { operation: "updated", record };
     return { ...store, inspirations };

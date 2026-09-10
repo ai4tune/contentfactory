@@ -47,6 +47,7 @@ export type PositioningResult = {
 };
 
 export type TopicRadarRequest = {
+  sampleIds?: string[];
   accountPosition: string;
   targetAudience?: string;
   offer?: string;

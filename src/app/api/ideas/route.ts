@@ -1,6 +1,6 @@
 // 选题 API
 import { NextRequest, NextResponse } from "next/server";
-import { saveIdeaToDb } from "@/lib/db";
+import { saveIdeaToDb, listIdeasFromDb } from "@/lib/db";
 import { listIdeas } from "@/modules/ideas/service";
 
 export async function GET(request: NextRequest) {
@@ -23,10 +23,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { title, summary, sourceUrl, platform, marketItemId } = body;
 
-    if (!title) {
+    if (typeof title !== "string" || !title.trim() || title.length > 500 || (summary !== undefined && typeof summary !== "string")) {
       return NextResponse.json({ error: "缺少必要参数: title" }, { status: 400 });
     }
 
+    const existing = listIdeasFromDb().find(idea => idea.title === title.trim() && (marketItemId ? idea.market_item_id === marketItemId : !idea.market_item_id && (idea.summary || "") === (summary?.trim() || "") && (idea.platform || "") === (platform || "")));
+    if (existing) return NextResponse.json({ success: true, data: existing });
     const id = `idea_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     saveIdeaToDb({

@@ -7,6 +7,7 @@ import type { Hotspot, HotKeyword } from "./providers/redfox-provider";
 import type { TrackedAccountBundle } from "@/lib/db";
 import { formatNumber, formatPlatformName } from "./utils";
 import { rankingCategories } from "./categories";
+import type { MarketHistory } from "./history";
 
 const box = "space-y-4 rounded-2xl border border-slate-200 bg-white p-6";
 const field = "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
@@ -35,6 +36,19 @@ export function HotPanel({ ItemCard }: CardProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
+  const [restoring, setRestoring] = useState(true);
+  useEffect(() => {
+    let active = true;
+    api<{ records: MarketHistory[] }>("/api/market/history", undefined, "GET").then(({ records }) => {
+      if (!active) return;
+      const latest = records.find(record => record.kind === "hot");
+      if (latest) {
+        setPlatform(latest.query.platform); setDate(latest.query.date || ""); setCategory(latest.query.category || "");
+        setItems(latest.items); setNote("已恢复上次榜单快照，不请求 RedFox；不是实时数据。");
+      }
+    }).catch(error => { if (active) setError(errorText(error)); }).finally(() => { if (active) setRestoring(false); });
+    return () => { active = false; };
+  }, []);
   async function query() {
     setBusy(true); setError(""); setItems(null);
     try { const result = await api<{ items: MarketItem[]; note: string }>("/api/market/hot", { platform, date: date || shift(today(), -1), category }); setItems(result.items); setNote(result.note); }
@@ -43,7 +57,7 @@ export function HotPanel({ ItemCard }: CardProps) {
   return <div className="space-y-6"><section className={box}>
     <h2 className="text-lg font-semibold">平台作品榜</h2>
     <p className="text-sm text-slate-500">默认查询昨日。小红书为每日爆款榜，抖音为点赞榜，公众号为 5000+ 阅读热门文章；视频号请用主题搜索。每次查询最多调用一个接口，命中缓存不重复调用。</p>
-    <form className="flex flex-wrap items-center gap-3" onSubmit={event => { event.preventDefault(); void query(); }}>
+    <form onSubmit={event => { event.preventDefault(); void query(); }}><fieldset disabled={busy || restoring} className="flex flex-wrap items-center gap-3">
       <PlatformSelect value={platform} onChange={value => { setPlatform(value); setCategory(""); setItems(null); }} options={socialPlatforms} />
       <label className="text-sm">榜单日期 <input type="date" className={field} value={date} onChange={event => { setDate(event.target.value); setItems(null); }} /></label>
       {platform === "wechat" ? <label className="text-sm">热门文章关键词 <input className={field} value={category} onChange={event => { setCategory(event.target.value); setItems(null); }} placeholder="例如：咖啡店（可留空）" maxLength={100} /></label> :
@@ -52,7 +66,7 @@ export function HotPanel({ ItemCard }: CardProps) {
           {rankingCategories[platform]?.filter(value => value !== "综合全部").map(value => <option key={value} value={value}>{value}</option>)}
         </select></label>}
       <button className={button} disabled={busy}>{busy ? "查询中…" : "查看作品榜"}</button>
-    </form>
+    </fieldset></form>
     <p className="text-sm text-slate-500">榜单分类为平台固定选项，不能填写任意词。想找“咖啡店”“AI 企业落地”等具体内容？<Link className="ml-1 text-emerald-700 underline" href="/radar?tab=search">去主题搜索，输入关键词 →</Link></p>
     {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
     {items ? <><p className="text-xs text-slate-500">{note}</p>{items.length ? items.map(item => <ItemCard key={item.id} item={item} />) : <p>该日期和分类暂无榜单数据，可改查前一天。</p>}</> : null}

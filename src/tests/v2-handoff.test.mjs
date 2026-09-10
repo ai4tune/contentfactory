@@ -30,6 +30,11 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
         summary: "可复用分析", hook: "问题开头", structure: ["提出问题", "分析原因", "行动建议"],
         targetAudience: "企业", painPoint: "表达", pacing: "先问题后建议", evidence: [], callToAction: "讨论",
         reusablePatterns: ["解释原因"], keywords: ["AI"], adaptationIdeas: ["换企业案例"], topicCandidates: ["实践"], riskNotes: [],
+      } : system.includes("选题雷达助手") ? {
+        keywordGroups: [{ group: "企业实践", keywords: ["AI落地"], intent: "了解实践" }],
+        searchTasks: [{ platform: "小红书", query: "AI落地", why: "找案例" }], hotSampleInsights: ["参考结构，不复用外部事实"],
+        topicCandidates: [{ title: "AI落地先验证一个场景", platform: "小红书", angle: "从已验证案例开始", sourceKeyword: "AI落地", priority: "高" }],
+        validationChecklist: ["核对事实"], nextActions: ["加入选题池"],
       } : system.includes("内容策略编辑") ? {
         targetAudience: "企业", contentGoal: "建立信任", coreMessage: "用自己的事实表达",
         keyPoints: ["事实优先"], outline: ["问题", "证据", "建议"], callToAction: "讨论", openQuestions: [],
@@ -134,6 +139,39 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       const denied = await request("/api/market/search", { platform: "douyin", keyword: "余额测试" });
       assert.equal(denied.status, 500);
       assert.match(denied.body.message, /3201/);
+    });
+    await t.test("empty-body collections survive reads and restart; search history is local", async () => {
+      const history = await request("/api/market/history");
+      assert.equal(history.status, 200);
+      const snapshot = history.body.records.find(record => record.kind === "search" && record.query.platform === "xiaohongshu");
+      assert.ok(snapshot);
+      const item = snapshot.items[0];
+      const saved = await request(`/api/market/items/${item.id}/save-to-inspiration`, {});
+      assert.equal(saved.status, 200);
+      const id = saved.body.data.record.id;
+      const callsBefore = calls.length;
+      await stop(); await start();
+      assert.equal((await request(`/api/market/items/${item.id}/save-to-inspiration`)).body.id, id);
+      assert.ok((await request("/api/inspirations")).body.inspirations.some(record => record.id === id && record.statusLabel === "待补充正文"));
+      assert.ok((await request("/api/market/history")).body.records.some(record => record.id === snapshot.id));
+      assert.equal(calls.length, callsBefore);
+      const updated = await fetch(base + `/api/inspirations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "补充的真实参考正文。" }) });
+      assert.equal(updated.status, 200);
+      assert.equal((await request(`/api/inspirations/${id}`, {})).status, 200);
+      assert.ok((await request("/api/inspirations")).body.inspirations.some(record => record.id === id && record.statusLabel === "已拆解"));
+      const recommendation = await request("/api/topics/radar", { accountPosition: "企业AI", hotSamples: "人工观察", sampleIds: [id] });
+      assert.equal(recommendation.status, 200);
+      assert.match(JSON.stringify(prompts.at(-1)), /补充的真实参考正文/);
+      const restored = (await request("/api/topics/radar")).body.record;
+      assert.equal(restored.input.hotSamples, "人工观察");
+      assert.deepEqual(restored.input.sampleIds, [id]);
+      assert.equal(restored.result.topicCandidates.length, 1);
+      const candidate = restored.result.topicCandidates[0];
+      const ideaInput = { title: candidate.title, summary: `${candidate.angle}\n来源关键词：${candidate.sourceKeyword}`, platform: candidate.platform };
+      assert.equal((await request("/api/ideas", ideaInput)).body.data.id, (await request("/api/ideas", ideaInput)).body.data.id);
+      const redirect = await fetch(base + "/topics", { redirect: "manual" });
+      assert.equal(redirect.status, 307);
+      assert.match(redirect.headers.get("location"), /ideas\?tab=recommend/);
     });
     await t.test("opening an idea is non-destructive and loads server-side source context", async () => {
       idea = (await request("/api/ideas", { title: "效率提升100%", summary: market.summary, sourceUrl: market.sourceUrl, marketItemId: market.id })).body.data;

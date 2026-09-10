@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -10,6 +10,7 @@ import {
   primaryButtonClass,
 } from "@/components/app-shell";
 import type { MarketItem, MarketPlatform } from "@/modules/market/types";
+import type { MarketHistory } from "@/modules/market/history";
 import {
   formatNumber,
   formatTimeAgo,
@@ -40,6 +41,7 @@ function RadarPageContent() {
   const activeTab = tabs.find(tab => tab.id === searchParams.get("tab"))?.id || "hot";
   const router = useRouter();
   const initialQuery = searchParams.get("q") || "";
+  const historyId = searchParams.get("history") || "";
 
   return (
     <AppShell active="/radar">
@@ -74,7 +76,7 @@ function RadarPageContent() {
       {/* Tab 内容 */}
       <div className="mt-6">
         {activeTab === "hot" && <HotPanel ItemCard={SearchResultCard} />}
-        {activeTab === "search" && <SearchTab key={initialQuery} initialQuery={initialQuery} />}
+        {activeTab === "search" && <SearchTab key={`${initialQuery}:${historyId}`} initialQuery={initialQuery} historyId={historyId} />}
         {activeTab === "trends" && <TrendsPanel />}
         {activeTab === "accounts" && <AccountsPanel ItemCard={SearchResultCard} />}
       </div>
@@ -82,7 +84,8 @@ function RadarPageContent() {
   );
 }
 
-function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
+function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: string; historyId?: string }) {
+  const router = useRouter();
   const [keyword, setKeyword] = useState(initialQuery);
   const [platform, setPlatform] = useState<MarketPlatform>("xiaohongshu");
   const [searchResults, setSearchResults] = useState<MarketItem[]>([]);
@@ -90,6 +93,26 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [searched, setSearched] = useState<{ platform: MarketPlatform; keyword: string } | null>(null);
+  const [history, setHistory] = useState<MarketHistory[]>([]);
+  const [restoring, setRestoring] = useState(true);
+  function restore(record: MarketHistory) {
+    setKeyword(record.query.keyword || ""); setPlatform(record.query.platform as MarketPlatform);
+    setPage(record.query.page || 1); setSearchResults(record.items);
+    setSearched({ platform: record.query.platform as MarketPlatform, keyword: record.query.keyword || "" });
+  }
+  useEffect(() => {
+    let active = true;
+    fetch("/api/market/history").then(async response => {
+      if (!response.ok) throw new Error("搜索历史读取失败");
+      const data = await response.json();
+      if (!active) return;
+      const rows: MarketHistory[] = data.records.filter((row: MarketHistory) => row.kind === "search");
+      setHistory(rows);
+      const latest = rows.find(row => historyId ? row.id === historyId : !initialQuery || row.query.keyword === initialQuery);
+      if (latest) restore(latest);
+    }).catch(error => { if (active) setSearchError(error.message); }).finally(() => { if (active) setRestoring(false); });
+    return () => { active = false; };
+  }, [initialQuery, historyId]);
 
 
   const handleSearch = async (nextPage = 1, query = { platform, keyword: keyword.trim() }) => {
@@ -119,6 +142,8 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
       setSearchResults(data.data?.items || []);
       setPage(nextPage);
       setSearched(query);
+      setHistory(rows => [{ id: data.data.historyId, kind: "search" as const, createdAt: new Date().toISOString(), query: { ...query, page: nextPage }, items: data.data.items }, ...rows].slice(0, 100));
+      router.replace(`/radar?tab=search&history=${encodeURIComponent(data.data.historyId)}`, { scroll: false });
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "搜索失败");
     } finally {
@@ -138,6 +163,7 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           {/* 平台选择 */}
           <select
+            disabled={restoring || isSearching}
             aria-label="搜索平台"
             value={platform}
             onChange={(e) => setPlatform(e.target.value as MarketPlatform)}
@@ -151,6 +177,7 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
 
           {/* 关键词输入 */}
           <input
+            disabled={restoring || isSearching}
             aria-label="搜索关键词"
             type="text"
             value={keyword}
@@ -163,11 +190,17 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
           {/* 搜索按钮 */}
           <button
             onClick={() => handleSearch()}
-            disabled={isSearching || !keyword.trim()}
+            disabled={restoring || isSearching || !keyword.trim()}
             className={`${primaryButtonClass} ${isSearching ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             {isSearching ? "搜索中..." : "搜索"}
           </button>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+          <label>搜索记录（本地读取，不扣积分） <select aria-label="搜索记录" className="max-w-full rounded-lg border p-2" disabled={restoring || isSearching} value={historyId} onChange={event => { const row = history.find(item => item.id === event.target.value); if (row) router.replace(`/radar?tab=search&history=${encodeURIComponent(row.id)}`, { scroll: false }); }}>
+            <option value="">{restoring ? "恢复记录中…" : history.length ? "选择历史查询" : "暂无记录，首次查询后自动保存"}</option>
+            {history.map(row => <option key={row.id} value={row.id}>{row.query.keyword} · {formatPlatformName(row.query.platform as MarketPlatform)} · 第 {row.query.page || 1} 页 · {row.createdAt.slice(0, 16)}</option>)}
+          </select></label>
         </div>
       </div>
 
@@ -235,6 +268,16 @@ function SearchResultCard({ item, compact = false }: { item: MarketItem; compact
   const [saved, setSaved] = useState(false);
   const [creatingIdea, setCreatingIdea] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/market/items/${encodeURIComponent(item.id)}/save-to-inspiration`).then(async response => {
+      if (!response.ok) throw new Error("收藏状态读取失败");
+      const data = await response.json();
+      if (active && data.id) { setSaved(true); setSavedId(data.id); }
+    }).catch(error => { if (active) setError(error.message); });
+    return () => { active = false; };
+  }, [item.id]);
 
   const handleSaveToInspiration = async () => {
     setSaving(true);
@@ -244,6 +287,7 @@ function SearchResultCard({ item, compact = false }: { item: MarketItem; compact
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || "收藏失败，请重试。");
       setSaved(true);
+      setSavedId(data.data.record.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "收藏失败，请重试。");
     } finally {
@@ -289,6 +333,7 @@ function SearchResultCard({ item, compact = false }: { item: MarketItem; compact
         <span className="absolute bottom-3 left-3 rounded-md bg-black/65 px-2 py-1 text-xs text-white">{item.contentType === "video" ? "视频 · 前往原文观看" : item.contentType === "image" ? "图文" : "文章"}</span>
       </div>}
       {error ? <p role="alert" className="mb-3 text-sm text-red-700">{error}</p> : null}
+      {savedId ? <Link className="mb-3 text-sm text-emerald-700 underline" href={`/inspirations/${savedId}`}>已收入爆款库 · 查看／补充正文 →</Link> : null}
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
