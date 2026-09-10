@@ -232,8 +232,8 @@ function normalizeVersionTwoRecord(record: Record<string, unknown>): Inspiration
 
   const platform = optionalString(source.platform);
   const title = optionalString(content.title);
-  const body = optionalString(content.body);
-  if (!platform || !title || !body) return null;
+  const body = optionalString(content.body) ?? "";
+  if (!platform || !title) return null;
 
   const createdAt = safeIsoDate(record.createdAt) ?? new Date(0).toISOString();
   const input: InspirationCaptureInput = {
@@ -276,7 +276,7 @@ function normalizeVersionTwoRecord(record: Record<string, unknown>): Inspiration
     lastCapturedAt: safeIsoDate(record.lastCapturedAt) ?? createdAt,
     dedupeKey: optionalString(record.dedupeKey) ?? createInspirationDedupeKey(input),
     metricSnapshots: snapshots,
-    usage: normalizeUsage(record.usage),
+    usage: { ...normalizeUsage(record.usage), analysisStatus: normalizeUsage(record.usage).analysisStatus === "failed" ? "failed" : (Array.isArray(analysis.structure) && analysis.structure.length) || (Array.isArray(analysis.reusablePatterns) && analysis.reusablePatterns.length) ? "completed" : "pending" },
   };
 }
 
@@ -445,7 +445,7 @@ function mergeAuthor(current: InspirationAuthor, incoming: InspirationAuthor): I
 function normalizeUsage(value: unknown): InspirationUsage {
   const record = objectRecord(value);
   return {
-    analysisStatus: record?.analysisStatus === "failed" ? "failed" : "completed",
+    analysisStatus: record?.analysisStatus === "failed" ? "failed" : record?.analysisStatus === "pending" ? "pending" : "completed",
     contentProjectIds: stringArray(record?.contentProjectIds, 200),
     publicationIds: stringArray(record?.publicationIds, 200),
   };

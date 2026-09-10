@@ -1,5 +1,6 @@
 import { chinaToday, dateOnly, dateOffset, marketError, persistMarketItems, redfoxProvider } from "@/modules/market/server";
 import { rankingCategories } from "@/modules/market/categories";
+import { saveMarketHistory } from "@/modules/market/history";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -13,6 +14,7 @@ export async function POST(request: Request) {
   }
   try {
     const items = persistMarketItems(await redfoxProvider().getTrending(body));
+    await saveMarketHistory("hot", { platform: body.platform, date: body.date, category: body.category }, items);
     return Response.json({ items, date: body.date, note: "保留数据源榜单顺序；非实时数据，缺失指标显示为未知。小红书 w+ 指标为近似下界。" });
   } catch (error) { return marketError(error); }
 }

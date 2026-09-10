@@ -1,8 +1,20 @@
 // MarketItem 一键保存为 Inspiration
 import { NextRequest, NextResponse } from "next/server";
 import { getMarketItemFromDb } from "@/lib/db";
-import { upsertInspiration } from "@/modules/inspirations/service";
+import { upsertInspiration, listInspirationRecords } from "@/modules/inspirations/service";
+import { canonicalizeUrl, normalizePlatformIdentity } from "@/modules/inspirations/normalization";
 import type { InspirationCaptureInput } from "@/modules/inspirations/types";
+import { findSavedMarketItem } from "@/modules/market/history";
+
+export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  const item = getMarketItemFromDb(id);
+  if (!item) return Response.json({ id: null });
+  const url = canonicalizeUrl(String(item.source_url || item.canonical_url || ""));
+  const record = (await listInspirationRecords()).find(row => normalizePlatformIdentity(row.source.platform) === normalizePlatformIdentity(String(item.platform)) &&
+    ((item.platform_content_id && row.source.platformContentId === item.platform_content_id) || (url && row.source.canonicalUrl === url)));
+  return Response.json({ id: record?.id || null });
+}
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +32,7 @@ export async function POST(
       );
     }
 
+    const snapshot = await findSavedMarketItem(id);
     // 转换为 InspirationCaptureInput
     const inspirationInput: InspirationCaptureInput = {
       platform: marketItem.platform as string,
@@ -30,7 +43,8 @@ export async function POST(
       content: (marketItem.body as string) || "",
       contentType: (marketItem.content_type as "article" | "image" | "video" | "unknown") || "article",
       tags: marketItem.tags ? JSON.parse(marketItem.tags as string) : [],
-      imageUrls: [],
+      imageUrls: snapshot?.coverUrl ? [snapshot.coverUrl] : [],
+      coverUrl: snapshot?.coverUrl,
       author: {
         name: (marketItem.author_name as string) || "",
         followers: { value: (marketItem.author_followers as number) ?? null },

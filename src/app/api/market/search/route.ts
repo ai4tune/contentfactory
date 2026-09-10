@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRedFoxProvider } from "@/modules/market/providers/redfox-provider";
 import { rankMarketItems } from "@/modules/market/ranking";
 import { upsertMarketItemToDb } from "@/lib/db";
+import { saveMarketHistory } from "@/modules/market/history";
 
 // 创建 RedFox 提供者
 function getRedFoxProvider() {
@@ -96,9 +97,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "搜索结果保存失败，请重试后再收藏。" }, { status: 500 });
     }
 
+    const history = await saveMarketHistory("search", { platform, keyword, page }, rankedItems);
     return NextResponse.json({
       success: true,
       data: {
+        historyId: history.id,
         items: rankedItems,
         totalCount: rankedItems.length,
         page,

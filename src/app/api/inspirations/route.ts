@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listInspirationReferences } from "@/modules/inspirations/service";
+import { listInspirationRecords, toInspirationReference } from "@/modules/inspirations/service";
 import type { InspirationFilters } from "@/modules/inspirations/types";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       sourceKeyword: searchParams.get("sourceKeyword") || undefined,
       usage: usage === "used" || usage === "unused" ? usage : undefined,
     };
-    const inspirations = await listInspirationReferences(filters);
+    const inspirations = (await listInspirationRecords(filters)).map(record => ({ ...toInspirationReference(record), statusLabel: !record.content.body.trim() ? "待补充正文" : record.usage.analysisStatus === "completed" ? "已拆解" : "待拆解" }));
     return NextResponse.json({ inspirations, total: inspirations.length });
   } catch (error) {
     return NextResponse.json(

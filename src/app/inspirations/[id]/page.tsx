@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-shell";
 import { formatInspirationMetrics } from "@/modules/inspirations/normalization";
 import { getInspirationRecord } from "@/modules/inspirations/service";
+import { InspirationEditor } from "@/modules/inspirations/editor";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,7 @@ export default async function InspirationDetailPage({ params }: { params: Promis
             <h2 className="text-base font-semibold">原始内容</h2>
             {item.source.sourceUrl || item.source.canonicalUrl ? <a className="text-xs font-semibold text-emerald-700 hover:underline" href={item.source.sourceUrl || item.source.canonicalUrl} target="_blank" rel="noreferrer">查看原文 ↗</a> : null}
           </div>
-          <div className="mt-5 rounded-2xl bg-[#f7f7f4] p-5">
-            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{item.content.body}</p>
-          </div>
+          <InspirationEditor id={item.id} initialBody={item.content.body} />
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <Info label="来源关键词" value={item.discovery.sourceKeyword || "未记录"} />
             <Info label="最近采集" value={formatDate(item.lastCapturedAt)} />
@@ -41,7 +40,7 @@ export default async function InspirationDetailPage({ params }: { params: Promis
         <div className="space-y-5">
           <section className="rounded-3xl bg-[#173e32] p-6 text-white shadow-sm">
             <p className="text-xs font-semibold tracking-[0.15em] text-[#dfb967]">AI 核心结论</p>
-            <p className="mt-4 text-base leading-8 text-white/85">{item.analysis.summary}</p>
+            <p className="mt-4 text-base leading-8 text-white/85">{item.usage.analysisStatus === "completed" ? item.analysis.summary : !item.content.body.trim() ? "已收藏，等待补充正文。尚未进行 AI 拆解。" : "正文已就绪，等待 AI 拆解。"}</p>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <DarkInfo label="目标人群" value={item.analysis.targetAudience} />
               <DarkInfo label="核心痛点" value={item.analysis.painPoint} />
