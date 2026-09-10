@@ -206,7 +206,17 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
         assert.equal(saved.body.data.record.content.body, "已补充的榜单正文");
         if (platform === "douyin") assert.equal(saved.body.data.record.metrics.likes.value, 0);
       }
-      assert.equal((await request("/api/market/hot", { platform: "xiaohongshu", date, category: "坏格式" })).status, 502);
+      const beforeInvalid = calls.length;
+      for (const platform of ["xiaohongshu", "douyin"]) {
+        assert.equal((await request("/api/market/hot", { platform, date, category: "咖啡店" })).status, 400);
+      }
+      assert.equal(calls.length, beforeInvalid, "invalid categories must not call a paid provider");
+      assert.equal((await request("/api/market/hot", { platform: "xiaohongshu", date, category: "美味佳肴" })).status, 200);
+      assert.equal((await request("/api/market/hot", { platform: "douyin", date, category: "美食" })).status, 200);
+      assert.equal((await request("/api/market/hot", { platform: "wechat", date, category: "咖啡店" })).status, 200);
+      assert.equal((await request("/api/market/search", { platform: "xiaohongshu", keyword: "咖啡店" })).status, 200);
+      const dyAll = calls.find(call => call.url.includes("likesRank"));
+      assert.equal(Object.hasOwn(dyAll.body, "type"), false, "all categories omit the optional Douyin type");
       assert.equal((await request("/api/market/hot", { platform: "channels", date })).status, 400);
       assert.equal((await request("/api/market/hot", { platform: "douyin", date: "2026-02-31" })).status, 400);
     });
