@@ -168,7 +168,7 @@ export function createRedFoxProvider(config: ProviderConfig) {
       }, "GET");
     } else if (platform === "douyin") {
       response = await callWithCache("dy/search/likesRank", {
-        source: "抖音每日热门作品榜-GitHub", type: input.category || "全部", startTime: date, endTime: date,
+        source: "抖音每日热门作品榜-GitHub", ...(input.category ? { type: input.category } : {}), startTime: date, endTime: date,
       });
     } else if (platform === "wechat") {
       response = await callWithCache("gzh/search/hotArticle", { keyword: input.category || "", startDate: date, endDate: date });

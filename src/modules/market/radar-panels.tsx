@@ -6,6 +6,7 @@ import type { MarketItem } from "./types";
 import type { Hotspot, HotKeyword } from "./providers/redfox-provider";
 import type { TrackedAccountBundle } from "@/lib/db";
 import { formatNumber, formatPlatformName } from "./utils";
+import { rankingCategories } from "./categories";
 
 const box = "space-y-4 rounded-2xl border border-slate-200 bg-white p-6";
 const field = "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
@@ -45,9 +46,14 @@ export function HotPanel({ ItemCard }: CardProps) {
     <form className="flex flex-wrap items-center gap-3" onSubmit={event => { event.preventDefault(); void query(); }}>
       <PlatformSelect value={platform} onChange={value => { setPlatform(value); setCategory(""); setItems(null); }} options={socialPlatforms} />
       <label className="text-sm">榜单日期 <input type="date" className={field} value={date} onChange={event => { setDate(event.target.value); setItems(null); }} /></label>
-      <label className="text-sm">{platform === "wechat" ? "关键词" : "分类"} <input className={field} value={category} onChange={event => { setCategory(event.target.value); setItems(null); }} placeholder={platform === "wechat" ? "可留空" : platform === "xiaohongshu" ? "综合全部 / 数码科技" : "全部 / 数码科技"} maxLength={100} /></label>
+      {platform === "wechat" ? <label className="text-sm">热门文章关键词 <input className={field} value={category} onChange={event => { setCategory(event.target.value); setItems(null); }} placeholder="例如：咖啡店（可留空）" maxLength={100} /></label> :
+        <label className="text-sm">榜单分类 <select className={field} value={category} onChange={event => { setCategory(event.target.value); setItems(null); }}>
+          <option value="">{platform === "xiaohongshu" ? "综合全部（默认）" : "全部（默认）"}</option>
+          {rankingCategories[platform]?.filter(value => value !== "综合全部").map(value => <option key={value} value={value}>{value}</option>)}
+        </select></label>}
       <button className={button} disabled={busy}>{busy ? "查询中…" : "查看作品榜"}</button>
     </form>
+    <p className="text-sm text-slate-500">榜单分类为平台固定选项，不能填写任意词。想找“咖啡店”“AI 企业落地”等具体内容？<Link className="ml-1 text-emerald-700 underline" href="/radar?tab=search">去主题搜索，输入关键词 →</Link></p>
     {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
     {items ? <><p className="text-xs text-slate-500">{note}</p>{items.length ? items.map(item => <ItemCard key={item.id} item={item} />) : <p>该日期和分类暂无榜单数据，可改查前一天。</p>}</> : null}
   </section><HotspotsPanel /><KeywordsPanel /></div>;

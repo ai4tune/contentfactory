@@ -128,12 +128,13 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="text-lg font-semibold text-slate-900">主题搜索</h2>
         <p className="mt-2 text-sm text-slate-500">
-          输入关键词，从全网搜索相关内容，发现市场机会。
+          自由输入关键词，例如“咖啡店”“AI 企业落地”，搜索所选平台的相关内容。不受榜单分类限制；当前使用综合排序、时间不限。
         </p>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           {/* 平台选择 */}
           <select
+            aria-label="搜索平台"
             value={platform}
             onChange={(e) => setPlatform(e.target.value as MarketPlatform)}
             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -146,6 +147,7 @@ function SearchTab({ initialQuery = "" }: { initialQuery?: string }) {
 
           {/* 关键词输入 */}
           <input
+            aria-label="搜索关键词"
             type="text"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
