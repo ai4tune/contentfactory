@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   AppShell,
   PageHeader,
@@ -39,7 +39,6 @@ export default function RadarPage() {
 function RadarPageContent() {
   const searchParams = useSearchParams();
   const activeTab = tabs.find(tab => tab.id === searchParams.get("tab"))?.id || "hot";
-  const router = useRouter();
   const initialQuery = searchParams.get("q") || "";
   const historyId = searchParams.get("history") || "";
 
@@ -59,9 +58,15 @@ function RadarPageContent() {
       {/* Tab 导航 */}
       <div className="mt-6 flex gap-1 overflow-x-auto border-b border-slate-200 pb-px">
         {tabs.map((tab) => (
-          <button
+          <a
             key={tab.id}
-            onClick={() => router.push(`/radar?tab=${tab.id}`)}
+            href={`/radar?tab=${tab.id}`}
+            aria-current={activeTab === tab.id ? "page" : undefined}
+            onClick={event => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              if (activeTab !== tab.id) window.history.pushState(null, "", `/radar?tab=${tab.id}`);
+            }}
             className={`shrink-0 px-4 py-2.5 text-sm font-medium transition ${
               activeTab === tab.id
                 ? "border-b-2 border-emerald-700 text-emerald-800"
@@ -69,7 +74,7 @@ function RadarPageContent() {
             }`}
           >
             {tab.label}
-          </button>
+          </a>
         ))}
       </div>
 
@@ -85,7 +90,6 @@ function RadarPageContent() {
 }
 
 function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: string; historyId?: string }) {
-  const router = useRouter();
   const [keyword, setKeyword] = useState(initialQuery);
   const [platform, setPlatform] = useState<MarketPlatform>("xiaohongshu");
   const [searchResults, setSearchResults] = useState<MarketItem[]>([]);
@@ -143,7 +147,7 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
       setPage(nextPage);
       setSearched(query);
       setHistory(rows => [{ id: data.data.historyId, kind: "search" as const, createdAt: new Date().toISOString(), query: { ...query, page: nextPage }, items: data.data.items }, ...rows].slice(0, 100));
-      router.replace(`/radar?tab=search&history=${encodeURIComponent(data.data.historyId)}`, { scroll: false });
+      window.history.replaceState(null, "", `/radar?tab=search&history=${encodeURIComponent(data.data.historyId)}`);
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "搜索失败");
     } finally {
@@ -197,7 +201,7 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
           </button>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-          <label>搜索记录（本地读取，不扣积分） <select aria-label="搜索记录" className="max-w-full rounded-lg border p-2" disabled={restoring || isSearching} value={historyId} onChange={event => { const row = history.find(item => item.id === event.target.value); if (row) router.replace(`/radar?tab=search&history=${encodeURIComponent(row.id)}`, { scroll: false }); }}>
+          <label>搜索记录（本地读取，不扣积分） <select aria-label="搜索记录" className="max-w-full rounded-lg border p-2" disabled={restoring || isSearching} value={historyId} onChange={event => { const row = history.find(item => item.id === event.target.value); if (row) window.history.replaceState(null, "", `/radar?tab=search&history=${encodeURIComponent(row.id)}`); }}>
             <option value="">{restoring ? "恢复记录中…" : history.length ? "选择历史查询" : "暂无记录，首次查询后自动保存"}</option>
             {history.map(row => <option key={row.id} value={row.id}>{row.query.keyword} · {formatPlatformName(row.query.platform as MarketPlatform)} · 第 {row.query.page || 1} 页 · {row.createdAt.slice(0, 16)}</option>)}
           </select></label>
