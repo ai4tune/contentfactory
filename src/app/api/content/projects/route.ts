@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const topic = String(body.topic ?? "").trim();
     const brief = normalizeContentBrief(body.brief);
     if (!topic || !brief) {
-      return NextResponse.json({ error: "请先完成并确认内容简报。" }, { status: 400 });
+      return NextResponse.json({ error: "简报内容不完整，请检查目标受众、内容目标、核心观点、内容结构和知识引用。" }, { status: 400 });
     }
     const ideaId = String(body.ideaId ?? "").trim();
     if (ideaId) {
