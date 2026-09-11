@@ -7,7 +7,7 @@ import {
   downloadXiaohongshuVisualAsset,
   XiaohongshuVisualCard,
 } from "@/modules/content/components/xiaohongshu-visual-card";
-import { loadLocalKnowledge, readLocalKnowledgeItem } from "@/modules/knowledge/local-index";
+import { loadLocalKnowledge, readLocalKnowledgeItem, searchLocalKnowledge } from "@/modules/knowledge/local-index";
 import {
   channelLabels,
   contentChannels,
@@ -54,6 +54,8 @@ export function ContentCreationWorkspace({
   const [topic, setTopic] = useState(ideaTitle || "");
   const [temporaryStyle, setTemporaryStyle] = useState("");
   const [searchItems, setSearchItems] = useState<KnowledgeSource[]>([]);
+  const [allKnowledgeItems, setAllKnowledgeItems] = useState<KnowledgeSource[]>([]);
+  const [localKnowledgeItems, setLocalKnowledgeItems] = useState<LocalKnowledgeItem[]>([]);
   const [selectedSources, setSelectedSources] = useState<KnowledgeSource[]>([]);
   const [inspirations, setInspirations] = useState<ContentInspirationReference[]>(initialInspiration ? [initialInspiration] : []);
   const [selectedInspirationId, setSelectedInspirationId] = useState(initialInspiration?.id ?? "");
@@ -65,6 +67,7 @@ export function ContentCreationWorkspace({
   const [generatingChannels, setGeneratingChannels] = useState<ContentChannel[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -74,14 +77,17 @@ export function ContentCreationWorkspace({
       fetch("/api/knowledge-sources", { cache: "no-store" })
         .then((response) => response.json())
         .then((payload: { sources?: KnowledgeSource[] }) => payload.sources ?? []),
-      loadLocalKnowledge().then((items) => items.map(localItemToSource)).catch(() => []),
+      loadLocalKnowledge().catch(() => []),
       fetch("/api/inspirations", { cache: "no-store" })
         .then((response) => response.json())
         .then((payload: { inspirations?: ContentInspirationReference[] }) =>
           payload.inspirations ?? []),
     ])
       .then(([legacy, remote, local, inspirationItems]) => {
-        setSearchItems(uniqueSources([...local, ...remote, ...legacy]));
+        const items = uniqueSources([...local.map(localItemToSource), ...remote, ...legacy]);
+        setLocalKnowledgeItems(local);
+        setAllKnowledgeItems(items);
+        setSearchItems(items);
         setInspirations(inspirationItems);
       })
       .catch(() => setMessage("创作资料读取失败，请稍后重试。"));
@@ -118,16 +124,24 @@ export function ContentCreationWorkspace({
   }
 
   async function searchFeishu() {
-    if (!query.trim()) return setMessage("请先输入飞书搜索关键词。");
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      setSearchItems(allKnowledgeItems);
+      setMessage(null);
+      return;
+    }
     await run("search", async () => {
       const response = await fetch("/api/knowledge/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query: normalizedQuery }),
       });
       const payload = (await response.json()) as { items?: KnowledgeSource[]; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "搜索失败");
-      setSearchItems(payload.items ?? []);
+      const localMatches = searchLocalKnowledge(localKnowledgeItems, normalizedQuery).map(localItemToSource);
+      const normalized = normalizedQuery.toLocaleLowerCase();
+      const connectedMatches = allKnowledgeItems.filter((item) => item.source !== "local" && [item.title, item.path, item.url].some((value) => value?.toLocaleLowerCase().includes(normalized)));
+      setSearchItems(uniqueSources([...localMatches, ...connectedMatches, ...(payload.items ?? [])]));
     });
   }
 
@@ -187,6 +201,7 @@ export function ContentCreationWorkspace({
       const sources = payload.sources ?? [];
       setSelectedSources((items) => [...items, ...sources.filter((source) => !items.some((item) => item.id === source.id))]);
       setSearchItems((items) => [...sources, ...items.filter((item) => !sources.some((source) => source.id === item.id))]);
+      setAllKnowledgeItems((items) => uniqueSources([...sources, ...items]));
       setSuggestions([]);
       setBrief(null);
       setProject(null);
@@ -233,14 +248,20 @@ export function ContentCreationWorkspace({
 
   async function confirmBrief() {
     if (!brief) return;
+    setConfirmError(null);
     await run("confirm", async () => {
-      const payload = await postJson<{ project?: ContentProject; error?: string }>(
-        "/api/content/projects",
-        { topic, brief, ideaId: ideaContext?.id, temporaryStyleInstructions: lines(temporaryStyle) },
-      );
-      if (!payload.project) throw new Error("内容项目保存失败。");
-      setProject(payload.project);
-      setMessage("内容简报已确认并保存，可以进入渠道内容生成。");
+      try {
+        const payload = await postJson<{ project?: ContentProject; error?: string }>(
+          "/api/content/projects",
+          { topic, brief, ideaId: ideaContext?.id, temporaryStyleInstructions: lines(temporaryStyle) },
+        );
+        if (!payload.project) throw new Error("内容项目保存失败。");
+        setProject(payload.project);
+        setMessage("内容简报已确认并保存，可以进入渠道内容生成。");
+      } catch (error) {
+        setConfirmError(error instanceof Error ? error.message : "内容项目保存失败，请重试。");
+        throw error;
+      }
     });
   }
 
@@ -485,8 +506,8 @@ export function ContentCreationWorkspace({
         >
           <div className="grid gap-3">
             <div className="flex gap-2">
-              <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-emerald-800" disabled={busy !== null} onChange={(event) => setQuery(event.target.value)} placeholder="搜索飞书知识" value={query} />
-              <button className={secondaryButtonClass} disabled={busy !== null} onClick={searchFeishu} type="button">{busy === "search" ? "搜索中" : "搜索"}</button>
+              <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-emerald-800" disabled={busy !== null} onChange={(event) => { const value = event.target.value; setQuery(value); if (!value.trim()) { setSearchItems(allKnowledgeItems); setMessage(null); } }} placeholder="搜索已连接知识和飞书" value={query} />
+              <button className={secondaryButtonClass} disabled={busy !== null} onClick={searchFeishu} type="button">{busy === "search" ? "搜索中" : query.trim() ? "搜索" : "显示全部"}</button>
             </div>
             <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
               <summary className="cursor-pointer text-xs font-semibold text-slate-700">其他添加方式</summary>
@@ -645,7 +666,7 @@ export function ContentCreationWorkspace({
           </div>
           {busy === "brief" ? <BriefSkeleton /> : brief ? (
             <div className="grid gap-5 p-5 sm:p-6">
-            <fieldset className="grid gap-5" disabled={Boolean(project) || busy === "confirm"}>
+            <fieldset className="grid gap-5" disabled={Boolean(project) || busy !== null}>
             <BriefField label="目标受众" value={brief.targetAudience} onChange={(value) => updateBrief(setBrief, "targetAudience", value)} />
             <BriefField label="内容目标" value={brief.contentGoal} onChange={(value) => updateBrief(setBrief, "contentGoal", value)} />
             <BriefField label="核心观点" value={brief.coreMessage} onChange={(value) => updateBrief(setBrief, "coreMessage", value)} multiline />
@@ -675,7 +696,9 @@ export function ContentCreationWorkspace({
             </div>
             <BriefListField label="待确认信息" value={brief.openQuestions} onChange={(value) => updateBrief(setBrief, "openQuestions", value)} />
             <div className="border-t border-slate-200 pt-5">
-              <button className={`${primaryButtonClass} w-full`} disabled={Boolean(project) || busy === "confirm"} onClick={confirmBrief} type="button">{busy === "confirm" ? "正在原子保存" : project ? `已保存项目 ${project.id}` : "确认简报并创建内容项目"}</button>
+              <button className={`${primaryButtonClass} w-full`} disabled={Boolean(project) || busy !== null} onClick={confirmBrief} type="button">{busy === "confirm" ? "正在创建内容项目…" : project ? `已保存项目 ${project.id}` : "确认简报并创建内容项目"}</button>
+              {confirmError ? <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs leading-5 text-red-700" role="alert">创建失败：{confirmError}</p> : null}
+              {project ? <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800" role="status">内容项目创建成功，请继续选择并生成渠道内容。</p> : null}
             </div>
             </fieldset>
             {project ? (

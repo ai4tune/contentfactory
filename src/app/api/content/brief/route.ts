@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createContentBrief } from "@/modules/content/server/brief-service";
-import { normalizeKnowledgeSources } from "@/modules/content/server/request";
+import { normalizeContentBrief, normalizeKnowledgeSources } from "@/modules/content/server/request";
 import { getInspirationReference } from "@/modules/inspirations/service";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
@@ -42,6 +42,13 @@ export async function POST(request: Request) {
       }),
     ]);
     const brief = await createContentBrief(topic, account, sources, inspiration, styleContract, ideaContext);
+    const normalizedBrief = normalizeContentBrief(brief);
+    if (!normalizedBrief) {
+      return NextResponse.json(
+        { error: "AI 返回的简报不完整，请重新生成。需要包含目标受众、内容目标、核心观点、内容结构和知识引用。" },
+        { status: 502 },
+      );
+    }
     return NextResponse.json({ brief });
   } catch (error) {
     return NextResponse.json(
