@@ -175,7 +175,7 @@ function DiscoverTab() {
         <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-8 text-center">
           <Link href="/radar?tab=hot" className="text-sm text-emerald-800">前往市场雷达查看热榜 →</Link>
           <p className="mt-1 text-xs text-slate-400">
-            支持作品榜、平台热搜及聚合热点；需配置 RedFox 密钥并具备接口权限和额度。
+            支持作品榜、平台热搜及聚合热点；市场数据能力由系统统一提供。
           </p>
         </div>
       </div>

@@ -117,6 +117,8 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
     let market, idea, brief, project;
     await t.test("percent titles render and abandoned ideas stay in the pool", async () => {
       assert.equal((await fetch(base + "/create?title=" + encodeURIComponent("效率提升100%"))).status, 200);
+      const publicPages = await Promise.all(["/radar", "/ideas"].map(route => fetch(base + route).then(response => response.text())));
+      assert.doesNotMatch(publicPages.join("\n"), /redfox|红狐/i);
       assert.equal((await request("/api/ideas?status=pool")).body.data[0].id, "legacy");
     });
     await t.test("official search contracts preserve ids, URLs and zero metrics; cache avoids duplicate calls", async () => {
@@ -125,6 +127,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
         const first = await request("/api/market/search", input);
         assert.equal(first.status, 200, JSON.stringify(first.body));
         const item = first.body.data.items[0];
+        assert.equal(item.provider, "market-data");
         assert.equal(item.metrics.collects, 0);
         assert.ok(item.sourceUrl);
         const second = await request("/api/market/search", input);
@@ -138,7 +141,8 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       assert.equal(calls[2].body.sortType, "_0");
       const denied = await request("/api/market/search", { platform: "douyin", keyword: "余额测试" });
       assert.equal(denied.status, 500);
-      assert.match(denied.body.message, /3201/);
+      assert.equal(denied.body.error, "市场搜索失败，请稍后重试。");
+      assert.doesNotMatch(JSON.stringify(denied.body), /redfox|3201/i);
     });
     await t.test("empty-body collections survive reads and restart; search history is local", async () => {
       const history = await request("/api/market/history");
@@ -146,6 +150,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       const snapshot = history.body.records.find(record => record.kind === "search" && record.query.platform === "xiaohongshu");
       assert.ok(snapshot);
       const item = snapshot.items[0];
+      assert.equal(item.provider, "market-data");
       const saved = await request(`/api/market/items/${item.id}/save-to-inspiration`, {});
       assert.equal(saved.status, 200);
       const id = saved.body.data.record.id;
@@ -303,6 +308,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       }
       const before = (await request("/api/market/accounts")).body.accounts;
       assert.equal(before.length, 3);
+      assert.ok(before.every(item => item.account.provider === "market-data" && item.items.every(post => post.provider === "market-data")));
       const xhs = before.find(item => item.account.platform === "xiaohongshu");
       assert.equal(xhs.items[0].metrics.likes, 12);
       const db = new Database(path.join(directory, "data/contentfactory.db"));

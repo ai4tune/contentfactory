@@ -1,4 +1,4 @@
-import { chinaToday, dateOnly, dateOffset, marketError, redfoxProvider } from "@/modules/market/server";
+import { chinaToday, dateOnly, dateOffset, marketError, marketProvider } from "@/modules/market/server";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -9,6 +9,6 @@ export async function POST(request: Request) {
     || (body.platform && !["douyin", "kuaishou", "weibo", "baidu", "bilibili", "zhihu", "toutiao"].includes(body.platform))) {
     return Response.json({ error: "热搜需选择支持的平台及不超过 30 天的日期区间，结束日期不含当天。" }, { status: 400 });
   }
-  try { return Response.json({ items: await redfoxProvider().getHotspots(body) }); }
+  try { return Response.json({ items: await marketProvider().getHotspots(body) }); }
   catch (error) { return marketError(error); }
 }

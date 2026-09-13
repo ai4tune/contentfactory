@@ -44,7 +44,7 @@ export function HotPanel({ ItemCard }: CardProps) {
       const latest = records.find(record => record.kind === "hot");
       if (latest) {
         setPlatform(latest.query.platform); setDate(latest.query.date || ""); setCategory(latest.query.category || "");
-        setItems(latest.items); setNote("已恢复上次榜单快照，不请求 RedFox；不是实时数据。");
+        setItems(latest.items); setNote("已恢复上次榜单快照，不会重复请求外部数据；不是实时数据。");
       }
     }).catch(error => { if (active) setError(errorText(error)); }).finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
