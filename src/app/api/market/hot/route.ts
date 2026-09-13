@@ -1,4 +1,4 @@
-import { chinaToday, dateOnly, dateOffset, marketError, persistMarketItems, redfoxProvider } from "@/modules/market/server";
+import { chinaToday, dateOnly, dateOffset, marketError, marketProvider, persistMarketItems } from "@/modules/market/server";
 import { rankingCategories } from "@/modules/market/categories";
 import { saveMarketHistory } from "@/modules/market/history";
 
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "请选择下拉列表中的榜单分类；查找具体词请使用主题搜索。" }, { status: 400 });
   }
   try {
-    const items = persistMarketItems(await redfoxProvider().getTrending(body));
+    const items = persistMarketItems(await marketProvider().getTrending(body));
     await saveMarketHistory("hot", { platform: body.platform, date: body.date, category: body.category }, items);
     return Response.json({ items, date: body.date, note: "保留数据源榜单顺序；非实时数据，缺失指标显示为未知。小红书 w+ 指标为近似下界。" });
   } catch (error) { return marketError(error); }

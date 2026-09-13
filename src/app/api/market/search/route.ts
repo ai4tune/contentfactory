@@ -1,24 +1,9 @@
 // 市场搜索 API
 // 支持小红书、抖音、公众号等平台
 import { NextRequest, NextResponse } from "next/server";
-import { createRedFoxProvider } from "@/modules/market/providers/redfox-provider";
 import { rankMarketItems } from "@/modules/market/ranking";
-import { upsertMarketItemToDb } from "@/lib/db";
 import { saveMarketHistory } from "@/modules/market/history";
-
-// 创建 RedFox 提供者
-function getRedFoxProvider() {
-  const apiKey = process.env.REDFOX_API_KEY;
-  if (!apiKey) {
-    throw new Error("REDFOX_API_KEY 未配置");
-  }
-  return createRedFoxProvider({
-    name: "redfox",
-    apiKey,
-    enabled: true,
-    baseUrl: process.env.REDFOX_BASE_URL || (process.env.REDFOX_HOST ? `https://${process.env.REDFOX_HOST}` : undefined),
-  });
-}
+import { marketProvider, persistMarketItems } from "@/modules/market/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,18 +18,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查 RedFox API Key
+    // 检查市场数据服务配置
     if (!process.env.REDFOX_API_KEY) {
       return NextResponse.json(
         {
-          error: "未配置 RedFox API Key",
-          hint: "请在 .env.local 文件中配置 REDFOX_API_KEY",
+          error: "市场数据服务尚未配置",
+          hint: "请联系管理员完成市场数据服务配置。",
         },
         { status: 400 }
       );
     }
 
-    const provider = getRedFoxProvider();
+    const provider = marketProvider();
 
     // 搜索
     const items = await provider.searchWorks({
@@ -61,49 +46,21 @@ export async function POST(request: NextRequest) {
     });
 
     // 保存到数据库
+    let publicItems;
     try {
-      for (const item of rankedItems) {
-        item.id = upsertMarketItemToDb({
-          id: item.id,
-          provider: item.provider,
-          providerItemId: item.providerItemId,
-          platform: item.platform,
-          platformContentId: item.platformContentId,
-          canonicalUrl: item.canonicalUrl,
-          sourceUrl: item.sourceUrl,
-          title: item.title,
-          summary: item.summary,
-          body: item.body,
-          contentType: item.contentType,
-          authorId: item.author.id,
-          authorName: item.author.name,
-          authorFollowers: item.author.followers ?? undefined,
-          authorProfileUrl: item.author.profileUrl,
-          publishedAt: item.publishedAt,
-          capturedAt: item.capturedAt,
-          views: item.metrics.views ?? undefined,
-          likes: item.metrics.likes ?? undefined,
-          collects: item.metrics.collects ?? undefined,
-          comments: item.metrics.comments ?? undefined,
-          shares: item.metrics.shares ?? undefined,
-          keywords: item.keywords,
-          tags: item.tags,
-          rawPayloadRef: item.rawPayloadRef,
-          opportunityScore: item.opportunityScore?.total,
-        });
-      }
+      publicItems = persistMarketItems(rankedItems);
     } catch (dbError) {
       console.error("保存到数据库失败:", dbError);
       return NextResponse.json({ error: "搜索结果保存失败，请重试后再收藏。" }, { status: 500 });
     }
 
-    const history = await saveMarketHistory("search", { platform, keyword, page }, rankedItems);
+    const history = await saveMarketHistory("search", { platform, keyword, page }, publicItems);
     return NextResponse.json({
       success: true,
       data: {
         historyId: history.id,
-        items: rankedItems,
-        totalCount: rankedItems.length,
+        items: publicItems,
+        totalCount: publicItems.length,
         page,
         pageSize,
         expandedKeywords: [keyword],
@@ -113,8 +70,7 @@ export async function POST(request: NextRequest) {
     console.error("市场搜索失败:", error);
     return NextResponse.json(
       {
-        error: "市场搜索失败",
-        message: error instanceof Error ? error.message : String(error),
+        error: "市场搜索失败，请稍后重试。",
       },
       { status: 500 }
     );

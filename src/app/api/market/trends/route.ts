@@ -1,4 +1,4 @@
-import { chinaToday, dateOffset, marketError, redfoxProvider } from "@/modules/market/server";
+import { chinaToday, dateOffset, marketError, marketProvider } from "@/modules/market/server";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   try {
     const end = chinaToday(); // 仅对比完整自然日，避免今天未结束造成偏差。
     const middle = dateOffset(end, -body.days), start = dateOffset(middle, -body.days);
-    const provider = redfoxProvider();
+    const provider = marketProvider();
     const [current, previous] = await Promise.all([
       provider.getHotspots({ platform: body.platform, keyword: body.keyword, startDate: middle, endDate: end }),
       provider.getHotspots({ platform: body.platform, keyword: body.keyword, startDate: start, endDate: middle }),
