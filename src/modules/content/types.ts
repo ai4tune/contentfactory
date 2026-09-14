@@ -122,6 +122,8 @@ export type ChannelDraft = {
 export type ContentProject = {
   id: string;
   sourceIdeaId?: string;
+  contentPlanId?: string;
+  contentPlanItemId?: string;
   topic: string;
   accountSnapshot: AccountContext | null;
   styleSnapshot: StyleContract | null;

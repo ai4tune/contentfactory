@@ -14,6 +14,7 @@ import {
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
 import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
+import { markPlanItemGenerated } from "@/modules/plans/repository";
 
 export const runtime = "nodejs";
 
@@ -81,6 +82,14 @@ export async function POST(request: Request) {
         });
 
     if (!project) return NextResponse.json({ error: "Content project not found" }, { status: 404 });
+
+    if (
+      project.contentPlanId
+      && project.contentPlanItemId
+      && channelDrafts.some((draft) => draft.status === "generated")
+    ) {
+      await markPlanItemGenerated(project.contentPlanId, project.contentPlanItemId, project.id);
+    }
 
     return NextResponse.json({ project });
   } catch (error) {

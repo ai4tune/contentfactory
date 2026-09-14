@@ -9,6 +9,7 @@ import { isContentChannel, type GenerateChannelsRequest } from "@/modules/conten
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
+import { markPlanItemGenerated } from "@/modules/plans/repository";
 
 export const runtime = "nodejs";
 
@@ -57,6 +58,9 @@ export async function POST(
     if (body.projectId) {
       const project = await replaceChannelDraft(body.projectId, draft);
       if (!project) return NextResponse.json({ error: "Content project not found" }, { status: 404 });
+      if (project.contentPlanId && project.contentPlanItemId) {
+        await markPlanItemGenerated(project.contentPlanId, project.contentPlanItemId, project.id);
+      }
       return NextResponse.json({ draft, project });
     }
 
