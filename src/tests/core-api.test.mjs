@@ -16,6 +16,7 @@ const dataFiles = [
   "data/knowledge-sources.local.json",
   "data/style-profiles.local.json",
   "data/style-feedback.local.json",
+  "data/content-plans.local.json",
 ];
 const backups = new Map();
 const processes = [];
@@ -67,6 +68,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   let draft;
   let brief;
   let project;
+  let contentPlan;
 
   await context.test("health and validation errors are explicit", async () => {
     const health = await requestJson("/api/health");
@@ -196,6 +198,94 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(savedDraft.body.profile.status, "draft");
     assert.equal(savedDraft.body.profile.version, 2);
+  });
+
+  await context.test("a 30-day content plan persists and protects human edits during regeneration", async () => {
+    const created = await requestJson("/api/content-plans", {
+      method: "POST",
+      body: {
+        operatingGoal: "帮助装修家庭建立信任并获得有效咨询",
+        publishingFrequency: 3,
+        periodStart: "2026-09-15",
+        periodEnd: "2026-10-14",
+        contextEvidence: [{
+          type: "enterprise_knowledge",
+          refId: "local:flooring.md",
+          label: "SPC 地板选购资料",
+        }],
+      },
+    });
+    assert.equal(created.response.status, 201, serverOutput);
+    contentPlan = created.body.plan;
+    assert.equal(contentPlan.items.length, 30);
+    assert.equal(contentPlan.items.filter((item) => item.week === 1).length, 7);
+    assert.equal(contentPlan.pillars.length, 3);
+    assert.equal(contentPlan.primaryChannel, "wechat_article");
+    assert.equal(contentPlan.styleProfileVersion, 1);
+    assert.equal(contentPlan.status, "draft");
+    assert.equal(contentPlan.items[0].evidence[0].refId, "local:flooring.md");
+
+    const current = await requestJson("/api/content-plans/current");
+    assert.equal(current.response.status, 200);
+    assert.equal(current.body.plan.id, contentPlan.id);
+
+    const firstItem = contentPlan.items[0];
+    const edited = await requestJson(`/api/content-plans/${contentPlan.id}/items/${firstItem.id}`, {
+      method: "PATCH",
+      body: { title: "人工确认保留的选题", rationale: "客户明确要求本周优先发布" },
+    });
+    assert.equal(edited.response.status, 200);
+    assert.equal(edited.body.item.locked, true);
+    assert.equal(edited.body.item.origin, "manual");
+
+    const regenerated = await requestJson(`/api/content-plans/${contentPlan.id}/generate`, {
+      method: "POST",
+      body: { contextEvidence: [] },
+    });
+    assert.equal(regenerated.response.status, 200, serverOutput);
+    contentPlan = regenerated.body.plan;
+    assert.equal(contentPlan.items.length, 30);
+    assert.equal(contentPlan.items.some((item) => item.id === firstItem.id && item.title === "人工确认保留的选题"), true);
+    assert.equal(contentPlan.items.some((item) => item.title === "重新生成选题 1"), true);
+
+    const temporaryItem = contentPlan.items.find((item) => !item.locked);
+    const temporaryEdit = await requestJson(`/api/content-plans/${contentPlan.id}/items/${temporaryItem.id}`, {
+      method: "PATCH",
+      body: { title: "准备放弃的人工选题" },
+    });
+    assert.equal(temporaryEdit.body.item.locked, true);
+    const unlocked = await requestJson(`/api/content-plans/${contentPlan.id}/items/${temporaryItem.id}`, {
+      method: "PATCH",
+      body: { locked: false },
+    });
+    assert.equal(unlocked.body.item.locked, false);
+    const regeneratedAfterUnlock = await requestJson(`/api/content-plans/${contentPlan.id}/generate`, {
+      method: "POST",
+      body: { contextEvidence: [] },
+    });
+    assert.equal(regeneratedAfterUnlock.response.status, 200, serverOutput);
+    contentPlan = regeneratedAfterUnlock.body.plan;
+    assert.equal(contentPlan.items.some((item) => item.id === temporaryItem.id), false);
+    assert.equal(contentPlan.items.some((item) => item.id === firstItem.id), true);
+
+    const missingPillar = await requestJson(`/api/content-plans/${contentPlan.id}`, {
+      method: "PATCH",
+      body: { pillars: contentPlan.pillars.slice(1) },
+    });
+    assert.equal(missingPillar.response.status, 400);
+
+    const confirmed = await requestJson(`/api/content-plans/${contentPlan.id}`, {
+      method: "PATCH",
+      body: { status: "confirmed" },
+    });
+    assert.equal(confirmed.response.status, 200);
+    contentPlan = confirmed.body.plan;
+
+    const list = await requestJson("/api/content-plans");
+    assert.equal(list.body.plans.some((plan) => plan.id === contentPlan.id), true);
+    const stored = JSON.parse(await readFile(path.join(repositoryRoot, "data/content-plans.local.json"), "utf8"));
+    assert.equal(stored.schemaVersion, 1);
+    assert.equal(stored.plans.some((plan) => plan.id === contentPlan.id), true);
   });
 
   await context.test("knowledge source API responds without copying a local directory", async () => {
@@ -386,7 +476,13 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   await context.test("confirmed brief is saved as one atomic content project", async () => {
     const result = await requestJson("/api/content/projects", {
       method: "POST",
-      body: { topic: acceptanceTopic(), brief, temporaryStyleInstructions: ["这次更像真实项目复盘"] },
+      body: {
+        topic: acceptanceTopic(),
+        brief,
+        contentPlanId: contentPlan.id,
+        contentPlanItemId: contentPlan.items[0].id,
+        temporaryStyleInstructions: ["这次更像真实项目复盘"],
+      },
     });
     assert.equal(result.response.status, 201);
     project = result.body.project;
@@ -397,6 +493,13 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.deepEqual(project.styleSnapshot.bannedPhrases, ["深度赋能"]);
     assert.equal(project.styleSnapshot.mode, "temporary");
     assert.deepEqual(project.styleSnapshot.temporaryInstructions, ["这次更像真实项目复盘"]);
+    assert.equal(project.contentPlanId, contentPlan.id);
+    assert.equal(project.contentPlanItemId, contentPlan.items[0].id);
+
+    const linkedPlan = await requestJson(`/api/content-plans/${contentPlan.id}`);
+    const linkedItem = linkedPlan.body.plan.items.find((item) => item.id === contentPlan.items[0].id);
+    assert.equal(linkedItem.contentProjectId, project.id);
+    assert.equal(linkedItem.status, "writing");
 
     const nextProfile = acceptanceStyleProfile();
     nextProfile.bannedPhrases = ["深度赋能", "革命性"];
@@ -427,6 +530,10 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.match(project.channelDrafts.find((item) => item.channel === "xiaohongshu_note").content, /前三行|#/);
     assert.match(project.channelDrafts.find((item) => item.channel === "moments_post").content, /朋友|一起看/);
     assert.match(project.channelDrafts.find((item) => item.channel === "short_video_script").content, /前三秒|画面|口播/);
+
+    const updatedPlan = await requestJson(`/api/content-plans/${contentPlan.id}`);
+    const generatedItem = updatedPlan.body.plan.items.find((item) => item.id === contentPlan.items[0].id);
+    assert.equal(generatedItem.status, "generated");
   });
 
   await context.test("a single channel can be retried without losing the project", async () => {

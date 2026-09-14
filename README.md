@@ -5,7 +5,9 @@ This repository contains the runnable Content Factory V1 baseline for real-use a
 ## Source of truth
 
 - Product requirements: `docs/prd/Content-Factory-MVP-PRD-v0.1.md`
+- Paid-pilot service blueprint: `docs/sbd/Content-Factory-Paid-Pilot-SBD-v1.0.md`
 - Technical specification: `docs/specs/AI-Growth-OS-Spec-v1.0.md`
+- Execution order: `todo.md`
 - Historical code audit: `docs/audits/Content-Factory-MVP-Code-Audit-2026-07-20.md`
 - Branch and code ownership: `docs/development/P0-Code-Ownership-and-Branch-Strategy.md`
 
@@ -16,13 +18,14 @@ The implemented V1 direction is:
 - Local Markdown/TXT folders first, with Feishu as the enterprise knowledge connector.
 - Temporary local text upload as fallback.
 - Omni/OpenAI-compatible AI gateway for generation.
-- No multi-tenant SaaS, no database, no heavy auth in this phase.
+- No multi-tenant SaaS or heavy auth in this phase; market data uses SQLite while the creation domain keeps atomic local stores.
 - Current account state is saved to `data/contentfactory.local.json`.
 - Confirmed briefs and channel drafts are saved atomically to `data/content-projects.local.json`.
 - Original creation and optional viral-rewrite creation share one brief and review flow.
 - Xiaohongshu supports one generated cover plus editable text-based content cards.
 - Content library supports manual publication links and real metrics; automatic publishing is not included.
 - The viral-content library stores structured source identity and engagement snapshots, deduplicates repeat imports, and keeps legacy records readable.
+- A versioned 30-day `ContentPlan` stores 3–5 pillars, 30 ideas, weekly priorities, evidence, human locks, and links to content projects.
 
 ## Run locally
 
@@ -61,14 +64,17 @@ Feishu should use a self-built enterprise app, not a personal password. The app 
 
 ## V1 creation flow
 
-1. Confirm the current account positioning, or skip it temporarily.
-2. Choose original creation or viral rewriting.
-3. Original creation selects real knowledge; viral rewriting selects a stored inspiration and may also use real knowledge.
-4. Enter a topic or select a suggested direction.
-5. Generate and confirm one shared content brief with traceable citations and optional inspiration structure.
-6. Generate any combination of WeChat article, Xiaohongshu note, Moments post, and short-video script.
-7. Run AI review, edit, save versions, and confirm the content is publishable.
-8. Copy or export for manual publication, then record the real link and metrics in the content library.
+PR1 已提供 30 天内容计划的数据与 API 契约；计划与首次引导界面将在后续 PR 接入。当前界面仍可直接使用进阶创作工作台。
+
+1. Confirm the current account positioning.
+2. Generate and confirm a 30-day content plan, or enter the advanced creation workspace directly.
+3. Choose a weekly plan item, original creation, or viral rewriting.
+4. Original creation selects real knowledge; viral rewriting selects a stored inspiration and may also use real knowledge.
+5. Enter a topic or select a suggested direction.
+6. Generate and confirm one shared content brief with traceable citations and optional inspiration structure.
+7. Generate any combination of WeChat article, Xiaohongshu note, Moments post, and short-video script.
+8. Run AI review, edit, save versions, and confirm the content is publishable.
+9. Copy or export for manual publication, then record the real link and metrics in the content library.
 
 Chrome 扩展是账号定位的可选采集入口：只读取用户主动打开页面中的可见账号和作品信息，先预览采集结果，再生成可编辑的 AI 定位，只有用户最后确认才会覆盖当前账号。小红书账号与作品指标会作为带时间的本地快照保留，公开页未展示的阅读/曝光不会被推测或替代。
 
@@ -85,6 +91,7 @@ extensions/contentfactory-capture
 Successful P0 runs save the minimum local workflow state:
 
 - The single confirmed account context
+- The current 30-day content plan and its human-edited or locked items
 - Content projects and confirmed briefs
 - Citation excerpts and selected knowledge references
 - Per-channel drafts and generation status
@@ -97,6 +104,7 @@ The local data file is ignored by Git:
 ```bash
 data/contentfactory.local.json
 data/content-projects.local.json
+data/content-plans.local.json
 data/knowledge-sources.local.json
 ```
 
@@ -124,7 +132,7 @@ Run the repeatable technical acceptance suite:
 npm run test:acceptance
 ```
 
-The API suite starts an isolated local AI mock, runs 19 API subtests across account → knowledge/inspiration → brief → project → channels → review → human approval → versions → publication, and restores pre-existing local data files when it exits.
+The API suite starts an isolated local AI mock, runs 22 API subtests across account → content plan → knowledge/inspiration → brief → project → channels → review → human approval → versions → publication, and restores pre-existing local data files when it exits.
 
 Run the acceptance suite after stopping a development server in the same worktree, or run it from a dedicated worktree, because Next.js prevents two processes from sharing the same `.next` directory.
 

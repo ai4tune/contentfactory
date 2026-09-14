@@ -31,6 +31,8 @@ export async function getContentProject(projectId: string) {
 export async function saveContentProject(input: {
   topic: string;
   brief: ContentBrief;
+  contentPlanId?: string;
+  contentPlanItemId?: string;
   accountSnapshot: AccountContext | null;
   styleSnapshot?: StyleContract | null;
   channels?: ContentChannel[];
@@ -41,6 +43,8 @@ export async function saveContentProject(input: {
     id: `contentProjects_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     topic: input.topic,
     sourceIdeaId: input.brief.ideaContext?.id,
+    contentPlanId: input.contentPlanId,
+    contentPlanItemId: input.contentPlanItemId,
     accountSnapshot: input.accountSnapshot,
     styleSnapshot: input.styleSnapshot ?? null,
     selectedKnowledgeRefs: input.brief.citations,
@@ -62,7 +66,10 @@ function withStyleSnapshot(project: StoredContentProject): StoredContentProject 
   return { ...project, styleSnapshot: project.styleSnapshot ?? null };
 }
 
-export async function replaceChannelDraft(projectId: string, draft: ChannelDraft) {
+export async function replaceChannelDraft(
+  projectId: string,
+  draft: ChannelDraft,
+): Promise<ContentProject | null> {
   let updatedProject: ContentProject | null = null;
 
   await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
@@ -88,7 +95,7 @@ export async function saveChannelDrafts(
   projectId: string,
   channels: ContentChannel[],
   channelDrafts: ChannelDraft[],
-) {
+): Promise<ContentProject | null> {
   let updatedProject: ContentProject | null = null;
 
   await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
@@ -118,7 +125,7 @@ export async function saveChannelVisualAssets(
   projectId: string,
   channel: ContentChannel,
   visualAssets: GeneratedVisualAsset[],
-) {
+): Promise<ContentProject | null> {
   let updatedProject: ContentProject | null = null;
 
   await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({

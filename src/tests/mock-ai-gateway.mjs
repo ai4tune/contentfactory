@@ -54,6 +54,31 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user) {
+  if (system.includes("企业内容策略规划师")) {
+    const regenerated = user.includes("人工确认保留的选题");
+    const prefix = regenerated ? "重新生成选题" : "首月选题";
+    return {
+      title: "验收账号 30 天内容计划",
+      pillars: [
+        { name: "选购避坑", description: "帮助客户建立正确的判断标准" },
+        { name: "安装知识", description: "解释真实使用和交付条件" },
+        { name: "真实案例", description: "用已确认案例建立信任" },
+      ],
+      items: Array.from({ length: 30 }, (_, index) => ({
+        title: `${prefix} ${index + 1}`,
+        angle: `从客户第 ${index + 1} 个常见问题切入`,
+        pillarIndex: index % 3,
+        objective: ["reach", "trust", "conversion"][index % 3],
+        rationale: `对应目标客户的第 ${index + 1} 个决策问题`,
+        evidence: [{
+          type: index === 0 ? "enterprise_knowledge" : "customer_pain",
+          ...(index === 0 ? { refId: "local:flooring.md" } : {}),
+          label: index === 0 ? "地板选购资料" : `待验证的客户问题 ${index + 1}`,
+        }],
+      })),
+    };
+  }
+
   if (system.includes("写作风格分析师")) {
     return {
       name: "验收账号默认风格",

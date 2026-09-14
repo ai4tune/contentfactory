@@ -54,7 +54,7 @@
 
 ## 0.2 2026-09-14 当前代码快照
 
-本次文档同步以 `main@451f3c3` 为代码基线。本轮仅更新文档，以下能力均为更新前已经存在的事实。
+本节最初以 `main@451f3c3` 为代码基线；PR-1 在此基础上增加 ContentPlan 契约与 API，尚未增加计划页面。
 
 ### 已实现页面
 
@@ -81,21 +81,22 @@
 创作：/api/content/brief、/api/content/projects、/api/content/generate/*
 审核与草稿：/api/content/projects/*/review*、/api/content-drafts/*
 内容与发布：/api/articles、/api/articles/:id/publication
+内容计划：/api/content-plans、/api/content-plans/current、/api/content-plans/:id、/generate、/items/:itemId
 ```
 
 ### 当前持久化
 
 - SQLite：市场内容、指标快照、搜索历史、对标账号、市场服务缓存/调用日志和选题；
-- 服务端轻量存储：账号、定位、风格、知识来源、爆款、内容项目、草稿、审核与发布数据；
+- 服务端轻量存储：账号、定位、风格、知识来源、爆款、内容计划、内容项目、草稿、审核与发布数据；
 - 浏览器 IndexedDB：本地目录句柄、授权状态和本地 Markdown/TXT 索引；
-- 还没有 `ContentPlan`、首次建档状态和周复盘对象；
+- 已有独立、带 schema 版本且原子写入的 `ContentPlan` 权威存储；还没有首次建档状态和周复盘对象；
 - 本轮不要求把全部旧存储迁移到 SQLite，只为新增对象定义稳定契约。
 
 ### 当前主要差距
 
 - 主导航仍以功能模块组织，而非五个日常任务入口；
 - 首页是运营统计，不会明确派发今日任务；
-- 没有可持久化的 30 天内容计划和计划项状态；
+- ContentPlan 已有数据和 API，但还没有 `/plans` 页面；
 - 现有创作页是高级工作台，缺少计划驱动的快速路径；
 - 发布数据存在，但没有周周期、客户反馈和下一周建议闭环；
 - 本地试用可用，客户上线所需的最小访问和运维保障未形成完整验收。
@@ -192,9 +193,9 @@ Codex 在实现本项目时，应优先遵循本文件中的：
 - 已完成草稿详情中的明确“确认内容可发布”动作；正文、重新生成、安全修复或视觉资产变化后自动回到“编辑中”；
 - 仍待真实验收：真实发布、连续 7 天、修改比例、企业共同审核和约 3000 元购买意愿。
 
-## 0.5 首批付费共创版目标技术契约（尚未实现）
+## 0.5 首批付费共创版目标技术契约
 
-本节描述 PR-1～PR-6 的目标契约。除非明确标记“已实现”，不得把本节当作当前代码能力。
+本节描述 PR-1～PR-6 的目标契约。PR-1 的 ContentPlan 类型、存储、生成、编辑、锁定保护和内容项目关联已经实现；其他小节仍是后续计划。
 
 ### 0.5.1 目标对外信息架构
 
@@ -235,7 +236,7 @@ type OnboardingStatus = {
 - `OnboardingStatus` 只记录流程状态、主渠道、资料成熟度和缺口，不复制上述业务字段；
 - `completed` 只代表用户完成确认，不代表资料完整或内容质量通过。
 
-### 0.5.3 ContentPlan
+### 0.5.3 ContentPlan（PR-1 已实现）
 
 ```ts
 type ContentPlan = {
@@ -280,6 +281,7 @@ type ContentPlanItem = {
   scheduledDate?: string;
   priority: number;
   locked: boolean;
+  origin: "ai" | "manual";
   status: "pending" | "writing" | "generated" | "published" | "reviewed";
   contentProjectId?: string;
   publicationId?: string;
@@ -353,24 +355,26 @@ type WeeklyReview = {
 
 每条 `ReviewSuggestion` 必须引用计划项或发布数据。样本不足时仅返回 `dataGaps`，不输出确定性增长结论。
 
-### 0.5.6 计划新增接口
+### 0.5.6 接口实施状态
 
 ```text
-GET    /api/onboarding/status
-PATCH  /api/onboarding/status
+[PR-2] GET    /api/onboarding/status
+[PR-2] PATCH  /api/onboarding/status
 
-GET    /api/content-plans/current
-POST   /api/content-plans
-PATCH  /api/content-plans/:id
-POST   /api/content-plans/:id/generate
-PATCH  /api/content-plans/:id/items/:itemId
+[已实现] GET    /api/content-plans
+[已实现] GET    /api/content-plans/current
+[已实现] GET    /api/content-plans/:id
+[已实现] POST   /api/content-plans
+[已实现] PATCH  /api/content-plans/:id
+[已实现] POST   /api/content-plans/:id/generate
+[已实现] PATCH  /api/content-plans/:id/items/:itemId
 
-POST   /api/content/quick/knowledge
-POST   /api/content/quick/generate
+[PR-4] POST   /api/content/quick/knowledge
+[PR-4] POST   /api/content/quick/generate
 
-POST   /api/articles/:id/feedback
-GET    /api/content-plans/:id/reviews
-POST   /api/content-plans/:id/reviews
+[PR-5] POST   /api/articles/:id/feedback
+[PR-5] GET    /api/content-plans/:id/reviews
+[PR-5] POST   /api/content-plans/:id/reviews
 ```
 
 生成计划和周复盘属于 AI 操作；普通读取、人工编辑和状态变更不得调用模型。
@@ -379,12 +383,11 @@ POST   /api/content-plans/:id/reviews
 
 本轮不做全库重构。按依赖只新增以下持久化：
 
-1. `onboarding_status`；
-2. `content_plans`；
-3. `content_plan_items`；
-4. 内容项目增加可空的计划引用；
-5. 发布记录增加线索和主观反馈；
-6. `weekly_reviews`。
+1. `onboarding_status`（PR-2）；
+2. `content_plans` / `content_plan_items`（PR-1 已以 `data/content-plans.local.json` 原子存储实现）；
+3. 内容项目增加可空的计划引用；
+4. 发布记录增加线索和主观反馈；
+5. `weekly_reviews`。
 
 若继续使用单实例文件存储，必须提供 schema 版本、原子写入和旧数据默认值；若使用当前 SQLite，必须采用幂等迁移并为计划项状态、周次和排序建立必要索引。两者只能选择一种作为 `ContentPlan` 的权威存储，不得双写。
 
@@ -2786,7 +2789,7 @@ PR-0 文档基线与范围冻结
 - [x] 识别当前实现与付费交付之间的核心差距；
 - [x] 更新 PRD、SBD、Spec 与 `todo.md` 文档基线；
 - [x] PR-0 文档评审并合并 `main`；
-- [ ] PR-1：ContentPlan 数据契约；
+- [x] PR-1：ContentPlan 数据契约；
 - [ ] PR-2：首次企业建档；
 - [ ] PR-3：内容计划页与任务型首页；
 - [ ] PR-4：快速创作；
