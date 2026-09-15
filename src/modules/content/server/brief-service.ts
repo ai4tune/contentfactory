@@ -23,6 +23,12 @@ export async function createContentBrief(
   inspiration: ContentInspirationReference | null = null,
   styleContract: StyleContract | null = null,
   ideaContext: ContentIdeaContext | null = null,
+  planContext: {
+    operatingGoal: string;
+    objective: string;
+    angle?: string;
+    rationale: string;
+  } | null = null,
 ): Promise<ContentBrief> {
   const sourceContext = sources
     .map((source) => `[${source.id}] ${source.title}\n${source.text.slice(0, 6000)}`)
@@ -49,6 +55,7 @@ export async function createContentBrief(
         `目标人群: ${account?.targetAudience.join("、") || "待判断"}`,
         `产品/服务: ${account?.offer || "待判断"}`,
         `内容目标: ${account?.conversionGoal || "建立信任并推动下一步行动"}`,
+        `内容计划上下文: ${planContext ? JSON.stringify(planContext) : "未从内容计划进入"}`,
         `品牌语气: ${account?.brandVoice.join("、") || "专业、清晰"}`,
         "写作风格约束:",
         formatStyleContractForPrompt(styleContract),

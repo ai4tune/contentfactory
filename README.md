@@ -64,17 +64,18 @@ Feishu should use a self-built enterprise app, not a personal password. The app 
 
 ## V1 creation flow
 
-首次使用会进入企业建档：系统复用已经连接的知识库、账号定位和写作风格，只要求补齐企业业务、账号定位和主渠道。建档完成后可以生成第一份 30 天内容计划，并从本周优先选题进入进阶创作工作台。
+首次使用会进入企业建档：系统复用已经连接的知识库、账号定位和写作风格，只要求补齐企业业务、账号定位和主渠道。建档完成后可以生成第一份 30 天内容计划，并从本周优先选题进入快速创作：确认 AI 匹配的知识依据后，系统生成一篇主渠道稿、自动审核，再交给用户人工确认。多渠道生成、爆款改写和精细控制保留在高级创作工作台。
 
 1. Confirm the current account positioning.
 2. Generate and confirm a 30-day content plan, or enter the advanced creation workspace directly.
-3. Choose a weekly plan item, original creation, or viral rewriting.
-4. Original creation selects real knowledge; viral rewriting selects a stored inspiration and may also use real knowledge.
-5. Enter a topic or select a suggested direction.
-6. Generate and confirm one shared content brief with traceable citations and optional inspiration structure.
-7. Generate any combination of WeChat article, Xiaohongshu note, Moments post, and short-video script.
-8. Run AI review, edit, save versions, and confirm the content is publishable.
-9. Copy or export for manual publication, then record the real link and metrics in the content library.
+3. Choose a weekly plan item and confirm the AI-matched knowledge sources.
+4. Generate one primary-channel draft, review the AI findings, and confirm it manually.
+5. In advanced creation, choose original creation or a stored inspiration for viral rewriting.
+6. Enter a topic or select a suggested direction.
+7. Generate and confirm one shared content brief with traceable citations and optional inspiration structure.
+8. Generate any combination of WeChat article, Xiaohongshu note, Moments post, and short-video script.
+9. Run AI review, edit, save versions, and confirm the content is publishable.
+10. Copy or export for manual publication, then record the real link and metrics in the content library.
 
 Chrome 扩展是账号定位的可选采集入口：只读取用户主动打开页面中的可见账号和作品信息，先预览采集结果，再生成可编辑的 AI 定位，只有用户最后确认才会覆盖当前账号。小红书账号与作品指标会作为带时间的本地快照保留，公开页未展示的阅读/曝光不会被推测或替代。
 

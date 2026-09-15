@@ -154,6 +154,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
             )}
           </div>
         </InfoCard>
+        {channelDraft?.review ? <DraftReviewCard content={content} review={channelDraft.review} /> : null}
         <InfoCard title="统一内容简报">
           <InfoRow label="目标受众" value={draft.brief.targetAudience} /><InfoRow label="内容目标" value={draft.brief.contentGoal} /><InfoRow label="核心观点" value={draft.brief.coreMessage} /><InfoRow label="行动引导" value={draft.brief.callToAction} />
           <ListBlock label="关键论点" items={draft.brief.keyPoints} />
@@ -260,8 +261,41 @@ function DraftVisualAssets({
 }
 
 function InfoCard({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold text-slate-900">{title}</h2><div className="mt-4">{children}</div></section>; }
+function DraftReviewCard({ content, review }: { content: string; review: NonNullable<ContentDraft["channelDrafts"][number]["review"]> }) {
+  const openIssues = review.issues.filter((issue) => issue.status === "open");
+  const stale = review.reviewedContent !== content;
+  return (
+    <InfoCard title="AI 审核结果">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${reviewRiskClass(review.riskLevel)}`}>{reviewRiskLabel(review.riskLevel)}</span>
+        <span className="text-[11px] font-semibold text-slate-500">{stale ? "内容已修改，保存后需重新审核" : `${openIssues.length} 项待人工处理`}</span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-600">{review.conclusion}</p>
+      {openIssues.length ? (
+        <div className="mt-4 grid gap-3">
+          {openIssues.map((issue) => (
+            <article className="rounded-xl border border-slate-200 p-3" key={issue.id}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{reviewCategoryLabel(issue.category)}</span>
+                <span className="text-[10px] font-semibold text-amber-700">{reviewRiskLabel(issue.severity)}</span>
+                {issue.requiresConfirmation ? <span className="text-[10px] font-semibold text-rose-700">需人工确认</span> : null}
+              </div>
+              <p className="mt-2 text-xs font-semibold text-slate-800">{issue.title}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">{issue.description}</p>
+              {issue.originalText ? <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">原文：{issue.originalText}</p> : null}
+              {issue.suggestedText ? <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] leading-5 text-emerald-900">建议：{issue.suggestedText}</p> : null}
+            </article>
+          ))}
+        </div>
+      ) : <p className="mt-3 text-xs leading-5 text-emerald-800">未发现待处理问题，请继续人工核对后确认发布。</p>}
+    </InfoCard>
+  );
+}
 function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-slate-50 p-3"><dt className="text-slate-400">{label}</dt><dd className="mt-1 font-semibold text-slate-700">{value}</dd></div>; }
 function InfoRow({ label, value }: { label: string; value: string }) { return <div className="mb-3"><p className="text-[11px] font-semibold text-slate-400">{label}</p><p className="mt-1 text-xs leading-5 text-slate-700">{value || "待补充"}</p></div>; }
 function ListBlock({ label, items }: { label: string; items: string[] }) { return <div className="mt-4 border-t border-slate-100 pt-4"><p className="text-[11px] font-semibold text-slate-400">{label}</p>{items.length ? <ul className="mt-2 grid gap-1.5">{items.map((item) => <li className="flex gap-2 text-xs leading-5 text-slate-600" key={item}><span className="mt-2 size-1 shrink-0 rounded-full bg-amber-500" />{item}</li>)}</ul> : <p className="mt-2 text-xs text-slate-400">暂无</p>}</div>; }
 function reviewLabel(status: ContentDraft["reviewStatus"]) { return { draft: "待人工审核", editing: "编辑中", approved: "已确认" }[status]; }
+function reviewCategoryLabel(category: "fact" | "style" | "platform" | "human_writing") { return { fact: "事实", style: "风格", platform: "平台", human_writing: "AI 味" }[category]; }
+function reviewRiskLabel(risk: "low" | "medium" | "high" | "blocked") { return { low: "低风险", medium: "中风险", high: "高风险", blocked: "阻断" }[risk]; }
+function reviewRiskClass(risk: "low" | "medium" | "high" | "blocked") { return risk === "low" ? "bg-emerald-100 text-emerald-800" : risk === "medium" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
