@@ -1,15 +1,17 @@
 import { readStore } from "@/lib/store";
 import { listContentDrafts, listContentLibraryItems } from "@/modules/drafts/server/repository";
 import { listRemoteKnowledgeSources } from "@/modules/knowledge/server/source-store";
+import { getCurrentContentPlan } from "@/modules/plans/repository";
 import { getCurrentAccountContext } from "@/modules/positioning/repository";
 
 export async function getDashboardSummary() {
-  const [store, drafts, contentItems, remoteKnowledgeSources, account] = await Promise.all([
+  const [store, drafts, contentItems, remoteKnowledgeSources, account, contentPlan] = await Promise.all([
     readStore(),
     listContentDrafts(),
     listContentLibraryItems(),
     listRemoteKnowledgeSources(),
     getCurrentAccountContext(),
+    getCurrentContentPlan(),
   ]);
   const knowledgeSourceKeys = new Set([
     ...store.materials.map((source) => `${source.source}:${source.id}`),
@@ -20,6 +22,7 @@ export async function getDashboardSummary() {
 
   return {
     account,
+    contentPlan,
     serverKnowledgeCount: knowledgeSourceKeys.size,
     contentProjectCount: drafts.length,
     generatedContentCount: drafts.reduce(
