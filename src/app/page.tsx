@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   AppShell,
   PageHeader,
@@ -8,6 +9,7 @@ import {
 import { channelLabels } from "@/modules/content/types";
 import { KnowledgeMaterialStat } from "@/modules/dashboard/components/knowledge-material-stat";
 import { getDashboardSummary } from "@/modules/dashboard/server/summary";
+import { getOnboardingSnapshot } from "@/modules/onboarding/service";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,8 @@ const quickActions = [
 ];
 
 export default async function DashboardPage() {
+  const onboarding = await getOnboardingSnapshot();
+  if (onboarding.status.state !== "completed") redirect("/setup");
   const summary = await getDashboardSummary();
   const hasConfirmedAccount = summary.account?.status === "confirmed";
 

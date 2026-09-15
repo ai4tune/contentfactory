@@ -17,6 +17,7 @@ const dataFiles = [
   "data/style-profiles.local.json",
   "data/style-feedback.local.json",
   "data/content-plans.local.json",
+  "data/onboarding.local.json",
 ];
 const backups = new Map();
 const processes = [];
@@ -151,6 +152,69 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.deepEqual(updated.body.context.analysisEvidence, current.body.context.analysisEvidence);
   });
 
+  await context.test("first-use onboarding reuses existing data and persists explicit gaps", async () => {
+    const initial = await requestJson("/api/onboarding/status");
+    assert.equal(initial.response.status, 200);
+    assert.equal(initial.body.status.state, "not_started");
+    assert.equal(initial.body.status.completedSteps.includes("business"), true);
+    assert.equal(initial.body.status.completedSteps.includes("positioning"), true);
+    assert.equal(initial.body.status.completedSteps.includes("knowledge"), false);
+    assert.equal(initial.body.status.completedSteps.includes("style"), false);
+
+    const homeBeforeCompletion = await fetch(baseUrl, { redirect: "manual" });
+    assert.equal(homeBeforeCompletion.status, 307);
+    assert.match(homeBeforeCompletion.headers.get("location"), /\/setup$/);
+
+    const blocked = await requestJson("/api/onboarding/status", {
+      method: "PATCH",
+      body: { action: "complete" },
+    });
+    assert.equal(blocked.response.status, 409);
+    assert.deepEqual(blocked.body.missingSteps, ["primary_channel"]);
+
+    const synced = await requestJson("/api/onboarding/status", {
+      method: "PATCH",
+      body: {
+        action: "sync",
+        primaryChannel: "wechat_article",
+        localKnowledgeCount: 1,
+      },
+    });
+    assert.equal(synced.response.status, 200);
+    assert.equal(synced.body.status.state, "not_started");
+    assert.equal(synced.body.status.knowledgeReadiness, "minimum");
+    assert.equal(synced.body.status.completedSteps.includes("knowledge"), true);
+    assert.equal(synced.body.status.completedSteps.includes("primary_channel"), true);
+
+    const completed = await requestJson("/api/onboarding/status", {
+      method: "PATCH",
+      body: { action: "complete" },
+    });
+    assert.equal(completed.response.status, 200);
+    assert.equal(completed.body.status.state, "completed");
+    assert.match(completed.body.status.informationGaps.join("\n"), /写作风格/);
+    assert.match(completed.body.status.informationGaps.join("\n"), /资料较少/);
+
+    const persisted = await requestJson("/api/onboarding/status");
+    assert.equal(persisted.body.status.state, "completed");
+    assert.equal(persisted.body.status.primaryChannel, "wechat_article");
+    assert.equal((await fetch(`${baseUrl}/setup`)).status, 200);
+    assert.equal((await fetch(`${baseUrl}/plans`)).status, 200);
+    assert.equal((await fetch(baseUrl)).status, 200);
+
+    const restarted = await requestJson("/api/onboarding/status", {
+      method: "PATCH",
+      body: { action: "restart" },
+    });
+    assert.equal(restarted.body.status.state, "in_progress");
+    assert.equal(restarted.body.status.completedAt, undefined);
+    const completedAgain = await requestJson("/api/onboarding/status", {
+      method: "PATCH",
+      body: { action: "complete" },
+    });
+    assert.equal(completedAgain.body.status.state, "completed");
+  });
+
   await context.test("a confirmed style profile requires evidence and can be reused", async () => {
     const missingSources = await requestJson("/api/style-profile/analyze", {
       method: "POST",
@@ -185,6 +249,9 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(confirmed.response.status, 200);
     assert.equal(confirmed.body.profile.status, "confirmed");
     assert.equal(confirmed.body.profile.version, 1);
+
+    const onboarding = await requestJson("/api/onboarding/status");
+    assert.equal(onboarding.body.status.completedSteps.includes("style"), true);
 
     const current = await requestJson("/api/style-profile/current");
     assert.equal(current.body.profile.name, "验收账号默认风格");
@@ -1036,6 +1103,7 @@ async function backupDataFiles() {
     } catch {
       backups.set(relativePath, null);
     }
+    await rm(filePath, { force: true });
   }
 }
 
