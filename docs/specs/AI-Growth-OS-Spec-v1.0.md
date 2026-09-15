@@ -54,7 +54,7 @@
 
 ## 0.2 2026-09-14 当前代码快照
 
-本节最初以 `main@451f3c3` 为代码基线；截至 PR-3，ContentPlan 契约、首次建档、完整计划页与任务型首页均已实现。
+本节最初以 `main@451f3c3` 为代码基线；截至 PR-4，ContentPlan 契约、首次建档、完整计划页、任务型首页与快速创作均已实现。
 
 ### 已实现页面
 
@@ -64,6 +64,7 @@
 | 内容计划 | `/plans` | 30 天计划、本周 7 题、目的、依据、状态、编辑、锁定与重新生成 |
 | 市场雷达 | `/radar` | 热榜、主题搜索、趋势、对标账号和查询历史 |
 | 灵感与选题 | `/ideas`、`/topics` | 市场结果、推荐、选题池和兼容入口 |
+| 快速内容创作 | `/create/quick` | 从已确认计划项匹配知识，生成单一主渠道稿并自动进入审核 |
 | 高级内容创作 | `/create` | 原创/爆款改写、知识选择、简报、多渠道生成和审核 |
 | 内容项目 | `/drafts`、`/drafts/:id` | 编辑、版本、审核、导出和发布记录 |
 | 内容库 | `/articles` | 渠道内容、状态和发布指标 |
@@ -79,7 +80,7 @@
 知识：/api/knowledge-sources、/api/knowledge/search、/api/uploads、/api/integrations/feishu/*
 市场：/api/market/hot、/search、/trends、/accounts、/history、/items/*
 选题与爆款：/api/topics/*、/api/ideas/*、/api/inspirations/*
-创作：/api/content/brief、/api/content/projects、/api/content/generate/*
+创作：/api/content/brief、/api/content/projects、/api/content/generate/*、/api/content/quick/*
 审核与草稿：/api/content/projects/*/review*、/api/content-drafts/*
 内容与发布：/api/articles、/api/articles/:id/publication
 内容计划：/api/content-plans、/api/content-plans/current、/api/content-plans/:id、/generate、/items/:itemId
@@ -96,7 +97,7 @@
 ### 当前主要差距
 
 - 主导航、任务型首页与可编辑 ContentPlan 已完成收敛；
-- 计划选题目前通过兼容桥接进入高级创作工作台，尚缺少不超过 3 个关键操作的真正快速创作路径；
+- 计划选题可进入快速创作，用户确认 AI 匹配的资料后即可生成主渠道待审核稿；
 - 发布数据存在，但没有周周期、客户反馈和下一周建议闭环；
 - 本地试用可用，客户上线所需的最小访问和运维保障未形成完整验收。
 
@@ -368,8 +369,8 @@ type WeeklyReview = {
 [已实现] POST   /api/content-plans/:id/generate
 [已实现] PATCH  /api/content-plans/:id/items/:itemId
 
-[PR-4] POST   /api/content/quick/knowledge
-[PR-4] POST   /api/content/quick/generate
+[已实现] POST   /api/content/quick/knowledge
+[已实现] POST   /api/content/quick/generate
 
 [PR-5] POST   /api/articles/:id/feedback
 [PR-5] GET    /api/content-plans/:id/reviews

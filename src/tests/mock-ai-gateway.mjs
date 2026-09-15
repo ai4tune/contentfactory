@@ -243,6 +243,20 @@ function mockCompletion(system, user) {
     };
   }
 
+  if (system.includes("知识匹配编辑")) {
+    const refId = user.match(/"refId":"([^"]+)"/)?.[1] ?? "local:flooring.md";
+    const sourceType = user.match(/"sourceType":"([^"]+)"/)?.[1] ?? "local";
+    return {
+      recommendations: [{
+        refId,
+        sourceType,
+        reason: "该资料直接提供当前选题需要的判断标准和行动清单。",
+        excerpts: ["SPC 地板选购不能只比较单价，还要确认使用空间、基层条件、安装方式和售后边界。"],
+        selected: true,
+      }],
+    };
+  }
+
   if (system.includes("爆款拆解助手")) {
     return {
       summary: "用反常识开场解释为什么单看价格会做错决策。",

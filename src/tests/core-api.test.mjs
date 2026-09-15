@@ -367,12 +367,12 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
 
     const quickCreate = await fetch(
       `${baseUrl}/create/quick?planId=${encodeURIComponent(contentPlan.id)}&planItemId=${encodeURIComponent(contentPlan.items[0].id)}&title=${encodeURIComponent(contentPlan.items[0].title)}`,
-      { redirect: "manual" },
     );
-    assert.equal(quickCreate.status, 307);
-    assert.match(quickCreate.headers.get("location"), /\/create\?/);
-    assert.match(quickCreate.headers.get("location"), /entry=quick/);
-    assert.match(quickCreate.headers.get("location"), /planItemId=/);
+    const quickCreateHtml = await quickCreate.text();
+    assert.equal(quickCreate.status, 200);
+    assert.match(quickCreateHtml, /快速创作/);
+    assert.match(quickCreateHtml, /人工确认保留的选题/);
+    assert.match(quickCreateHtml, /公众号文章/);
 
     const list = await requestJson("/api/content-plans");
     assert.equal(list.body.plans.some((plan) => plan.id === contentPlan.id), true);
@@ -386,6 +386,81 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(result.response.status, 200);
     assert.ok(Array.isArray(result.body.sources));
     assert.equal(result.body.sources.some((item) => "text" in item), false);
+  });
+
+  await context.test("quick creation matches knowledge, generates one reviewed draft, and safely retries", async () => {
+    const quickItem = contentPlan.items.find((item, index) => index > 0 && !item.contentProjectId);
+    assert.ok(quickItem);
+
+    const recommendation = await requestJson("/api/content/quick/knowledge", {
+      method: "POST",
+      body: {
+        contentPlanId: contentPlan.id,
+        contentPlanItemId: quickItem.id,
+        candidates: [{
+          refId: source.id,
+          title: source.title,
+          sourceType: source.source,
+          excerpt: source.text.slice(0, 1_600),
+          path: source.path,
+        }],
+      },
+    });
+    assert.equal(recommendation.response.status, 200, serverOutput);
+    assert.equal(recommendation.body.recommendations.length, 1);
+    assert.equal(recommendation.body.recommendations[0].selected, true);
+    assert.match(recommendation.body.recommendations[0].reason, /判断标准/);
+    assert.ok(source.text.includes(recommendation.body.recommendations[0].excerpts[0]));
+
+    const generated = await requestJson("/api/content/quick/generate", {
+      method: "POST",
+      body: {
+        contentPlanId: contentPlan.id,
+        contentPlanItemId: quickItem.id,
+        sources: [source],
+      },
+    });
+    assert.equal(generated.response.status, 200, serverOutput);
+    const quickProject = generated.body.project;
+    assert.equal(quickProject.contentPlanId, contentPlan.id);
+    assert.equal(quickProject.contentPlanItemId, quickItem.id);
+    assert.equal(quickProject.channelDrafts.length, 1);
+    assert.equal(quickProject.channelDrafts[0].channel, "wechat_article");
+    assert.ok(quickProject.channelDrafts[0].review);
+    assert.equal(quickProject.styleSnapshot.profileVersion, 1);
+    assert.equal(quickProject.brief.citations[0].sourceId, source.id);
+
+    const reviewPage = await fetch(`${baseUrl}/drafts/${encodeURIComponent(quickProject.id)}`);
+    const reviewPageHtml = await reviewPage.text();
+    assert.equal(reviewPage.status, 200);
+    assert.match(reviewPageHtml, /AI 审核结果/);
+    assert.match(reviewPageHtml, /事实/);
+    assert.match(reviewPageHtml, /风格/);
+    assert.match(reviewPageHtml, /平台/);
+
+    const linkedPlan = await requestJson(`/api/content-plans/${contentPlan.id}`);
+    const linkedItem = linkedPlan.body.plan.items.find((item) => item.id === quickItem.id);
+    assert.equal(linkedItem.status, "generated");
+    assert.equal(linkedItem.contentProjectId, quickProject.id);
+
+    const retried = await requestJson("/api/content/quick/generate", {
+      method: "POST",
+      body: {
+        contentPlanId: contentPlan.id,
+        contentPlanItemId: quickItem.id,
+        sources: [source],
+      },
+    });
+    assert.equal(retried.response.status, 200, serverOutput);
+    assert.equal(retried.body.project.id, quickProject.id);
+    assert.equal(retried.body.project.channelDrafts.length, 1);
+
+    const completedQuickPage = await fetch(
+      `${baseUrl}/create/quick?planId=${encodeURIComponent(contentPlan.id)}&planItemId=${encodeURIComponent(quickItem.id)}`,
+      { redirect: "manual" },
+    );
+    assert.equal(completedQuickPage.status, 307);
+    assert.equal(completedQuickPage.headers.get("location"), `/drafts/${encodeURIComponent(quickProject.id)}`);
   });
 
   await context.test("topic suggestions use the selected knowledge source", async () => {
@@ -1104,7 +1179,13 @@ async function requestJson(route, options = {}) {
       : { "Content-Type": "application/json", ...options.headers },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
-  const body = await response.json();
+  const responseText = await response.text();
+  let body;
+  try {
+    body = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Expected JSON from ${route}, received ${response.status}: ${responseText.slice(0, 500)}\n${serverOutput}`);
+  }
   return { response, body };
 }
 
