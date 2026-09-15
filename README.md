@@ -64,7 +64,7 @@ Feishu should use a self-built enterprise app, not a personal password. The app 
 
 ## V1 creation flow
 
-PR1 已提供 30 天内容计划的数据与 API 契约；计划与首次引导界面将在后续 PR 接入。当前界面仍可直接使用进阶创作工作台。
+首次使用会进入企业建档：系统复用已经连接的知识库、账号定位和写作风格，只要求补齐企业业务、账号定位和主渠道。建档完成后可以生成第一份 30 天内容计划，并从本周优先选题进入进阶创作工作台。
 
 1. Confirm the current account positioning.
 2. Generate and confirm a 30-day content plan, or enter the advanced creation workspace directly.
