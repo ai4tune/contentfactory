@@ -41,12 +41,16 @@ export function ContentCreationWorkspace({
   ideaTitle,
   ideaContext,
   initialInspiration,
+  contentPlanId,
+  contentPlanItemId,
 }: {
   initialStyleProfile: StyleProfile | null;
   /** 从选题池带入的标题 */
   ideaTitle?: string;
   ideaContext?: ContentIdeaContext | null;
   initialInspiration?: ContentInspirationReference | null;
+  contentPlanId?: string;
+  contentPlanItemId?: string;
 }) {
   const [creationMode, setCreationMode] = useState<CreationMode>(initialInspiration ? "viral_rewrite" : "original");
   const [query, setQuery] = useState("");
@@ -253,7 +257,14 @@ export function ContentCreationWorkspace({
       try {
         const payload = await postJson<{ project?: ContentProject; error?: string }>(
           "/api/content/projects",
-          { topic, brief, ideaId: ideaContext?.id, temporaryStyleInstructions: lines(temporaryStyle) },
+          {
+            topic,
+            brief,
+            ideaId: ideaContext?.id,
+            contentPlanId,
+            contentPlanItemId,
+            temporaryStyleInstructions: lines(temporaryStyle),
+          },
         );
         if (!payload.project) throw new Error("内容项目保存失败。");
         setProject(payload.project);

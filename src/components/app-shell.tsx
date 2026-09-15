@@ -8,50 +8,22 @@ type NavItem = {
   description?: string;
 };
 
-type NavSection = {
-  label: string;
-  items: NavItem[];
-};
+const primaryNavItems: NavItem[] = [
+  { label: "首页", href: "/", mark: "首", description: "今天要完成什么" },
+  { label: "内容计划", href: "/plans", mark: "计", description: "未来 30 天写什么" },
+  { label: "开始创作", href: "/create/quick", mark: "创", description: "把选题变成内容" },
+  { label: "内容库", href: "/articles", mark: "库", description: "审核、发布与数据" },
+  { label: "企业资料", href: "/brand", mark: "企", description: "资料、定位与风格" },
+];
 
-const navSections: NavSection[] = [
-  {
-    label: "内容增长",
-    items: [
-      { label: "首页", href: "/", mark: "首", description: "运营总览" },
-      { label: "市场雷达", href: "/radar", mark: "雷", description: "外部市场正在发生什么" },
-      { label: "灵感与选题", href: "/ideas", mark: "灵", description: "什么值得写" },
-    ],
-  },
-  {
-    label: "内容生产",
-    items: [
-      { label: "内容工厂", href: "/create", mark: "创", description: "怎么把选题变成内容" },
-      { label: "内容项目", href: "/drafts", mark: "稿", description: "当前生产到哪里" },
-      { label: "内容库", href: "/articles", mark: "库", description: "已经生产和发布了什么" },
-    ],
-  },
-  {
-    label: "企业资产",
-    items: [
-      { label: "企业知识库", href: "/knowledge", mark: "知", description: "企业有哪些内容资产" },
-      { label: "账号与品牌", href: "/brand", mark: "品", description: "我是谁、写给谁、怎么表达" },
-    ],
-  },
-  // TODO: V2 后续阶段开放以下导航
-  // {
-  //   label: "AI 能力",
-  //   items: [
-  //     { label: "AI 员工", href: "/ai/agent", mark: "AI", description: "用自然语言完成复杂工作" },
-  //     { label: "Skill 中心", href: "/ai/skills", mark: "技", description: "系统拥有哪些能力" },
-  //     { label: "自动任务", href: "/ai/automations", mark: "自", description: "哪些工作不需要人工触发" },
-  //   ],
-  // },
-  // {
-  //   label: "运营",
-  //   items: [
-  //     { label: "运营复盘", href: "/analytics", mark: "复", description: "什么内容真正有效" },
-  //   ],
-  // },
+const advancedNavItems: NavItem[] = [
+  { label: "高级创作", href: "/create", mark: "高" },
+  { label: "内容项目", href: "/drafts", mark: "稿" },
+  { label: "企业知识库", href: "/knowledge", mark: "知" },
+  { label: "市场雷达", href: "/radar", mark: "雷" },
+  { label: "灵感与选题", href: "/ideas", mark: "灵" },
+  { label: "爆款库", href: "/inspirations", mark: "爆" },
+  { label: "写作风格", href: "/style-profile", mark: "风" },
 ];
 
 export function AppShell({
@@ -73,64 +45,65 @@ export function AppShell({
             </span>
           </Link>
 
-          <nav className="mt-6 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:block lg:overflow-visible">
-            {navSections.map((section, sectionIndex) => (
-              <div key={section.label} className={sectionIndex > 0 ? "mt-4" : ""}>
-                <p className="hidden text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35 lg:block lg:px-3 lg:pb-1.5">
-                  {section.label}
-                </p>
-                <div className="flex gap-1 lg:block lg:space-y-0.5">
-                  {section.items.map((item) => {
-                    const selected = active === item.href;
-
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
-                          selected
-                            ? "bg-white text-[#12231d] shadow-sm"
-                            : "text-white/65 hover:bg-white/8 hover:text-white"
-                        }`}
-                      >
-                        <span className={`flex size-6 items-center justify-center rounded-lg text-xs ${selected ? "bg-[#f3e8cf]" : "bg-white/8"}`}>
-                          {item.mark}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate">{item.label}</span>
-                          {item.description && selected && (
-                            <span className="mt-0.5 block truncate text-[10px] text-slate-500">
-                              {item.description}
-                            </span>
-                          )}
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
+          <nav aria-label="主要功能" className="mt-6 flex gap-1 overflow-x-auto pb-1 lg:mt-8 lg:block lg:space-y-0.5 lg:overflow-visible">
+            {primaryNavItems.map((item) => (
+              <NavLink active={active} item={item} key={item.href} />
             ))}
           </nav>
 
-          <div className="mt-8 hidden rounded-2xl border border-white/10 bg-white/5 p-4 lg:block">
-            <p className="text-xs font-semibold tracking-wide text-[#dfb967]">核心闭环</p>
-            <p className="mt-2 text-xs leading-5 text-white/55">市场找机会 → 企业找证据 → AI做内容 → 数据做复盘</p>
-          </div>
-
-          {/* TODO: 设置页开发后开放
-          <div className="mt-4 hidden rounded-2xl border border-white/10 bg-white/5 p-4 lg:block">
-            <Link className="flex items-center gap-2 text-xs text-white/50 hover:text-white/80" href="/settings">
-              <span className="flex size-5 items-center justify-center rounded-lg bg-white/8 text-[10px]">设</span>
-              设置
-            </Link>
-          </div>
-          */}
+          <details className="group mt-3 border-t border-white/10 pt-3" open={advancedNavItems.some((item) => isSelected(active, item.href))}>
+            <summary className="cursor-pointer list-none rounded-xl px-3 py-2 text-xs font-semibold text-white/45 transition hover:bg-white/8 hover:text-white/75">
+              高级工具 <span aria-hidden="true" className="ml-1 inline-block transition group-open:rotate-90">›</span>
+            </summary>
+            <div className="mt-1 flex gap-1 overflow-x-auto lg:block lg:space-y-0.5 lg:overflow-visible">
+              {advancedNavItems.map((item) => (
+                <NavLink active={active} compact item={item} key={item.href} />
+              ))}
+            </div>
+          </details>
         </aside>
 
         <div className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</div>
       </div>
     </main>
   );
+}
+
+function NavLink({
+  active,
+  compact = false,
+  item,
+}: {
+  active: string;
+  compact?: boolean;
+  item: NavItem;
+}) {
+  const selected = isSelected(active, item.href);
+  return (
+    <Link
+      aria-current={selected ? "page" : undefined}
+      className={`flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2 font-medium transition ${compact ? "text-xs" : "text-sm"} ${
+        selected
+          ? "bg-white text-[#12231d] shadow-sm"
+          : "text-white/65 hover:bg-white/8 hover:text-white"
+      }`}
+      href={item.href}
+    >
+      <span className={`flex size-6 items-center justify-center rounded-lg text-xs ${selected ? "bg-[#f3e8cf]" : "bg-white/8"}`}>
+        {item.mark}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate">{item.label}</span>
+        {!compact && item.description && selected ? (
+          <span className="mt-0.5 block truncate text-[10px] text-slate-500">{item.description}</span>
+        ) : null}
+      </span>
+    </Link>
+  );
+}
+
+function isSelected(active: string, href: string) {
+  return active === href || (href !== "/" && active.startsWith(`${href}/`));
 }
 
 export function PageHeader({

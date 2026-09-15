@@ -20,7 +20,7 @@ const creationSteps = [
 export default async function ContentCreationPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ ideaId?: string; title?: string; sourceUrl?: string }>;
+  searchParams?: Promise<{ entry?: string; ideaId?: string; planId?: string; planItemId?: string; title?: string; sourceUrl?: string }>;
 }) {
   const params = await searchParams;
   const ideaContext = params?.ideaId ? await getIdeaContext(params.ideaId) : null;
@@ -35,7 +35,7 @@ export default async function ContentCreationPage({
   ]);
 
   return (
-    <AppShell active="/create">
+    <AppShell active={params?.entry === "quick" ? "/create/quick" : "/create"}>
       <PageHeader
         title="选择创作方式，开始今天的内容"
         description="可以基于自己的知识原创，也可以学习爆款的钩子和结构后重新创作。"
@@ -82,11 +82,13 @@ export default async function ContentCreationPage({
       </section>
 
       <ContentCreationWorkspace
-        key={ideaContext?.id ?? params?.title ?? "new"}
+        key={ideaContext?.id ?? params?.planItemId ?? params?.title ?? "new"}
         initialStyleProfile={styleProfile}
         ideaTitle={ideaContext?.title ?? params?.title}
         ideaContext={ideaContext}
         initialInspiration={inspiration}
+        contentPlanId={params?.planId}
+        contentPlanItemId={params?.planItemId}
       />
     </AppShell>
   );

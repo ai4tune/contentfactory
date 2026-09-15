@@ -200,7 +200,9 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(persisted.body.status.primaryChannel, "wechat_article");
     assert.equal((await fetch(`${baseUrl}/setup`)).status, 200);
     assert.equal((await fetch(`${baseUrl}/plans`)).status, 200);
-    assert.equal((await fetch(baseUrl)).status, 200);
+    const homeWithoutPlan = await fetch(baseUrl);
+    assert.equal(homeWithoutPlan.status, 200);
+    assert.match(await homeWithoutPlan.text(), /生成第一份 30 天内容计划/);
 
     const restarted = await requestJson("/api/onboarding/status", {
       method: "PATCH",
@@ -292,6 +294,15 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(contentPlan.status, "draft");
     assert.equal(contentPlan.items[0].evidence[0].refId, "local:flooring.md");
 
+    const draftPlanHome = await fetch(baseUrl);
+    assert.equal(draftPlanHome.status, 200);
+    assert.match(await draftPlanHome.text(), /确认本周 7 个优先选题/);
+    const planPage = await fetch(`${baseUrl}/plans`);
+    const planPageHtml = await planPage.text();
+    assert.equal(planPage.status, 200);
+    assert.match(planPageHtml, /帮助装修家庭建立信任并获得有效咨询/);
+    assert.match(planPageHtml, /第 1 周选题/);
+
     const current = await requestJson("/api/content-plans/current");
     assert.equal(current.response.status, 200);
     assert.equal(current.body.plan.id, contentPlan.id);
@@ -347,6 +358,21 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(confirmed.response.status, 200);
     contentPlan = confirmed.body.plan;
+
+    const confirmedPlanHome = await fetch(baseUrl);
+    const confirmedPlanHomeHtml = await confirmedPlanHome.text();
+    assert.equal(confirmedPlanHome.status, 200);
+    assert.match(confirmedPlanHomeHtml, /开始写《人工确认保留的选题》/);
+    assert.match(confirmedPlanHomeHtml, /用这个选题开始创作/);
+
+    const quickCreate = await fetch(
+      `${baseUrl}/create/quick?planId=${encodeURIComponent(contentPlan.id)}&planItemId=${encodeURIComponent(contentPlan.items[0].id)}&title=${encodeURIComponent(contentPlan.items[0].title)}`,
+      { redirect: "manual" },
+    );
+    assert.equal(quickCreate.status, 307);
+    assert.match(quickCreate.headers.get("location"), /\/create\?/);
+    assert.match(quickCreate.headers.get("location"), /entry=quick/);
+    assert.match(quickCreate.headers.get("location"), /planItemId=/);
 
     const list = await requestJson("/api/content-plans");
     assert.equal(list.body.plans.some((plan) => plan.id === contentPlan.id), true);

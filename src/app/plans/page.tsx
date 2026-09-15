@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentContentPlan } from "@/modules/plans/repository";
 import { getOnboardingSnapshot } from "@/modules/onboarding/service";
-import { PlansHandoff } from "@/modules/plans/components/plans-handoff";
+import { PlanWorkspace } from "@/modules/plans/components/plan-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -11,5 +11,5 @@ export default async function PlansPage() {
     getCurrentContentPlan(),
   ]);
   if (snapshot.status.state !== "completed") redirect("/setup");
-  return <PlansHandoff initialPlan={plan} onboarding={snapshot.status} />;
+  return <PlanWorkspace initialPlan={plan} onboarding={snapshot.status} />;
 }
