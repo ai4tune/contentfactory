@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rankMarketItems } from "@/modules/market/ranking";
 import { saveMarketHistory } from "@/modules/market/history";
-import { marketProvider, persistMarketItems } from "@/modules/market/server";
+import { marketError, marketProvider, persistMarketItems } from "@/modules/market/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -68,11 +68,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("市场搜索失败:", error);
-    return NextResponse.json(
-      {
-        error: "市场搜索失败，请稍后重试。",
-      },
-      { status: 500 }
-    );
+    return marketError(error);
   }
 }

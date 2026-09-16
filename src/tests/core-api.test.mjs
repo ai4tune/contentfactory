@@ -10,6 +10,7 @@ const repositoryRoot = path.resolve(testDirectory, "../..");
 const appPort = Number(process.env.ACCEPTANCE_APP_PORT || 4319);
 const aiPort = Number(process.env.MOCK_AI_PORT || 4320);
 const baseUrl = `http://127.0.0.1:${appPort}`;
+const authorization = `Basic ${Buffer.from("acceptance:acceptance-access-code").toString("base64")}`;
 const dataFiles = [
   "data/contentfactory.local.json",
   "data/content-projects.local.json",
@@ -19,6 +20,9 @@ const dataFiles = [
   "data/content-plans.local.json",
   "data/weekly-reviews.local.json",
   "data/onboarding.local.json",
+  "data/contentfactory.db",
+  "data/contentfactory.db-wal",
+  "data/contentfactory.db-shm",
 ];
 const backups = new Map();
 const processes = [];
@@ -35,7 +39,7 @@ before(async () => {
   await waitForUrl(`http://127.0.0.1:${aiPort}/health`, 10_000);
 
   const nextBinary = process.env.NEXT_BIN || path.join(repositoryRoot, "node_modules/.bin/next");
-  const app = spawn(nextBinary, ["dev", "--webpack", "--hostname", "127.0.0.1", "--port", String(appPort)], {
+  const app = spawn(nextBinary, ["start", "--hostname", "127.0.0.1", "--port", String(appPort)], {
     cwd: repositoryRoot,
     env: {
       ...process.env,
@@ -50,6 +54,8 @@ before(async () => {
       FEISHU_APP_SECRET: "",
       UPLOADS_ENABLED: "true",
       CONTENT_FACTORY_CAPTURE_TOKEN: "acceptance-capture-token",
+      CONTENT_FACTORY_ACCESS_USER: "acceptance",
+      CONTENT_FACTORY_ACCESS_CODE: "acceptance-access-code",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -77,7 +83,10 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   await context.test("health and validation errors are explicit", async () => {
     const health = await requestJson("/api/health");
     assert.equal(health.response.status, 200);
+    assert.equal(health.body.ready, true);
+    assert.deepEqual(health.body.missingRequired, []);
     assert.equal(health.body.imageConfigured, true);
+    assert.doesNotMatch(JSON.stringify(health.body), /acceptance-test-key|acceptance-image-key/);
 
     const positioningError = await requestJson("/api/positioning/analyze", {
       method: "POST",
@@ -113,6 +122,11 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(analyzed.response.status, 200);
     draft = analyzed.body.draft;
     assert.equal(draft.accountPosition, "面向装修家庭的建材决策顾问");
+
+    const operations = await requestJson("/api/operations/summary?days=7");
+    assert.equal(operations.response.status, 200);
+    assert.ok(operations.body.services.some((item) => item.service === "ai" && item.calls >= 1));
+    assert.doesNotMatch(JSON.stringify(operations.body), /acceptance-test-key|杏仁内容工厂验收账号/);
 
     const confirmed = await requestJson("/api/positioning/current", {
       method: "PATCH",
@@ -164,7 +178,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(initial.body.status.completedSteps.includes("knowledge"), false);
     assert.equal(initial.body.status.completedSteps.includes("style"), false);
 
-    const homeBeforeCompletion = await fetch(baseUrl, { redirect: "manual" });
+    const homeBeforeCompletion = await appFetch(baseUrl, { redirect: "manual" });
     assert.equal(homeBeforeCompletion.status, 307);
     assert.match(homeBeforeCompletion.headers.get("location"), /\/setup$/);
 
@@ -201,9 +215,9 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     const persisted = await requestJson("/api/onboarding/status");
     assert.equal(persisted.body.status.state, "completed");
     assert.equal(persisted.body.status.primaryChannel, "wechat_article");
-    assert.equal((await fetch(`${baseUrl}/setup`)).status, 200);
-    assert.equal((await fetch(`${baseUrl}/plans`)).status, 200);
-    const homeWithoutPlan = await fetch(baseUrl);
+    assert.equal((await appFetch(`${baseUrl}/setup`)).status, 200);
+    assert.equal((await appFetch(`${baseUrl}/plans`)).status, 200);
+    const homeWithoutPlan = await appFetch(baseUrl);
     assert.equal(homeWithoutPlan.status, 200);
     assert.match(await homeWithoutPlan.text(), /生成第一份 30 天内容计划/);
 
@@ -297,10 +311,10 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(contentPlan.status, "draft");
     assert.equal(contentPlan.items[0].evidence[0].refId, "local:flooring.md");
 
-    const draftPlanHome = await fetch(baseUrl);
+    const draftPlanHome = await appFetch(baseUrl);
     assert.equal(draftPlanHome.status, 200);
     assert.match(await draftPlanHome.text(), /确认本周 7 个优先选题/);
-    const planPage = await fetch(`${baseUrl}/plans`);
+    const planPage = await appFetch(`${baseUrl}/plans`);
     const planPageHtml = await planPage.text();
     assert.equal(planPage.status, 200);
     assert.match(planPageHtml, /帮助装修家庭建立信任并获得有效咨询/);
@@ -362,13 +376,13 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(confirmed.response.status, 200);
     contentPlan = confirmed.body.plan;
 
-    const confirmedPlanHome = await fetch(baseUrl);
+    const confirmedPlanHome = await appFetch(baseUrl);
     const confirmedPlanHomeHtml = await confirmedPlanHome.text();
     assert.equal(confirmedPlanHome.status, 200);
     assert.match(confirmedPlanHomeHtml, /开始写《人工确认保留的选题》/);
     assert.match(confirmedPlanHomeHtml, /用这个选题开始创作/);
 
-    const quickCreate = await fetch(
+    const quickCreate = await appFetch(
       `${baseUrl}/create/quick?planId=${encodeURIComponent(contentPlan.id)}&planItemId=${encodeURIComponent(contentPlan.items[0].id)}&title=${encodeURIComponent(contentPlan.items[0].title)}`,
     );
     const quickCreateHtml = await quickCreate.text();
@@ -434,7 +448,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(quickProject.styleSnapshot.profileVersion, 1);
     assert.equal(quickProject.brief.citations[0].sourceId, source.id);
 
-    const reviewPage = await fetch(`${baseUrl}/drafts/${encodeURIComponent(quickProject.id)}`);
+    const reviewPage = await appFetch(`${baseUrl}/drafts/${encodeURIComponent(quickProject.id)}`);
     const reviewPageHtml = await reviewPage.text();
     assert.equal(reviewPage.status, 200);
     assert.match(reviewPageHtml, /AI 审核结果/);
@@ -459,7 +473,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(retried.body.project.id, quickProject.id);
     assert.equal(retried.body.project.channelDrafts.length, 1);
 
-    const completedQuickPage = await fetch(
+    const completedQuickPage = await appFetch(
       `${baseUrl}/create/quick?planId=${encodeURIComponent(contentPlan.id)}&planItemId=${encodeURIComponent(quickItem.id)}`,
       { redirect: "manual" },
     );
@@ -510,7 +524,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(analyzed.body.record.metrics.collects.value, 980);
 
     const captureOrigin = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
-    const preflight = await fetch(`${baseUrl}/api/capture/import`, {
+    const preflight = await appFetch(`${baseUrl}/api/capture/import`, {
       method: "OPTIONS",
       headers: { Origin: captureOrigin },
     });
@@ -770,7 +784,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.notEqual(retried.body.assets[0].imageUrl, firstAsset.imageUrl);
     project = retried.body.project;
 
-    const download = await fetch(
+    const download = await appFetch(
       `${baseUrl}/api/content/projects/${project.id}/channels/xiaohongshu_note/images/${firstAsset.id}`,
     );
     assert.equal(download.status, 200);
@@ -906,7 +920,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(edited.body.draft.reviewStatus, "editing");
     assert.ok(edited.body.draft.versions.length > 0);
 
-    const exportResponse = await fetch(`${baseUrl}/api/content-drafts/${project.id}/export?channel=moments_post`);
+    const exportResponse = await appFetch(`${baseUrl}/api/content-drafts/${project.id}/export?channel=moments_post`);
     const markdown = await exportResponse.text();
     assert.equal(exportResponse.status, 200);
     assert.match(exportResponse.headers.get("content-type") ?? "", /text\/markdown/);
@@ -1004,7 +1018,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(item.status, "published");
     assert.equal(item.publicationId, articleId);
 
-    const libraryResponse = await fetch(`${baseUrl}/articles`);
+    const libraryResponse = await appFetch(`${baseUrl}/articles`);
     const libraryHtml = await libraryResponse.text();
     assert.equal(libraryResponse.status, 200);
     assert.match(libraryHtml, /内容库/);
@@ -1257,7 +1271,7 @@ function acceptanceStyleSources() {
 }
 
 async function requestJson(route, options = {}) {
-  const response = await fetch(`${baseUrl}${route}`, {
+  const response = await appFetch(`${baseUrl}${route}`, {
     method: options.method || "GET",
     headers: options.body === undefined
       ? options.headers
@@ -1272,6 +1286,12 @@ async function requestJson(route, options = {}) {
     throw new Error(`Expected JSON from ${route}, received ${response.status}: ${responseText.slice(0, 500)}\n${serverOutput}`);
   }
   return { response, body };
+}
+
+function appFetch(url, init = {}) {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Authorization")) headers.set("Authorization", authorization);
+  return fetch(url, { ...init, headers });
 }
 
 async function waitForUrl(url, timeout) {

@@ -1,4 +1,5 @@
 import { requireEnv } from "./config";
+import { saveProviderCallLog } from "./db";
 import type { KnowledgeSource } from "./feishu";
 import type { AccountContext } from "@/modules/positioning/types";
 
@@ -215,33 +216,115 @@ export async function chatCompletionJson(messages: Array<{ role: "system" | "use
   const apiKey = requireEnv("AI_API_KEY");
   const model = requireEnv("AI_MODEL");
   const url = normalizeChatCompletionsUrl(baseUrl);
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const startedAt = new Date();
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.35,
+        response_format: { type: "json_object" },
+        messages,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(readTimeout("AI_REQUEST_TIMEOUT_MS", 60_000)),
+    });
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      throw new OperationError(`AI gateway request failed: ${response.status}`, `HTTP_${response.status}`);
+    }
+
+    const content = readChatCompletionContent(responseText);
+    if (!content) throw new OperationError("AI gateway returned an empty response.", "EMPTY_RESPONSE");
+
+    const usage = readUsage(responseText);
+    recordAiCall(startedAt, model, true, usage);
+    return content;
+  } catch (error) {
+    recordAiCall(startedAt, model, false, undefined, operationErrorCode(error));
+    throw error;
+  }
+}
+
+class OperationError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
+function recordAiCall(
+  startedAt: Date,
+  model: string,
+  success: boolean,
+  usage?: { input: number; output: number },
+  errorCode?: string,
+) {
+  const finishedAt = new Date();
+  const inputRate = readNonNegativeNumber("AI_INPUT_COST_PER_1M");
+  const outputRate = readNonNegativeNumber("AI_OUTPUT_COST_PER_1M");
+  const estimatedCost = usage && (inputRate !== undefined || outputRate !== undefined)
+    ? (usage.input * (inputRate || 0) + usage.output * (outputRate || 0)) / 1_000_000
+    : undefined;
+  try {
+    saveProviderCallLog({
+      provider: "ai",
+      endpoint: "chat.completions",
       model,
-      temperature: 0.35,
-      response_format: { type: "json_object" },
-      messages,
-    }),
-    cache: "no-store",
-  });
-  const responseText = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`AI gateway request failed: ${response.status} ${responseText.slice(0, 300)}`);
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      success,
+      cacheHit: false,
+      itemCount: success ? 1 : 0,
+      inputUnits: usage?.input,
+      outputUnits: usage?.output,
+      costEstimate: estimatedCost,
+      errorCode,
+    });
+  } catch (loggingError) {
+    console.error("AI operation metadata could not be saved", loggingError);
   }
+}
 
-  const content = readChatCompletionContent(responseText);
-
-  if (!content) {
-    throw new Error("AI gateway returned an empty response.");
+function readUsage(responseText: string) {
+  if (responseText.trim().startsWith("data:")) return undefined;
+  try {
+    const payload = JSON.parse(responseText) as {
+      usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number };
+    };
+    const usage = payload.usage;
+    if (!usage) return undefined;
+    return {
+      input: Math.max(0, Number(usage.prompt_tokens ?? usage.input_tokens ?? 0)),
+      output: Math.max(0, Number(usage.completion_tokens ?? usage.output_tokens ?? 0)),
+    };
+  } catch {
+    return undefined;
   }
+}
 
-  return content;
+function operationErrorCode(error: unknown) {
+  if (error instanceof OperationError) return error.code;
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) return "TIMEOUT";
+  return "REQUEST_ERROR";
+}
+
+function readTimeout(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) ? Math.min(300_000, Math.max(2_000, Math.trunc(value))) : fallback;
+}
+
+function readNonNegativeNumber(name: string) {
+  const value = process.env[name];
+  if (!value) return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
 }
 
 function readChatCompletionContent(responseText: string): string | undefined {

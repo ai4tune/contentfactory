@@ -1,18 +1,36 @@
 export type AppConfigStatus = {
+  ready: boolean;
+  environment: string;
+  accessConfigured: boolean;
   feishuConfigured: boolean;
   aiConfigured: boolean;
   imageConfigured: boolean;
+  marketConfigured: boolean;
   uploadEnabled: boolean;
+  missingRequired: string[];
 };
 
 export function getConfigStatus(): AppConfigStatus {
+  const environment = process.env.NODE_ENV || "development";
+  const accessConfigured = Boolean(process.env.CONTENT_FACTORY_ACCESS_CODE);
+  const aiConfigured = Boolean(process.env.AI_BASE_URL && process.env.AI_API_KEY && process.env.AI_MODEL);
+  const missingRequired = [
+    ...(!aiConfigured ? ["AI_BASE_URL / AI_API_KEY / AI_MODEL"] : []),
+    ...(environment === "production" && !accessConfigured ? ["CONTENT_FACTORY_ACCESS_CODE"] : []),
+  ];
+
   return {
+    ready: missingRequired.length === 0,
+    environment,
+    accessConfigured,
     feishuConfigured: Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET),
-    aiConfigured: Boolean(process.env.AI_BASE_URL && process.env.AI_API_KEY && process.env.AI_MODEL),
+    aiConfigured,
     imageConfigured: Boolean(
       process.env.IMAGE_BASE_URL && process.env.IMAGE_API_KEY && process.env.IMAGE_MODEL,
     ),
+    marketConfigured: Boolean(process.env.REDFOX_API_KEY),
     uploadEnabled: process.env.UPLOADS_ENABLED !== "false",
+    missingRequired,
   };
 }
 

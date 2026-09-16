@@ -1,5 +1,6 @@
 import { chatCompletionJson, parseJsonObject } from "@/lib/ai";
 import { requireEnv } from "@/lib/config";
+import { saveProviderCallLog } from "@/lib/db";
 import type { AccountContext } from "@/modules/positioning/types";
 import type { GeneratedVisualAsset } from "./types";
 
@@ -177,36 +178,72 @@ function normalizeCardLayout(
 }
 
 async function requestImage(prompt: string) {
-  const response = await fetch(normalizeImageGenerationUrl(requireEnv("IMAGE_BASE_URL")), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${requireEnv("IMAGE_API_KEY")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: requireEnv("IMAGE_MODEL"),
-      prompt,
-      n: 1,
-      size: process.env.IMAGE_SIZE || "1024x1536",
-    }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(180_000),
-  });
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(`生图服务请求失败：${response.status} ${responseText.slice(0, 240)}`);
+  const model = requireEnv("IMAGE_MODEL");
+  const startedAt = new Date();
+  try {
+    const response = await fetch(normalizeImageGenerationUrl(requireEnv("IMAGE_BASE_URL")), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${requireEnv("IMAGE_API_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        size: process.env.IMAGE_SIZE || "1024x1536",
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(readImageTimeout()),
+    });
+    const responseText = await response.text();
+    if (!response.ok) throw new Error(`生图服务请求失败：${response.status}`);
+
+    const payload = JSON.parse(responseText) as {
+      data?: Array<{ url?: string; revised_prompt?: string }>;
+    };
+    const imageUrl = payload.data?.[0]?.url;
+    if (!imageUrl) throw new Error("生图服务没有返回可保存的图片地址。");
+
+    recordImageCall(startedAt, model, true);
+    return {
+      url: normalizeGeneratedImageUrl(imageUrl),
+      revisedPrompt: payload.data?.[0]?.revised_prompt,
+    };
+  } catch (error) {
+    const code = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+      ? "TIMEOUT"
+      : "REQUEST_ERROR";
+    recordImageCall(startedAt, model, false, code);
+    throw error;
   }
+}
 
-  const payload = JSON.parse(responseText) as {
-    data?: Array<{ url?: string; revised_prompt?: string }>;
-  };
-  const imageUrl = payload.data?.[0]?.url;
-  if (!imageUrl) throw new Error("生图服务没有返回可保存的图片地址。");
+function recordImageCall(startedAt: Date, model: string, success: boolean, errorCode?: string) {
+  const finishedAt = new Date();
+  const configuredCost = Number(process.env.IMAGE_COST_PER_REQUEST);
+  try {
+    saveProviderCallLog({
+      provider: "image",
+      endpoint: "images.generations",
+      model,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      success,
+      cacheHit: false,
+      itemCount: success ? 1 : 0,
+      costEstimate: Number.isFinite(configuredCost) && configuredCost >= 0 ? configuredCost : undefined,
+      errorCode,
+    });
+  } catch (loggingError) {
+    console.error("Image operation metadata could not be saved", loggingError);
+  }
+}
 
-  return {
-    url: normalizeGeneratedImageUrl(imageUrl),
-    revisedPrompt: payload.data?.[0]?.revised_prompt,
-  };
+function readImageTimeout() {
+  const value = Number(process.env.IMAGE_REQUEST_TIMEOUT_MS);
+  return Number.isFinite(value) ? Math.min(300_000, Math.max(5_000, Math.trunc(value))) : 180_000;
 }
 
 function normalizeImageGenerationUrl(baseUrl: string) {

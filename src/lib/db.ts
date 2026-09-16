@@ -152,6 +152,10 @@ function initializeDatabase(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  ensureColumn(db, "provider_call_logs", "model", "TEXT");
+  ensureColumn(db, "provider_call_logs", "duration_ms", "INTEGER");
+  ensureColumn(db, "provider_call_logs", "input_units", "INTEGER");
+  ensureColumn(db, "provider_call_logs", "output_units", "INTEGER");
 
   // 提供者缓存表
   db.exec(`
@@ -434,11 +438,15 @@ export function listMarketItemsFromDb(filters?: {
 export function saveProviderCallLog(log: {
   provider: string;
   endpoint: string;
+  model?: string;
   startedAt: string;
   finishedAt: string;
+  durationMs?: number;
   success: boolean;
   cacheHit: boolean;
   itemCount: number;
+  inputUnits?: number;
+  outputUnits?: number;
   costEstimate?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -447,8 +455,9 @@ export function saveProviderCallLog(log: {
     INSERT INTO provider_call_logs (
       provider, endpoint, started_at, finished_at,
       success, cache_hit, item_count, cost_estimate,
-      error_code, error_message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      error_code, error_message, model, duration_ms,
+      input_units, output_units
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run(
@@ -461,8 +470,54 @@ export function saveProviderCallLog(log: {
     log.itemCount,
     log.costEstimate || null,
     log.errorCode || null,
-    log.errorMessage || null
+    log.errorMessage || null,
+    log.model || null,
+    log.durationMs ?? null,
+    log.inputUnits ?? null,
+    log.outputUnits ?? null
   );
+}
+
+export function getOperationSummary(days = 7): {
+  since: string;
+  totals: { calls: number; failures: number; estimatedCost: number };
+  services: Array<{
+    service: string;
+    calls: number;
+    failures: number;
+    averageDurationMs: number | null;
+    estimatedCost: number;
+  }>;
+} {
+  const safeDays = Math.min(90, Math.max(1, Math.trunc(days)));
+  const since = new Date(Date.now() - safeDays * 86_400_000).toISOString();
+  const rows = getDatabase().prepare(`
+    SELECT CASE WHEN provider = 'redfox' THEN 'market' ELSE provider END AS service,
+      COUNT(*) AS calls,
+      SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failures,
+      AVG(duration_ms) AS average_duration_ms,
+      COALESCE(SUM(cost_estimate), 0) AS estimated_cost
+    FROM provider_call_logs
+    WHERE started_at >= ?
+    GROUP BY CASE WHEN provider = 'redfox' THEN 'market' ELSE provider END
+    ORDER BY calls DESC
+  `).all(since) as Array<Record<string, unknown>>;
+  const services = rows.map((row) => ({
+    service: String(row.service),
+    calls: Number(row.calls || 0),
+    failures: Number(row.failures || 0),
+    averageDurationMs: row.average_duration_ms == null ? null : Math.round(Number(row.average_duration_ms)),
+    estimatedCost: Number(row.estimated_cost || 0),
+  }));
+  return {
+    since,
+    totals: {
+      calls: services.reduce((sum, item) => sum + item.calls, 0),
+      failures: services.reduce((sum, item) => sum + item.failures, 0),
+      estimatedCost: services.reduce((sum, item) => sum + item.estimatedCost, 0),
+    },
+    services,
+  };
 }
 
 // 获取提供者缓存
