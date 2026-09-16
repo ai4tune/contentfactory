@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -43,7 +44,7 @@ export async function updateJsonFile<T>(
 
 async function writeJsonFileAtomic(filePath: string, value: unknown) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
 
   try {
     await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");

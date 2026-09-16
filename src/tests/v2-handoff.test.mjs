@@ -85,14 +85,20 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
   const port = await listen(portProbe);
   await new Promise((resolve) => portProbe.close(resolve));
   const base = `http://127.0.0.1:${port}`;
+  const authorization = `Basic ${Buffer.from("pilot:pilot-test-code").toString("base64")}`;
+  function appFetch(url, init = {}) {
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", authorization);
+    return fetch(base + url, { ...init, headers });
+  }
   async function request(url, body) {
-    const response = await fetch(base + url, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const response = await appFetch(url, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     return { status: response.status, body: await response.json() };
   }
   async function start() {
     app = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
       cwd: directory,
-      env: { ...process.env, AI_BASE_URL: `http://127.0.0.1:${mockPort}/v1`, AI_API_KEY: "mock", AI_MODEL: "mock", REDFOX_API_KEY: "mock-redfox", REDFOX_BASE_URL: `http://127.0.0.1:${mockPort}`, FEISHU_APP_ID: "", FEISHU_APP_SECRET: "" },
+      env: { ...process.env, CONTENT_FACTORY_ACCESS_USER: "pilot", CONTENT_FACTORY_ACCESS_CODE: "pilot-test-code", AI_BASE_URL: `http://127.0.0.1:${mockPort}/v1`, AI_API_KEY: "mock", AI_MODEL: "mock", REDFOX_API_KEY: "mock-redfox", REDFOX_BASE_URL: `http://127.0.0.1:${mockPort}`, FEISHU_APP_ID: "", FEISHU_APP_SECRET: "" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     app.stdout.resume(); app.stderr.resume();
@@ -116,8 +122,8 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
     await start();
     let market, idea, brief, project;
     await t.test("percent titles render and abandoned ideas stay in the pool", async () => {
-      assert.equal((await fetch(base + "/create?title=" + encodeURIComponent("效率提升100%"))).status, 200);
-      const publicPages = await Promise.all(["/radar", "/ideas"].map(route => fetch(base + route).then(response => response.text())));
+      assert.equal((await appFetch("/create?title=" + encodeURIComponent("效率提升100%"))).status, 200);
+      const publicPages = await Promise.all(["/radar", "/ideas"].map(route => appFetch(route).then(response => response.text())));
       assert.doesNotMatch(publicPages.join("\n"), /redfox|红狐/i);
       assert.equal((await request("/api/ideas?status=pool")).body.data[0].id, "legacy");
     });
@@ -140,8 +146,8 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       assert.equal(calls[1].body.offset, 0);
       assert.equal(calls[2].body.sortType, "_0");
       const denied = await request("/api/market/search", { platform: "douyin", keyword: "余额测试" });
-      assert.equal(denied.status, 500);
-      assert.equal(denied.body.error, "市场搜索失败，请稍后重试。");
+      assert.equal(denied.status, 502);
+      assert.equal(denied.body.error, "市场数据服务暂时不可用，请稍后重试。");
       assert.doesNotMatch(JSON.stringify(denied.body), /redfox|3201/i);
     });
     await t.test("empty-body collections survive reads and restart; search history is local", async () => {
@@ -160,7 +166,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       assert.ok((await request("/api/inspirations")).body.inspirations.some(record => record.id === id && record.statusLabel === "待补充正文"));
       assert.ok((await request("/api/market/history")).body.records.some(record => record.id === snapshot.id));
       assert.equal(calls.length, callsBefore);
-      const updated = await fetch(base + `/api/inspirations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "补充的真实参考正文。" }) });
+      const updated = await appFetch(`/api/inspirations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "补充的真实参考正文。" }) });
       assert.equal(updated.status, 200);
       assert.equal((await request(`/api/inspirations/${id}`, {})).status, 200);
       assert.ok((await request("/api/inspirations")).body.inspirations.some(record => record.id === id && record.statusLabel === "已拆解"));
@@ -174,7 +180,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       const candidate = restored.result.topicCandidates[0];
       const ideaInput = { title: candidate.title, summary: `${candidate.angle}\n来源关键词：${candidate.sourceKeyword}`, platform: candidate.platform };
       assert.equal((await request("/api/ideas", ideaInput)).body.data.id, (await request("/api/ideas", ideaInput)).body.data.id);
-      const redirect = await fetch(base + "/topics", { redirect: "manual" });
+      const redirect = await appFetch("/topics", { redirect: "manual" });
       assert.equal(redirect.status, 307);
       assert.match(redirect.headers.get("location"), /ideas\?tab=recommend/);
     });
@@ -182,7 +188,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       idea = (await request("/api/ideas", { title: "效率提升100%", summary: market.summary, sourceUrl: market.sourceUrl, marketItemId: market.id })).body.data;
       const opened = await request(`/api/ideas/${idea.id}/create-project`, {});
       assert.equal(opened.status, 200);
-      const page = await fetch(base + opened.body.data.createUrl);
+      const page = await appFetch(opened.body.data.createUrl);
       assert.equal(page.status, 200);
       assert.match(await page.text(), /效率提升100%/);
       assert.ok((await request("/api/ideas?status=pool")).body.data.some((item) => item.id === idea.id));
@@ -218,7 +224,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       const id = analyzed.body.record.id;
       const created = await request(`/api/inspirations/${id}/create-idea`, {});
       assert.equal(created.status, 200);
-      const page = await fetch(base + `/create?ideaId=${created.body.data.id}`);
+      const page = await appFetch(`/create?ideaId=${created.body.data.id}`);
       assert.equal(page.status, 200);
       assert.match(await page.text(), /可复用分析/);
       const db = new Database(path.join(directory, "data/contentfactory.db"));
@@ -320,7 +326,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       assert.equal((await request(`/api/market/accounts/${xhs.account.id}`, {})).status, 200);
       await stop(); await start();
       assert.equal((await request("/api/market/accounts")).body.accounts.length, 3);
-      assert.equal((await fetch(base + `/api/market/accounts/${xhs.account.id}`, { method: "DELETE" })).status, 200);
+      assert.equal((await appFetch(`/api/market/accounts/${xhs.account.id}`, { method: "DELETE" })).status, 200);
       assert.equal((await request("/api/market/accounts")).body.accounts.length, 2);
     });
     await t.test("used projects and pool survive app restart", async () => {

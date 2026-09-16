@@ -65,7 +65,7 @@ export function createRedFoxProvider(config: ProviderConfig) {
     const options: RequestInit = {
       method,
       headers,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(marketRequestTimeout()),
     };
 
     if (method === "POST") {
@@ -91,6 +91,8 @@ export function createRedFoxProvider(config: ProviderConfig) {
     const accountKey = createHash("sha256").update(`${baseUrl}:${apiKey}`).digest("hex").slice(0, 16);
     const cacheKey = `v3:${method}:${accountKey}:${generateCacheKey(endpoint, params)}`;
     const startTime = new Date().toISOString();
+    const startedAtMs = Date.now();
+    const configuredCost = marketRequestCost();
 
     // 检查缓存
     const cached = getProviderCache(cacheKey);
@@ -104,6 +106,7 @@ export function createRedFoxProvider(config: ProviderConfig) {
           endpoint,
           startedAt: startTime,
           finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
           success: true,
           cacheHit: true,
           itemCount: 0,
@@ -126,27 +129,46 @@ export function createRedFoxProvider(config: ProviderConfig) {
         endpoint,
         startedAt: startTime,
         finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
         success: true,
         cacheHit: false,
         itemCount: Array.isArray(data) ? data.length : 1,
+        costEstimate: configuredCost,
       });
 
       return data as T;
     } catch (error) {
-      // 记录错误
+      const safeMessage = (error instanceof Error ? error.message : String(error)).replaceAll(apiKey!, "[redacted]");
+      if (cached) {
+        saveProviderCallLog({
+          provider: "redfox",
+          endpoint,
+          startedAt: startTime,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          cacheHit: true,
+          itemCount: 0,
+          costEstimate: configuredCost,
+          errorCode: "STALE_CACHE_FALLBACK",
+        });
+        return JSON.parse(cached.response as string) as T;
+      }
+
       saveProviderCallLog({
         provider: "redfox",
         endpoint,
         startedAt: startTime,
         finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
         success: false,
         cacheHit: false,
         itemCount: 0,
+        costEstimate: configuredCost,
         errorCode: "API_ERROR",
-        errorMessage: (error instanceof Error ? error.message : String(error)).replaceAll(apiKey!, "[redacted]"),
       });
 
-      throw new Error((error instanceof Error ? error.message : String(error)).replaceAll(apiKey!, "[redacted]"));
+      throw new Error(safeMessage);
     }
   }
 
@@ -242,6 +264,16 @@ export function createRedFoxProvider(config: ProviderConfig) {
   }
 
   return { searchWorks, getTrending, getAccount, getAccountWorks, getHotspots, getHotKeywords };
+}
+
+function marketRequestTimeout() {
+  const value = Number(process.env.MARKET_REQUEST_TIMEOUT_MS);
+  return Number.isFinite(value) ? Math.min(60_000, Math.max(2_000, Math.trunc(value))) : 12_000;
+}
+
+function marketRequestCost() {
+  const value = Number(process.env.MARKET_COST_PER_REQUEST);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 export type HotKeyword = { keyword: string; sources: { title: string; platform: string; url: string }[] };

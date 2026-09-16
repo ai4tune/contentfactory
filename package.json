@@ -7,10 +7,14 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:api": "node --test src/tests/core-api.test.mjs",
+    "test:api": "npm run build && node --test src/tests/core-api.test.mjs",
     "test:extension": "node --test src/tests/extension-*.test.mjs",
+    "test:guardrails": "node --test src/tests/production-guardrails.test.mjs src/tests/data-maintenance.test.mjs src/tests/json-file-store.test.mjs",
     "test:v2": "npm run build && node --test src/tests/v2-handoff.test.mjs",
-    "test:acceptance": "npm run lint && npm run test:extension && npm run test:api && npm run test:v2"
+    "test:acceptance": "npm run lint && npm run test:guardrails && npm run test:extension && npm run test:api && node --test src/tests/v2-handoff.test.mjs",
+    "data:backup": "node ops/data-maintenance.mjs backup",
+    "data:restore": "node ops/data-maintenance.mjs restore",
+    "data:delete": "node ops/data-maintenance.mjs delete"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

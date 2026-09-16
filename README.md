@@ -10,6 +10,8 @@ This repository contains the runnable Content Factory V1 baseline for real-use a
 - Execution order: `todo.md`
 - Historical code audit: `docs/audits/Content-Factory-MVP-Code-Audit-2026-07-20.md`
 - Branch and code ownership: `docs/development/P0-Code-Ownership-and-Branch-Strategy.md`
+- Paid-pilot deployment: `docs/deployment/Paid-Pilot-Deployment-Checklist.md`
+- Privacy and data lifecycle: `docs/deployment/Privacy-and-Data-Lifecycle.md`
 
 The implemented V1 direction is:
 
@@ -48,6 +50,10 @@ AI_BASE_URL=
 AI_API_KEY=
 AI_MODEL=
 
+# 生产试点必填：每位客户独立实例使用独立访问码
+CONTENT_FACTORY_ACCESS_USER=contentfactory
+CONTENT_FACTORY_ACCESS_CODE=
+
 UPLOADS_ENABLED=true
 
 # 远程账号采集可选：精确扩展 Origin，或访问码
@@ -61,6 +67,8 @@ Feishu should use a self-built enterprise app, not a personal password. The app 
 
 - `https://your-gateway.example.com`
 - `https://your-gateway.example.com/v1`
+
+生产环境缺少 AI 配置或访问码时，`/api/health` 会在 `missingRequired` 中明确列出缺项。它只暴露布尔状态和变量名，不返回变量值。互联网部署仍建议在应用外再使用 Cloudflare Access、反向代理身份验证或企业 VPN。
 
 ## V1 creation flow
 
@@ -118,6 +126,8 @@ Local knowledge uses a separate privacy boundary:
 - Local text is read in the browser to build a capped search index; the complete current text is read again only for preview or later explicit use.
 - Connected Feishu sources save identifiers and timestamps to `data/knowledge-sources.local.json`; full local directories are never copied to the server.
 
+付费试点的 `data/` 必须放在持久化磁盘。备份、恢复和客户数据删除命令见 [`docs/deployment/Paid-Pilot-Deployment-Checklist.md`](docs/deployment/Paid-Pilot-Deployment-Checklist.md)。模型、生图和市场调用只记录次数、耗时、失败状态、token 用量和可选成本估算，不记录完整提示词、知识正文或生成稿。
+
 ## Known limits
 
 - Word/PDF parsing is intentionally not included in this spike.
@@ -125,7 +135,7 @@ Local knowledge uses a separate privacy boundary:
 - Local folder access requires desktop Chrome or Edge with the File System Access API.
 - 扩展对平台 DOM 结构的识别是启发式的；平台改版后可能需要更新选择器。
 - 远程部署的 `/api/capture/account` 必须配置精确扩展 Origin 或访问码；只有本地回环地址默认允许 Chrome 扩展调用。
-- 除账号采集接口的最小边界外，完整访问控制尚未实现；部署时应放在可信网络或增加独立访问保护。
+- 付费试点内置单实例访问码；它不是用户系统。公网交付仍应增加反向代理身份验证或企业访问网关。
 - Real publication, seven-day repeated use, customer co-review, and purchase willingness require human evidence and cannot be automated.
 
 ## Verification
