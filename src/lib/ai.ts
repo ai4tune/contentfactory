@@ -211,7 +211,10 @@ export async function analyzeInspiration(request: InspirationRequest): Promise<I
   return normalizeInspirationResult(parseJsonObject(content) as Partial<InspirationResult>);
 }
 
-export async function chatCompletionJson(messages: Array<{ role: "system" | "user"; content: string }>) {
+export async function chatCompletionJson(
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  options: { minimumTimeoutMs?: number } = {},
+) {
   const baseUrl = requireEnv("AI_BASE_URL");
   const apiKey = requireEnv("AI_API_KEY");
   const model = requireEnv("AI_MODEL");
@@ -232,7 +235,7 @@ export async function chatCompletionJson(messages: Array<{ role: "system" | "use
         messages,
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(readTimeout("AI_REQUEST_TIMEOUT_MS", 60_000)),
+      signal: AbortSignal.timeout(Math.max(readTimeout("AI_REQUEST_TIMEOUT_MS", 60_000), options.minimumTimeoutMs ?? 0)),
     });
     const responseText = await response.text();
 

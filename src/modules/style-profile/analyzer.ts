@@ -63,7 +63,7 @@ export async function analyzeStyleProfile(
         ].join("\n")),
       ].join("\n\n"),
     },
-  ]);
+  ], { minimumTimeoutMs: 180_000 });
   const raw = parseJsonObject(content);
   const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
   const normalized = normalizeStyleProfileInput({
