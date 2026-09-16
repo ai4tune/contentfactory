@@ -267,7 +267,7 @@ export function StyleProfileWorkspace({
 
       {draft && editing ? <ProfileEditor draft={draft} onChange={setDraft} onCancel={() => { setDraft(null); setEditing(false); }} onSave={() => persist("save")} onConfirm={() => persist("confirm")} busy={busy} hasConfirmed={Boolean(confirmedProfile)} /> : null}
 
-      {message ? <p className={`mt-5 rounded-2xl px-4 py-3 text-sm ${/失败|不足|没有|请先|错误/.test(message) ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-800"}`}>{message}</p> : null}
+      {message ? <p className={`mt-5 rounded-2xl px-4 py-3 text-sm ${/失败|不足|没有|请先|错误|超时/.test(message) ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-800"}`}>{message}</p> : null}
     </AppShell>
   );
 }

@@ -32,7 +32,7 @@ before(async () => {
   await backupDataFiles();
   const mock = spawn(process.execPath, [path.join(testDirectory, "mock-ai-gateway.mjs")], {
     cwd: repositoryRoot,
-    env: { ...process.env, MOCK_AI_PORT: String(aiPort) },
+    env: { ...process.env, MOCK_AI_PORT: String(aiPort), MOCK_STYLE_DELAY_MS: "2300" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   processes.push(mock);
@@ -46,6 +46,7 @@ before(async () => {
       AI_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
       AI_API_KEY: "acceptance-test-key",
       AI_MODEL: "acceptance-mock",
+      AI_REQUEST_TIMEOUT_MS: "2000",
       IMAGE_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
       IMAGE_API_KEY: "acceptance-image-key",
       IMAGE_MODEL: "gpt-image-2",
@@ -245,7 +246,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       method: "POST",
       body: { sources: acceptanceStyleSources() },
     });
-    assert.equal(analyzed.response.status, 200, serverOutput);
+    assert.equal(analyzed.response.status, 200, "风格分析应允许超过普通 AI 请求的超时时间：" + serverOutput);
     const profile = analyzed.body.profile;
     assert.equal(profile.name, "验收账号默认风格");
     assert.ok(profile.rules.length >= 4);

@@ -41,6 +41,9 @@ const server = http.createServer(async (request, response) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(messages.find((message) => message.role === "system")?.content ?? "");
   const user = String(messages.find((message) => message.role === "user")?.content ?? "");
+  if (system.includes("写作风格分析师") && Number(process.env.MOCK_STYLE_DELAY_MS) > 0) {
+    await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_STYLE_DELAY_MS)));
+  }
   const content = JSON.stringify(mockCompletion(system, user));
 
   return json(response, 200, {

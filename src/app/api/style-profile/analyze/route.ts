@@ -18,6 +18,12 @@ export async function POST(request: Request) {
     const profile = await analyzeStyleProfile(sources, await getCurrentAccountContext());
     return NextResponse.json({ profile });
   } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return NextResponse.json(
+        { error: "风格分析等待 AI 超时。已选资料不会丢失，请稍后重试；若持续超时，可减少本次资料数量。" },
+        { status: 504 },
+      );
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "风格分析失败" },
       { status: 500 },
