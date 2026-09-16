@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isContentChannel } from "@/modules/content/types";
-import { updateContentPublication } from "@/modules/drafts/server/repository";
+import { getContentDraft, updateContentPublication } from "@/modules/drafts/server/repository";
 import type { PublicationMetrics } from "@/modules/drafts/types";
+import { markPlanItemPublished } from "@/modules/plans/repository";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,13 @@ export async function POST(
     };
     if (!isContentChannel(body.channel)) {
       return NextResponse.json({ error: "A valid channel is required" }, { status: 400 });
+    }
+    const current = await getContentDraft(id);
+    if (!current) {
+      return NextResponse.json({ error: "Draft or generated channel not found" }, { status: 404 });
+    }
+    if (current.reviewStatus !== "approved") {
+      return NextResponse.json({ error: "请先完成人工审核并确认内容可发布。" }, { status: 409 });
     }
 
     const publishedAt = normalizeDate(body.publishedAt);
@@ -44,6 +52,14 @@ export async function POST(
     }
 
     const publication = draft.publications.find((item) => item.channel === body.channel);
+    if (publication && draft.contentPlanId && draft.contentPlanItemId) {
+      await markPlanItemPublished(
+        draft.contentPlanId,
+        draft.contentPlanItemId,
+        draft.id,
+        publication.id,
+      );
+    }
     return NextResponse.json({ draft, publication });
   } catch (error) {
     return NextResponse.json(

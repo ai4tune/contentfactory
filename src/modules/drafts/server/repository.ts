@@ -13,6 +13,7 @@ import type {
   DraftListItem,
   DraftReviewStatus,
   DraftVersion,
+  PublicationFeedback,
   PublicationMetrics,
 } from "../types";
 
@@ -55,6 +56,8 @@ export async function listContentLibraryItems(): Promise<ContentLibraryItem[]> {
           channel: channelDraft.channel,
           excerpt: createExcerpt(channelDraft.content),
           reviewStatus: draft.reviewStatus,
+          contentPlanId: draft.contentPlanId,
+          contentPlanItemId: draft.contentPlanItemId,
           publication,
           createdAt: draft.createdAt,
           updatedAt: publication?.updatedAt ?? channelDraft.updatedAt ?? draft.updatedAt,
@@ -157,6 +160,7 @@ export async function updateContentPublication(input: {
   url?: string;
   publishedAt: string;
   metrics: PublicationMetrics;
+  feedback?: PublicationFeedback;
 }): Promise<ContentDraft | null> {
   let updatedDraft: ContentDraft | null = null;
 
@@ -171,12 +175,15 @@ export async function updateContentPublication(input: {
       if (!channelDraft) return project;
 
       const now = new Date().toISOString();
+      const currentPublication = draft.publications.find((item) => item.channel === input.channel);
       const publication: ContentPublication = {
+        id: `${draft.id}:${input.channel}`,
         channel: input.channel,
         url: input.url,
         publishedAt: input.publishedAt,
         updatedAt: now,
         metrics: input.metrics,
+        feedback: input.feedback ?? currentPublication?.feedback,
       };
       updatedDraft = {
         ...draft,
@@ -224,7 +231,7 @@ function normalizeDraft(project: ContentProject & Partial<ContentDraft>): Conten
       : project.brief.citations ?? [],
     reviewStatus: isReviewStatus(project.reviewStatus) ? project.reviewStatus : "draft",
     versions: Array.isArray(project.versions) ? project.versions : [],
-    publications: normalizePublications(project.publications),
+    publications: normalizePublications(project.publications, project.id),
   };
 }
 
@@ -251,7 +258,7 @@ function isReviewStatus(value: unknown): value is DraftReviewStatus {
   return value === "draft" || value === "editing" || value === "approved";
 }
 
-function normalizePublications(value: unknown): ContentPublication[] {
+function normalizePublications(value: unknown, draftId: string): ContentPublication[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
@@ -263,8 +270,10 @@ function normalizePublications(value: unknown): ContentPublication[] {
     const metrics = record.metrics && typeof record.metrics === "object"
       ? record.metrics as Record<string, unknown>
       : {};
+    const feedback = normalizeFeedback(record.feedback, metrics);
 
     return [{
+      id: optionalString(record.id) ?? `${draftId}:${record.channel}`,
       channel: record.channel,
       url: optionalString(record.url),
       publishedAt,
@@ -276,8 +285,32 @@ function normalizePublications(value: unknown): ContentPublication[] {
         comments: normalizeCount(metrics.comments),
         replies: normalizeCount(metrics.replies),
       },
+      feedback,
     }];
   });
+}
+
+function normalizeFeedback(value: unknown, legacyMetrics: Record<string, unknown>): PublicationFeedback | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const recordedAt = normalizeDate(record.recordedAt);
+  if (!recordedAt) return undefined;
+  const authorAssessment = record.authorAssessment === "better_than_expected"
+    || record.authorAssessment === "as_expected"
+    || record.authorAssessment === "worse_than_expected"
+    ? record.authorAssessment
+    : undefined;
+
+  return {
+    views: normalizeOptionalCount(record.views ?? legacyMetrics.views),
+    likes: normalizeOptionalCount(record.likes ?? legacyMetrics.likes),
+    collects: normalizeOptionalCount(record.collects ?? legacyMetrics.saves),
+    comments: normalizeOptionalCount(record.comments ?? legacyMetrics.comments),
+    leads: normalizeOptionalCount(record.leads),
+    qualitativeFeedback: optionalString(record.qualitativeFeedback),
+    authorAssessment,
+    recordedAt,
+  };
 }
 
 function createExcerpt(content: string) {
@@ -301,6 +334,11 @@ function normalizeDate(value: unknown) {
 function normalizeCount(value: unknown) {
   const count = Number(value);
   return Number.isFinite(count) && count > 0 ? Math.round(count) : 0;
+}
+
+function normalizeOptionalCount(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  return normalizeCount(value);
 }
 
 async function readProjectStore() {

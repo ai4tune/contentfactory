@@ -17,6 +17,7 @@ const dataFiles = [
   "data/style-profiles.local.json",
   "data/style-feedback.local.json",
   "data/content-plans.local.json",
+  "data/weekly-reviews.local.json",
   "data/onboarding.local.json",
 ];
 const backups = new Map();
@@ -70,6 +71,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
   let brief;
   let project;
   let contentPlan;
+  let quickProject;
+  let quickPlanItemId;
 
   await context.test("health and validation errors are explicit", async () => {
     const health = await requestJson("/api/health");
@@ -421,7 +424,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       },
     });
     assert.equal(generated.response.status, 200, serverOutput);
-    const quickProject = generated.body.project;
+    quickProject = generated.body.project;
+    quickPlanItemId = quickItem.id;
     assert.equal(quickProject.contentPlanId, contentPlan.id);
     assert.equal(quickProject.contentPlanItemId, quickItem.id);
     assert.equal(quickProject.channelDrafts.length, 1);
@@ -965,36 +969,117 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(finalApproval.body.draft.reviewStatus, "approved");
   });
 
-  await context.test("a generated channel can be recorded as published with real metrics", async () => {
-    const invalid = await requestJson(`/api/content-drafts/${project.id}/publication`, {
+  await context.test("published feedback updates the linked plan and persists real results", async () => {
+    const articleId = `${project.id}:wechat_article`;
+    const invalid = await requestJson(`/api/articles/${encodeURIComponent(articleId)}/feedback`, {
       method: "POST",
-      body: { channel: "unknown", publishedAt: new Date().toISOString() },
+      body: { publishedAt: "invalid" },
     });
     assert.equal(invalid.response.status, 400);
 
     const publishedAt = "2026-07-23T02:00:00.000Z";
-    const result = await requestJson(`/api/content-drafts/${project.id}/publication`, {
+    const result = await requestJson(`/api/articles/${encodeURIComponent(articleId)}/feedback`, {
       method: "POST",
       body: {
-        channel: "wechat_article",
         url: "https://example.com/published-content",
         publishedAt,
         metrics: { views: 1250, likes: 88, saves: 42, comments: 16, replies: 5 },
+        leads: 3,
+        qualitativeFeedback: "客户更关注安装与售后清单。",
+        authorAssessment: "better_than_expected",
       },
     });
     assert.equal(result.response.status, 200);
     assert.equal(result.body.publication.channel, "wechat_article");
     assert.equal(result.body.publication.metrics.views, 1250);
+    assert.equal(result.body.publication.feedback.leads, 3);
+    assert.equal(result.body.publication.feedback.authorAssessment, "better_than_expected");
 
     const detail = await requestJson(`/api/content-drafts/${project.id}`);
     assert.equal(detail.body.draft.publications.length, 1);
     assert.equal(detail.body.draft.publications[0].publishedAt, publishedAt);
+
+    const plan = await requestJson(`/api/content-plans/${contentPlan.id}`);
+    const item = plan.body.plan.items.find((candidate) => candidate.id === project.contentPlanItemId);
+    assert.equal(item.status, "published");
+    assert.equal(item.publicationId, articleId);
 
     const libraryResponse = await fetch(`${baseUrl}/articles`);
     const libraryHtml = await libraryResponse.text();
     assert.equal(libraryResponse.status, 200);
     assert.match(libraryHtml, /内容库/);
     assert.match(libraryHtml, /1250/);
+    assert.match(libraryHtml, /本周复盘与下周建议/);
+  });
+
+  await context.test("weekly review uses evidence and insufficient weeks only report data gaps", async () => {
+    const approved = await requestJson(`/api/content-drafts/${quickProject.id}`, {
+      method: "PATCH",
+      body: { reviewStatus: "approved" },
+    });
+    assert.equal(approved.response.status, 200);
+    const quickArticleId = `${quickProject.id}:wechat_article`;
+    const quickPublished = await requestJson(`/api/articles/${encodeURIComponent(quickArticleId)}/feedback`, {
+      method: "POST",
+      body: {
+        url: "https://example.com/quick-content",
+        publishedAt: "2026-07-24T02:00:00.000Z",
+        metrics: { views: 760, likes: 51, saves: 19, comments: 8, replies: 2 },
+        leads: 1,
+        qualitativeFeedback: "评论集中询问具体执行步骤。",
+        authorAssessment: "as_expected",
+      },
+    });
+    assert.equal(quickPublished.response.status, 200, serverOutput);
+
+    const firstWeek = contentPlan.items.find((item) => item.id === quickPlanItemId).week;
+    assert.equal(firstWeek, 1);
+    const generated = await requestJson(`/api/content-plans/${contentPlan.id}/reviews`, {
+      method: "POST",
+      body: { week: firstWeek },
+    });
+    assert.equal(generated.response.status, 200, serverOutput);
+    assert.equal(generated.body.review.sampleSize, 2);
+    assert.ok(generated.body.review.continue.length > 0);
+    assert.ok(generated.body.review.adjust.length > 0);
+    for (const suggestion of [
+      ...generated.body.review.continue,
+      ...generated.body.review.reduce,
+      ...generated.body.review.adjust,
+    ]) {
+      assert.ok(suggestion.evidence.length > 0);
+      assert.ok(suggestion.evidence.every((evidence) => evidence.contentPlanItemId && evidence.publicationId));
+    }
+
+    const insufficient = await requestJson(`/api/content-plans/${contentPlan.id}/reviews`, {
+      method: "POST",
+      body: { week: 2 },
+    });
+    assert.equal(insufficient.response.status, 200);
+    assert.equal(insufficient.body.review.sampleSize, 0);
+    assert.deepEqual(insufficient.body.review.continue, []);
+    assert.deepEqual(insufficient.body.review.reduce, []);
+    assert.deepEqual(insufficient.body.review.adjust, []);
+    assert.ok(insufficient.body.review.dataGaps.length > 0);
+
+    const confirmed = await requestJson(`/api/content-plans/${contentPlan.id}/reviews`, {
+      method: "POST",
+      body: { action: "confirm", reviewId: generated.body.review.id },
+    });
+    assert.equal(confirmed.response.status, 200);
+    assert.ok(confirmed.body.review.confirmedAt);
+
+    const reviews = await requestJson(`/api/content-plans/${contentPlan.id}/reviews`);
+    assert.equal(reviews.response.status, 200);
+    assert.equal(reviews.body.reviews.length, 2);
+    assert.ok(reviews.body.reviews.some((review) => review.id === generated.body.review.id && review.confirmedAt));
+    const plan = await requestJson(`/api/content-plans/${contentPlan.id}`);
+    assert.equal(plan.body.plan.items.find((item) => item.id === project.contentPlanItemId).status, "reviewed");
+    assert.equal(plan.body.plan.items.find((item) => item.id === quickPlanItemId).status, "reviewed");
+
+    const stored = JSON.parse(await readFile(path.join(repositoryRoot, "data/weekly-reviews.local.json"), "utf8"));
+    assert.equal(stored.schemaVersion, 1);
+    assert.equal(stored.reviews.length, 2);
   });
 
   await context.test("legacy object placeholders are removed when a saved draft is read", async () => {

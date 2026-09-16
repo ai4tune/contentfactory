@@ -17,12 +17,33 @@ export type PublicationMetrics = {
   replies: number;
 };
 
+export const authorAssessments = [
+  "better_than_expected",
+  "as_expected",
+  "worse_than_expected",
+] as const;
+
+export type AuthorAssessment = (typeof authorAssessments)[number];
+
+export type PublicationFeedback = {
+  views?: number;
+  likes?: number;
+  collects?: number;
+  comments?: number;
+  leads?: number;
+  qualitativeFeedback?: string;
+  authorAssessment?: AuthorAssessment;
+  recordedAt: string;
+};
+
 export type ContentPublication = {
+  id: string;
   channel: ContentChannel;
   url?: string;
   publishedAt: string;
   updatedAt: string;
   metrics: PublicationMetrics;
+  feedback?: PublicationFeedback;
 };
 
 export type ContentDraft = ContentProject & {
@@ -57,6 +78,8 @@ export type ContentLibraryItem = {
   channel: ContentChannel;
   excerpt: string;
   reviewStatus: DraftReviewStatus;
+  contentPlanId?: string;
+  contentPlanItemId?: string;
   publication?: ContentPublication;
   createdAt: string;
   updatedAt: string;
