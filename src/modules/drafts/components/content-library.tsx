@@ -1,19 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { channelLabels, contentChannels, type ContentChannel } from "@/modules/content/types";
 import type {
   ContentLibraryItem,
   ContentPublication,
+  AuthorAssessment,
   DraftReviewStatus,
   PublicationMetrics,
 } from "../types";
 
 const metricKeys = ["views", "likes", "saves", "comments", "replies"] as const;
 const metricLabels: Record<(typeof metricKeys)[number], string> = {
-  views: "阅读",
+  views: "阅读/播放",
   likes: "点赞",
   saves: "收藏",
   comments: "评论",
@@ -33,6 +35,7 @@ const reviewLabels: Record<DraftReviewStatus, string> = {
 };
 
 export function ContentLibrary({ initialItems }: { initialItems: ContentLibraryItem[] }) {
+  const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState<ContentChannel | "all">("all");
@@ -68,6 +71,7 @@ export function ContentLibrary({ initialItems }: { initialItems: ContentLibraryI
       ? { ...item, publication, updatedAt: publication.updatedAt }
       : item));
     setEditingId(null);
+    router.refresh();
   }
 
   return (
@@ -145,6 +149,9 @@ function PublicationRow({
   const [metrics, setMetrics] = useState<PublicationMetrics>(item.publication?.metrics ?? emptyMetrics);
   const [url, setUrl] = useState(item.publication?.url ?? "");
   const [publishedAt, setPublishedAt] = useState(toLocalDateTime(item.publication?.publishedAt ?? item.updatedAt));
+  const [leads, setLeads] = useState(item.publication?.feedback?.leads ?? 0);
+  const [qualitativeFeedback, setQualitativeFeedback] = useState(item.publication?.feedback?.qualitativeFeedback ?? "");
+  const [authorAssessment, setAuthorAssessment] = useState<AuthorAssessment | "">(item.publication?.feedback?.authorAssessment ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -152,7 +159,7 @@ function PublicationRow({
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/content-drafts/${encodeURIComponent(item.draftId)}/publication`, {
+      const response = await fetch(`/api/articles/${encodeURIComponent(item.id)}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -160,6 +167,9 @@ function PublicationRow({
           url,
           publishedAt: new Date(publishedAt).toISOString(),
           metrics,
+          leads,
+          qualitativeFeedback,
+          authorAssessment,
         }),
       });
       const payload = (await response.json()) as { publication?: ContentPublication; error?: string };
@@ -178,6 +188,7 @@ function PublicationRow({
         <div className="min-w-0">
           <Link className="truncate text-sm font-semibold text-slate-900 hover:text-emerald-900" href={`/drafts/${encodeURIComponent(item.draftId)}`}>{item.topic}</Link>
           <p className="mt-1 text-xs text-slate-400">{channelLabels[item.channel]} · {formatDate(item.updatedAt)}</p>
+          {item.contentPlanId ? <Link className="mt-1 inline-flex text-[11px] font-semibold text-emerald-800 hover:underline" href="/plans">来自内容计划，可追溯选题</Link> : null}
           <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">{item.excerpt || "暂无正文摘要"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -186,7 +197,9 @@ function PublicationRow({
           {item.publication?.url ? <a className="text-[11px] font-semibold text-emerald-800 xl:hidden" href={item.publication.url} rel="noreferrer" target="_blank">查看链接</a> : null}
         </div>
         {metricKeys.map((key) => <Metric key={key} label={metricLabels[key]} value={item.publication?.metrics[key]} />)}
-        <button className={secondaryButtonClass} onClick={onEdit} type="button">{editing ? "收起" : item.publication ? "更新数据" : "记录发布"}</button>
+        {item.reviewStatus === "approved"
+          ? <button className={secondaryButtonClass} onClick={onEdit} type="button">{editing ? "收起" : item.publication ? "更新数据" : "记录发布"}</button>
+          : <Link className={secondaryButtonClass} href={`/drafts/${encodeURIComponent(item.draftId)}`}>先审核确认</Link>}
       </article>
 
       {editing ? (
@@ -200,6 +213,11 @@ function PublicationRow({
               {metricKeys.map((key) => (
                 <label className="grid gap-1.5 text-xs font-semibold text-slate-600" key={key}>{metricLabels[key]}<input className="h-10 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-normal" min="0" onChange={(event) => setMetrics((current) => ({ ...current, [key]: Number(event.target.value) }))} type="number" value={metrics[key]} /></label>
               ))}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-[160px_220px_minmax(240px,1fr)]">
+              <label className="grid gap-1.5 text-xs font-semibold text-slate-600">有效线索<input className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-normal" min="0" onChange={(event) => setLeads(Number(event.target.value))} type="number" value={leads} /></label>
+              <label className="grid gap-1.5 text-xs font-semibold text-slate-600">主观判断<select className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-normal" onChange={(event) => setAuthorAssessment(event.target.value as AuthorAssessment | "")} value={authorAssessment}><option value="">暂不判断</option><option value="better_than_expected">好于预期</option><option value="as_expected">符合预期</option><option value="worse_than_expected">低于预期</option></select></label>
+              <label className="grid gap-1.5 text-xs font-semibold text-slate-600">主观反馈<input className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-normal" maxLength={2000} onChange={(event) => setQualitativeFeedback(event.target.value)} placeholder="例如：客户主动转发，评论更关注落地步骤" value={qualitativeFeedback} /></label>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-slate-500">未发布的数据保持为空，不会生成模拟指标。</p>

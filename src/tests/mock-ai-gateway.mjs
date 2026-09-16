@@ -54,6 +54,30 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user) {
+  if (system.includes("企业内容运营复盘顾问")) {
+    const payload = JSON.parse(user);
+    const publications = payload.publications ?? [];
+    const evidence = (publication) => [{
+      contentPlanItemId: publication.contentPlanItemId,
+      publicationId: publication.publicationId,
+      label: `${publication.title}：阅读 ${publication.views}，点赞 ${publication.likes}，线索 ${publication.leads}`,
+    }];
+    return {
+      continue: publications[0] ? [{
+        title: "继续使用具体问题切入",
+        rationale: "这条内容已有真实阅读和互动反馈，可以继续验证同类角度。",
+        evidence: evidence(publications[0]),
+      }] : [],
+      reduce: [],
+      adjust: publications[1] ? [{
+        title: "调整转化动作",
+        rationale: "已有互动但线索仍需继续观察，下一周应测试更清晰的行动提示。",
+        evidence: evidence(publications[1]),
+      }] : [],
+      dataGaps: ["尚未记录成交结果，不能判断商业转化。"],
+    };
+  }
+
   if (system.includes("企业内容策略规划师")) {
     const regenerated = user.includes("人工确认保留的选题");
     const prefix = regenerated ? "重新生成选题" : "首月选题";

@@ -135,6 +135,36 @@ export async function markPlanItemGenerated(
   });
 }
 
+export async function markPlanItemPublished(
+  planId: string,
+  itemId: string,
+  contentProjectId: string,
+  publicationId: string,
+): Promise<ContentPlan | null> {
+  return updatePlanItemProgress(planId, itemId, {
+    contentProjectId,
+    publicationId,
+    status: "published",
+  });
+}
+
+export async function markPlanItemsReviewed(
+  planId: string,
+  publications: Array<{ itemId: string; publicationId: string }>,
+): Promise<ContentPlan | null> {
+  const publicationByItem = new Map(publications.map((item) => [item.itemId, item.publicationId]));
+  const now = new Date().toISOString();
+  return mutateContentPlan(planId, (current) => ({
+    ...current,
+    items: current.items.map((item) => {
+      const publicationId = publicationByItem.get(item.id);
+      return publicationId
+        ? { ...item, publicationId, status: "reviewed" as const, updatedAt: now }
+        : item;
+    }),
+  }));
+}
+
 async function updatePlanItemSystemFields(
   planId: string,
   itemId: string,
@@ -147,6 +177,27 @@ async function updatePlanItemSystemFields(
       ? { ...item, ...update, updatedAt: now }
       : item);
     return { ...current, items };
+  });
+}
+
+async function updatePlanItemProgress(
+  planId: string,
+  itemId: string,
+  update: {
+    contentProjectId: string;
+    publicationId: string;
+    status: ContentPlanItemStatus;
+  },
+) {
+  const now = new Date().toISOString();
+  return mutateContentPlan(planId, (current) => {
+    if (!current.items.some((item) => item.id === itemId)) return null;
+    return {
+      ...current,
+      items: current.items.map((item) => item.id === itemId
+        ? { ...item, ...update, updatedAt: now }
+        : item),
+    };
   });
 }
 

@@ -54,7 +54,7 @@
 
 ## 0.2 2026-09-14 当前代码快照
 
-本节最初以 `main@451f3c3` 为代码基线；截至 PR-4，ContentPlan 契约、首次建档、完整计划页、任务型首页与快速创作均已实现。
+本节最初以 `main@451f3c3` 为代码基线；截至 PR-5，ContentPlan 契约、首次建档、完整计划页、任务型首页、快速创作、人工发布反馈与轻量周复盘均已实现。
 
 ### 已实现页面
 
@@ -67,7 +67,7 @@
 | 快速内容创作 | `/create/quick` | 从已确认计划项匹配知识，生成单一主渠道稿并自动进入审核 |
 | 高级内容创作 | `/create` | 原创/爆款改写、知识选择、简报、多渠道生成和审核 |
 | 内容项目 | `/drafts`、`/drafts/:id` | 编辑、版本、审核、导出和发布记录 |
-| 内容库 | `/articles` | 渠道内容、状态和发布指标 |
+| 内容库 | `/articles` | 渠道内容、人工发布反馈、计划追溯和证据化周复盘 |
 | 企业知识 | `/knowledge`、`/materials` | 本地、飞书、上传、搜索和兼容入口 |
 | 账号与品牌 | `/brand`、`/positioning`、`/style-profile` | 账号采集、定位、企业字段和风格画像 |
 | 爆款库 | `/inspirations` 及详情/新建 | 收藏、正文补充、AI 拆解和创作关联 |
@@ -82,8 +82,8 @@
 选题与爆款：/api/topics/*、/api/ideas/*、/api/inspirations/*
 创作：/api/content/brief、/api/content/projects、/api/content/generate/*、/api/content/quick/*
 审核与草稿：/api/content/projects/*/review*、/api/content-drafts/*
-内容与发布：/api/articles、/api/articles/:id/publication
-内容计划：/api/content-plans、/api/content-plans/current、/api/content-plans/:id、/generate、/items/:itemId
+内容与发布：/api/articles、/api/articles/:id/publication、/api/articles/:id/feedback
+内容计划：/api/content-plans、/api/content-plans/current、/api/content-plans/:id、/generate、/items/:itemId、/reviews
 ```
 
 ### 当前持久化
@@ -91,14 +91,14 @@
 - SQLite：市场内容、指标快照、搜索历史、对标账号、市场服务缓存/调用日志和选题；
 - 服务端轻量存储：账号、定位、风格、知识来源、爆款、内容计划、内容项目、草稿、审核与发布数据；
 - 浏览器 IndexedDB：本地目录句柄、授权状态和本地 Markdown/TXT 索引；
-- 已有独立、带 schema 版本且原子写入的 `ContentPlan` 与 `OnboardingStatus` 权威存储；还没有周复盘对象；
+- 已有独立、带 schema 版本且原子写入的 `ContentPlan`、`OnboardingStatus` 与 `WeeklyReview` 权威存储；
 - 本轮不要求把全部旧存储迁移到 SQLite，只为新增对象定义稳定契约。
 
 ### 当前主要差距
 
 - 主导航、任务型首页与可编辑 ContentPlan 已完成收敛；
 - 计划选题可进入快速创作，用户确认 AI 匹配的资料后即可生成主渠道待审核稿；
-- 发布数据存在，但没有周周期、客户反馈和下一周建议闭环；
+- 人工确认后可回填发布指标、线索和主观反馈；同周至少 2 条有效记录时可生成带发布证据的继续、减少、调整建议，样本不足只显示数据缺口；
 - 本地试用可用，客户上线所需的最小访问和运维保障未形成完整验收。
 
 ## 0.3 2026-07-29 历史实施决策
@@ -372,9 +372,9 @@ type WeeklyReview = {
 [已实现] POST   /api/content/quick/knowledge
 [已实现] POST   /api/content/quick/generate
 
-[PR-5] POST   /api/articles/:id/feedback
-[PR-5] GET    /api/content-plans/:id/reviews
-[PR-5] POST   /api/content-plans/:id/reviews
+[已实现] POST   /api/articles/:id/feedback
+[已实现] GET    /api/content-plans/:id/reviews
+[已实现] POST   /api/content-plans/:id/reviews
 ```
 
 生成计划和周复盘属于 AI 操作；普通读取、人工编辑和状态变更不得调用模型。
@@ -2792,8 +2792,8 @@ PR-0 文档基线与范围冻结
 - [x] PR-1：ContentPlan 数据契约；
 - [x] PR-2：首次企业建档；
 - [x] PR-3：内容计划页与任务型首页；
-- [ ] PR-4：快速创作；
-- [ ] PR-5：人工发布与轻量复盘；
+- [x] PR-4：快速创作；
+- [x] PR-5：人工发布与轻量复盘；
 - [ ] PR-6：付费试点上线保障；
 - [ ] 贝尔咖啡完成真实发布、独立第二次创作和 2999 元付费结论。
 
