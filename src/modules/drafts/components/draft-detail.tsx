@@ -14,7 +14,8 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
   const [draft, setDraft] = useState(initialDraft);
   const [activeChannel, setActiveChannel] = useState<ContentChannel>(firstChannel);
   const [edits, setEdits] = useState<Record<string, string>>(() => Object.fromEntries(initialDraft.channelDrafts.map((item) => [item.channel, item.content])));
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<"save" | "approve" | "channel" | "images" | null>(null);
+  const busy = busyAction !== null;
   const [message, setMessage] = useState<string | null>(null);
   const channelDraft = draft.channelDrafts.find((item) => item.channel === activeChannel);
   const content = edits[activeChannel] ?? "";
@@ -27,7 +28,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
 
   async function save() {
     if (!channelDraft || !content.trim()) return;
-    setBusy(true);
+    setBusyAction("save");
     setMessage(null);
     try {
       const response = await fetch(`/api/content-drafts/${encodeURIComponent(draft.id)}`, {
@@ -43,7 +44,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "草稿保存失败");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -59,7 +60,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
 
   async function approve() {
     if (!hasGeneratedContent || hasUnsavedChanges) return;
-    setBusy(true);
+    setBusyAction("approve");
     setMessage(null);
     try {
       const response = await fetch(`/api/content-drafts/${encodeURIComponent(draft.id)}`, {
@@ -74,7 +75,58 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "确认失败");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
+    }
+  }
+
+  async function refreshDraft() {
+    const response = await fetch(`/api/content-drafts/${encodeURIComponent(draft.id)}`);
+    const payload = (await response.json()) as { draft?: ContentDraft; error?: string };
+    if (!response.ok || !payload.draft) throw new Error(payload.error ?? "草稿刷新失败");
+    setDraft(payload.draft);
+    setEdits(Object.fromEntries(payload.draft.channelDrafts.map((item) => [item.channel, item.content])));
+  }
+
+  async function generateChannel() {
+    if (busy || hasUnsavedChanges || channelDraft?.status === "generated") return;
+    setBusyAction("channel");
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/content/generate/${activeChannel}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: draft.id }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "渠道内容生成失败");
+      await refreshDraft();
+      setMessage(`${channelLabels[activeChannel]}已生成，请审核后再发布。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "渠道内容生成失败");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function generateImages(assetId?: string) {
+    if (busy || hasUnsavedChanges) return;
+    setBusyAction("images");
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/content/projects/${encodeURIComponent(draft.id)}/channels/xiaohongshu_note/images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(assetId ? { assetId } : {}),
+      });
+      const payload = (await response.json()) as { error?: string; assets?: NonNullable<ContentDraft["channelDrafts"][number]["visualAssets"]> };
+      if (!response.ok) throw new Error(payload.error ?? "小红书配图生成失败");
+      await refreshDraft();
+      const failedCover = payload.assets?.find((asset) => asset.kind === "cover" && asset.status === "failed");
+      setMessage(failedCover ? `图文内页已生成，但封面背景生成失败：${failedCover.error ?? "请重试"}` : "小红书封面和正文内页已保存，可预览并下载 PNG。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "小红书配图生成失败");
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -92,8 +144,11 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="text-base font-semibold text-slate-900">{channelLabels[activeChannel]}</h2><p className="mt-1 text-xs text-slate-500">最后修改：{formatDate(channelDraft?.updatedAt ?? draft.updatedAt)}</p></div>
             <div className="flex flex-wrap gap-2">
+              {activeChannel === "xiaohongshu_note" && channelDraft?.status === "generated" && !channelDraft.visualAssets?.length ? (
+                <button className={primaryButtonClass} disabled={busy || hasUnsavedChanges} onClick={() => generateImages()} type="button">{busyAction === "images" ? "正在生成配图…" : "生成小红书配图"}</button>
+              ) : null}
               <button className={secondaryButtonClass} disabled={!content} onClick={copy} type="button">复制</button>
-              <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export?channel=${activeChannel}`}>下载本渠道</a>
+              {channelDraft?.status === "generated" ? <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export?channel=${activeChannel}`}>下载本渠道</a> : null}
               <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export`}>下载全部</a>
             </div>
           </div>
@@ -105,24 +160,38 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
                 onChange={(event) => setEdits((current) => ({ ...current, [activeChannel]: event.target.value }))}
                 value={content}
               />
-              {activeChannel === "xiaohongshu_note" && channelDraft.visualAssets?.length ? (
+              {activeChannel === "xiaohongshu_note" ? channelDraft.visualAssets?.length ? (
                 <DraftVisualAssets
                   assets={channelDraft.visualAssets}
                   brandName={draft.accountSnapshot?.accountName}
                   draftId={draft.id}
+                  disabled={busy || hasUnsavedChanges}
+                  onRetryCover={generateImages}
                 />
+              ) : (
+                <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-semibold text-emerald-950">还没有小红书配图</p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-800">先保存文案修改，再点击页面上方的“生成小红书配图”：生成 1 张 AI 封面背景和可下载的正文图文内页。</p>
+                </div>
               ) : null}
             </>
           ) : channelDraft?.status === "failed" ? (
-            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-5 text-sm leading-6 text-red-700">{channelDraft.error || "该渠道生成失败，请返回创作页重新生成。"}</div>
+            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-5 text-sm leading-6 text-red-700">
+              <p>{channelDraft.error || "该渠道生成失败。"}</p>
+              <button className={`${primaryButtonClass} mt-3`} disabled={busy || hasUnsavedChanges} onClick={generateChannel} type="button">{busyAction === "channel" ? "正在生成…" : `重试生成${channelLabels[activeChannel]}`}</button>
+            </div>
           ) : (
-            <div className="mt-5 flex min-h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 text-center text-sm text-slate-500">该渠道还没有内容。</div>
+            <div className="mt-5 flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+              <p>该渠道还没有内容，可基于已保存的简报补生成，不会覆盖其他渠道。</p>
+              <button className={`${primaryButtonClass} mt-4`} disabled={busy || hasUnsavedChanges} onClick={generateChannel} type="button">{busyAction === "channel" ? "正在生成…" : `生成${channelLabels[activeChannel]}`}</button>
+            </div>
           )}
 
+          {hasUnsavedChanges && (activeChannel === "xiaohongshu_note" || channelDraft?.status !== "generated") ? <p className="mt-3 text-xs text-amber-700">先保存当前修改，再生成内容或配图。</p> : null}
           {message ? <p className="mt-3 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-700" role="status">{message}</p> : null}
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
             <p className="text-xs text-slate-500">{changed ? "有尚未保存的修改" : `已保存 ${versions.length + (channelDraft ? 1 : 0)} 个版本`}</p>
-            <button className={primaryButtonClass} disabled={!changed || !content.trim() || busy} onClick={save} type="button">{busy ? "正在保存" : "保存新版本"}</button>
+            <button className={primaryButtonClass} disabled={!changed || !content.trim() || busy} onClick={save} type="button">{busyAction === "save" ? "正在保存" : "保存新版本"}</button>
           </div>
         </div>
       </section>
@@ -148,7 +217,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
                   onClick={approve}
                   type="button"
                 >
-                  {busy ? "正在确认" : "确认内容可发布"}
+                  {busyAction === "approve" ? "正在确认" : "确认内容可发布"}
                 </button>
               </>
             )}
@@ -199,10 +268,14 @@ function DraftVisualAssets({
   assets,
   brandName,
   draftId,
+  disabled,
+  onRetryCover,
 }: {
   assets: NonNullable<ContentDraft["channelDrafts"][number]["visualAssets"]>;
   brandName?: string;
   draftId: string;
+  disabled: boolean;
+  onRetryCover: (assetId: string) => Promise<void>;
 }) {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -250,6 +323,8 @@ function DraftVisualAssets({
                 >
                   {downloading === asset.id ? "导出中" : "下载 PNG"}
                 </button>
+              ) : asset.kind === "cover" ? (
+                <button className={secondaryButtonClass} disabled={disabled} onClick={() => onRetryCover(asset.id)} type="button">重试封面背景</button>
               ) : null}
             </div>
           </article>
