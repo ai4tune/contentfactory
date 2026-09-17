@@ -20,8 +20,7 @@ export async function generateNewContentPlan(input: {
 }) {
   const generated = await requestPlanFromAi(input.account, input.options);
   const now = new Date().toISOString();
-  const pillars = normalizePillars(generated.pillars, input.account.contentPillars);
-  const items = normalizeItems(generated.items, pillars, [], now);
+  const items = normalizeItems(generated.items, generated.pillars, [], now);
 
   return createContentPlan({
     accountContextUpdatedAt: input.account.updatedAt,
@@ -30,7 +29,7 @@ export async function generateNewContentPlan(input: {
     operatingGoal: input.options.operatingGoal,
     primaryChannel: input.options.primaryChannel,
     targetAudience: input.options.targetAudience,
-    pillars,
+    pillars: generated.pillars,
     publishingFrequency: input.options.publishingFrequency,
     periodStart: input.options.periodStart,
     periodEnd: input.options.periodEnd,
@@ -76,26 +75,69 @@ async function requestPlanFromAi(
   account: AccountContext,
   options: ContentPlanGenerationOptions,
   existing?: { pillars: ContentPillar[]; lockedItems: ContentPlanItem[] },
+): Promise<{ title: string; pillars: ContentPillar[]; items: GeneratedContentPlan["items"] }> {
+  const needed = 30 - (existing?.lockedItems.length ?? 0);
+  const items: GeneratedContentPlan["items"] = [];
+  const usedTitles = new Set(existing?.lockedItems.map((item) => normalizeTitle(item.title)) ?? []);
+  let pillars = existing?.pillars;
+  let title = "";
+
+  for (let batchNumber = 1; batchNumber <= 4 && items.length < needed; batchNumber++) {
+    const count = Math.min(10, needed - items.length);
+    const batch = await requestPlanBatch(account, options, pillars, existing?.lockedItems ?? [], {
+      count,
+      start: items.length + 1,
+      excludedTitles: [
+        ...(existing?.lockedItems.map((item) => item.title) ?? []),
+        ...items.map((item) => item.title),
+      ],
+    });
+    if (!pillars) pillars = normalizePillars(batch.pillars, account.contentPillars);
+    if (!title) title = batch.title;
+    const before = items.length;
+    for (const item of batch.items) {
+      const key = normalizeTitle(item.title);
+      if (!key || !item.rationale || usedTitles.has(key)) continue;
+      items.push(item);
+      usedTitles.add(key);
+      if (items.length - before === count) break;
+    }
+    console.info("[content-plan] AI batch completed", { batchNumber, requested: count, accepted: items.length - before });
+  }
+
+  return { title, pillars: pillars ?? normalizePillars([], account.contentPillars), items };
+}
+
+async function requestPlanBatch(
+  account: AccountContext,
+  options: ContentPlanGenerationOptions,
+  pillars: ContentPillar[] | undefined,
+  lockedItems: ContentPlanItem[],
+  batch: { count: number; start: number; excludedTitles: string[] },
 ): Promise<GeneratedContentPlan> {
   const system = [
     "你是企业内容策略规划师。只输出 JSON，不要 Markdown。",
-    "输出 title、pillars、items。pillars 必须 3～5 个；items 必须恰好 30 个且标题不重复。",
+    pillars ? "只输出 items；使用已确认内容支柱，不要新增或修改支柱。" : "输出 title、pillars、items；pillars 必须 3～5 个，每个包含 name 和 description。",
+    `items 本批必须恰好 ${batch.count} 个且标题不重复。`,
     "每个 item 必须包含 title、angle、pillarIndex、objective、rationale、evidence。",
     "pillarIndex 从 0 开始；objective 只能是 reach、trust、conversion。",
     "evidence 是数组，每项包含 type、可选 refId、label；type 只能是 enterprise_knowledge、customer_pain、market_signal、inspiration。",
     "不要编造企业事实、案例、客户、数字或市场结果。依据不足时使用 customer_pain 并明确这是待验证的问题判断。",
-    "items 按未来 30 天的推荐优先级排序，前 7 个是本周优先选题。",
+    "items 按未来 30 天的推荐优先级排序；第 1～7 个是本周优先选题。",
   ].join("\n");
   const user = [
     "【当前账号】",
     JSON.stringify(account, null, 2),
     "【计划要求】",
     JSON.stringify(options, null, 2),
-    existing ? "【已确认内容支柱，不得修改】" : "【内容支柱】请根据账号上下文生成 3～5 个。",
-    existing ? JSON.stringify(existing.pillars, null, 2) : "暂无预设。",
-    existing?.lockedItems.length ? "【人工编辑或锁定的选题，不得重复、改写或覆盖】" : "【锁定选题】无。",
-    existing?.lockedItems.length
-      ? JSON.stringify(existing.lockedItems.map((item) => ({ title: item.title, angle: item.angle })), null, 2)
+    pillars ? "【已确认内容支柱，不得修改；pillarIndex 按此数组从 0 开始】" : "【内容支柱】请根据账号上下文生成 3～5 个。",
+    pillars ? JSON.stringify(pillars.map(({ name, description }) => ({ name, description })), null, 2) : "暂无预设。",
+    `【本批次】只生成第 ${batch.start}～${batch.start + batch.count - 1} 个新选题；前批次已经生成的标题不得重复。`,
+    batch.excludedTitles.length ? "【不得重复的已有标题】" : "【已有标题】无。",
+    batch.excludedTitles.length ? JSON.stringify(batch.excludedTitles) : "无。",
+    lockedItems.length ? "【人工编辑或锁定的选题，不得重复、改写或覆盖】" : "【锁定选题】无。",
+    lockedItems.length
+      ? JSON.stringify(lockedItems.map((item) => ({ title: item.title, angle: item.angle })), null, 2)
       : "无。",
   ].join("\n");
   const parsed = parseJsonObject(await chatCompletionJson([
@@ -115,7 +157,7 @@ async function requestPlanFromAi(
         })
       : [],
     items: Array.isArray(record.items)
-      ? record.items.slice(0, 60).map((value) => normalizeGeneratedItem(value, options.contextEvidence))
+      ? record.items.slice(0, 20).map((value) => normalizeGeneratedItem(value, options.contextEvidence))
       : [],
   };
 }
