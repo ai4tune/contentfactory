@@ -32,7 +32,7 @@ before(async () => {
   await backupDataFiles();
   const mock = spawn(process.execPath, [path.join(testDirectory, "mock-ai-gateway.mjs")], {
     cwd: repositoryRoot,
-    env: { ...process.env, MOCK_AI_PORT: String(aiPort), MOCK_STYLE_DELAY_MS: "2300" },
+    env: { ...process.env, MOCK_AI_PORT: String(aiPort), MOCK_STYLE_DELAY_MS: "2300", MOCK_PLAN_DELAY_MS: "2300" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   processes.push(mock);
@@ -302,7 +302,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
         }],
       },
     });
-    assert.equal(created.response.status, 201, serverOutput);
+    assert.equal(created.response.status, 201, "30 天计划生成应允许超过普通 AI 请求的超时时间：" + serverOutput);
     contentPlan = created.body.plan;
     assert.equal(contentPlan.items.length, 30);
     assert.equal(contentPlan.items.filter((item) => item.week === 1).length, 7);

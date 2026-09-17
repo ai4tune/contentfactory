@@ -44,6 +44,9 @@ const server = http.createServer(async (request, response) => {
   if (system.includes("写作风格分析师") && Number(process.env.MOCK_STYLE_DELAY_MS) > 0) {
     await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_STYLE_DELAY_MS)));
   }
+  if (system.includes("企业内容策略规划师") && Number(process.env.MOCK_PLAN_DELAY_MS) > 0) {
+    await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_PLAN_DELAY_MS)));
+  }
   const content = JSON.stringify(mockCompletion(system, user));
 
   return json(response, 200, {
