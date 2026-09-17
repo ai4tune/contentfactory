@@ -20,7 +20,7 @@ export async function generateNewContentPlan(input: {
 }) {
   const generated = await requestPlanFromAi(input.account, input.options);
   const now = new Date().toISOString();
-  const pillars = normalizePillars(generated.pillars);
+  const pillars = normalizePillars(generated.pillars, input.account.contentPillars);
   const items = normalizeItems(generated.items, pillars, [], now);
 
   return createContentPlan({
@@ -108,7 +108,10 @@ async function requestPlanFromAi(
     pillars: Array.isArray(record.pillars)
       ? record.pillars.map((value) => {
           const item = asRecord(value);
-          return { name: text(item.name, 100), description: text(item.description, 500) };
+          return {
+            name: text(typeof value === "string" ? value : item.name ?? item.title, 100),
+            description: text(item.description ?? item.summary, 500),
+          };
         })
       : [],
     items: Array.isArray(record.items)
@@ -117,16 +120,26 @@ async function requestPlanFromAi(
   };
 }
 
-function normalizePillars(value: GeneratedContentPlan["pillars"]): ContentPillar[] {
+function normalizePillars(value: GeneratedContentPlan["pillars"], accountPillars: string[]): ContentPillar[] {
   const unique = value
     .map((pillar) => ({ name: text(pillar.name, 100), description: text(pillar.description, 500) }))
-    .filter((pillar) => pillar.name && pillar.description)
-    .filter((pillar, index, all) => all.findIndex((item) => item.name === pillar.name) === index)
+    .filter((pillar) => pillar.name)
+    .filter((pillar, index, all) => all.findIndex((item) => normalizeTitle(item.name) === normalizeTitle(pillar.name)) === index)
     .slice(0, 5);
-  if (unique.length < 3) throw new Error("AI 返回的内容支柱不足 3 个，请重试。");
+  if (unique.length < 3) {
+    for (const value of accountPillars) {
+      const name = text(value, 100);
+      if (name && !unique.some((pillar) => normalizeTitle(pillar.name) === normalizeTitle(name))) {
+        unique.push({ name, description: "" });
+      }
+      if (unique.length === 5) break;
+    }
+  }
+  if (unique.length < 3) throw new Error("内容支柱不足 3 个，请先在当前账号补充至少 3 个内容方向后再生成。");
   return unique.map((pillar, index) => ({
     id: `contentPillar_${randomUUID()}`,
-    ...pillar,
+    name: pillar.name,
+    description: pillar.description || `围绕「${pillar.name}」策划内容，具体观点和案例以已确认资料为准。`,
     priority: index + 1,
   }));
 }
