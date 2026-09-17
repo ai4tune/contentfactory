@@ -86,10 +86,11 @@ function mockCompletion(system, user) {
 
   if (system.includes("企业内容策略规划师")) {
     const regenerated = user.includes("人工确认保留的选题");
+    const incompletePillars = user.includes("验收缺失内容支柱");
     const prefix = regenerated ? "重新生成选题" : "首月选题";
     return {
       title: "验收账号 30 天内容计划",
-      pillars: [
+      pillars: incompletePillars ? ["选购避坑", { name: "安装知识" }] : [
         { name: "选购避坑", description: "帮助客户建立正确的判断标准" },
         { name: "安装知识", description: "解释真实使用和交付条件" },
         { name: "真实案例", description: "用已确认案例建立信任" },

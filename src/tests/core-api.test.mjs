@@ -331,6 +331,19 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(savedDraft.body.profile.version, 2);
   });
 
+  await context.test("a plan can reuse confirmed account pillars when AI omits pillar details", async () => {
+    const created = await requestJson("/api/content-plans", {
+      method: "POST",
+      body: { operatingGoal: "验收缺失内容支柱" },
+    });
+    assert.equal(created.response.status, 201, serverOutput);
+    assert.equal(created.body.plan.pillars.length, 3);
+    assert.equal(created.body.plan.pillars[0].name, "选购避坑");
+    assert.equal(created.body.plan.pillars[2].name, "真实案例");
+    assert.ok(created.body.plan.pillars.every((pillar) => pillar.description));
+    assert.equal(created.body.plan.items.length, 30);
+  });
+
   await context.test("a 30-day content plan persists and protects human edits during regeneration", async () => {
     const created = await requestJson("/api/content-plans", {
       method: "POST",
