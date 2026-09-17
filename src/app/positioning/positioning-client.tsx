@@ -167,7 +167,7 @@ export function PositioningClient({
           </section>
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><ResultGroup title="品牌语气" items={context.brandVoice} tags /><ResultGroup title="禁用表达" items={context.bannedPhrases} tags /><div className="mt-6 flex flex-wrap gap-3"><Link className={primaryButtonClass} href="/create">带着当前定位去创作 →</Link><Link className={secondaryButtonClass} href="/style-profile">管理写作风格</Link></div></section>
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2"><div className="grid gap-7 lg:grid-cols-2"><ResultGroup title="内容支柱" items={context.contentPillars} /><ResultGroup title="常用表达" items={context.preferredPhrases} tags /><ResultGroup title="下一阶段内容方向" items={context.contentDirections} /></div></section>
-          <AnalysisDetails analysisEvidence={context.analysisEvidence} informationGaps={context.informationGaps} />
+          <AnalysisDetails analysisEvidence={context.analysisEvidence} informationGaps={context.informationGaps} answeredQuestions={context.answeredQuestions} onEdit={startManualEdit} />
         </div>
       </>
     );
@@ -386,6 +386,30 @@ function DraftEditor({ draft, onChange }: { draft: AccountContextDraft; onChange
           <ListField label="内容方向" value={draft.contentDirections} onChange={(contentDirections) => onChange({ ...draft, contentDirections })} />
         </div>
       </div>
+      {(draft.informationGaps.length > 0 || (draft.answeredQuestions?.length ?? 0) > 0) ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50/50 p-6 shadow-sm lg:col-span-2">
+          <h2 className="text-base font-semibold text-slate-900">补充账号分析信息</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-600">回答后保存定位，已回答的问题不再显示为生成前待补充；答案会供后续内容计划和写作参考。</p>
+          <div className="mt-5 grid gap-4">
+            {[...new Set([...draft.informationGaps, ...(draft.answeredQuestions ?? []).map((item) => item.question)])].map((question) => (
+              <TextArea
+                key={question}
+                label={question}
+                value={draft.answeredQuestions?.find((item) => item.question === question)?.answer ?? ""}
+                onChange={(answer) => onChange({
+                  ...draft,
+                  answeredQuestions: [
+                    ...(draft.answeredQuestions ?? []).filter((item) => item.question !== question),
+                    { question, answer },
+                  ],
+                })}
+                placeholder="填写已确认的实际情况；不确定可以暂时留空"
+                rows={3}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -399,25 +423,31 @@ function ResultGroup({ title, items, tags }: { title: string; items: string[]; t
 function AnalysisDetails({
   analysisEvidence,
   informationGaps,
+  answeredQuestions = [],
+  onEdit,
   editing = false,
 }: {
   analysisEvidence: string[];
   informationGaps: string[];
+  answeredQuestions?: Array<{ question: string; answer: string }>;
+  onEdit?: () => void;
   editing?: boolean;
 }) {
   return (
     <section className={`rounded-3xl border border-slate-200 bg-slate-50/70 p-6 ${editing ? "mt-5" : "xl:col-span-2"}`}>
-      <div className="grid gap-7 lg:grid-cols-2">
+      <div className={`grid gap-7 ${editing ? "" : "lg:grid-cols-2"}`}>
         <div>
           <h2 className="text-sm font-semibold text-slate-900">分析依据</h2>
           <p className="mt-1 text-xs leading-5 text-slate-500">记录 AI 为什么得出当前定位，只能通过新的账号采集和重新分析更新。</p>
           <ResultGroup title="" items={analysisEvidence} />
         </div>
-        <div>
+        {!editing ? <div>
           <h2 className="text-sm font-semibold text-slate-900">待补信息</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">这些不是定位设置。补充账号资料或作品后，再执行 AI 重新分析即可刷新。</p>
-          <ResultGroup title="" items={informationGaps} />
-        </div>
+          <p className="mt-1 text-xs leading-5 text-slate-500">可以直接补充已知情况；需要新采集数据时再执行 AI 重新分析。</p>
+          {informationGaps.length ? <ResultGroup title="" items={informationGaps} /> : <p className="mt-3 text-sm text-slate-500">暂无待补问题</p>}
+          {informationGaps.length && onEdit ? <button className="mt-4 text-sm font-semibold text-emerald-800 underline underline-offset-4" onClick={onEdit} type="button">回答待补问题 →</button> : null}
+          {answeredQuestions.length ? <div className="mt-5"><h3 className="text-sm font-semibold text-slate-900">已确认的补充信息</h3><ul className="mt-3 space-y-3">{answeredQuestions.map(({ question, answer }) => <li key={question} className="text-sm leading-6 text-slate-600"><span className="font-medium text-slate-800">{question}</span><br />{answer}</li>)}</ul></div> : null}
+        </div> : null}
       </div>
     </section>
   );
@@ -446,6 +476,7 @@ function draftFromContext(context: AccountContext): AccountContextDraft {
     recommendedTopics: context.recommendedTopics,
     analysisEvidence: context.analysisEvidence,
     informationGaps: context.informationGaps,
+    answeredQuestions: context.answeredQuestions ?? [],
   };
 }
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value)); }

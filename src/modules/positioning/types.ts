@@ -21,6 +21,7 @@ export type AccountContext = {
   recommendedTopics: string[];
   analysisEvidence: string[];
   informationGaps: string[];
+  answeredQuestions?: Array<{ question: string; answer: string }>;
   confirmedAt?: string;
   updatedAt: string;
 };

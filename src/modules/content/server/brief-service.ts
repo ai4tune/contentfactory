@@ -55,6 +55,7 @@ export async function createContentBrief(
         `目标人群: ${account?.targetAudience.join("、") || "待判断"}`,
         `产品/服务: ${account?.offer || "待判断"}`,
         `内容目标: ${account?.conversionGoal || "建立信任并推动下一步行动"}`,
+        `已确认补充信息: ${account?.answeredQuestions?.map(({ question, answer }) => `${question} ${answer}`).join("；") || "无"}`,
         `内容计划上下文: ${planContext ? JSON.stringify(planContext) : "未从内容计划进入"}`,
         `品牌语气: ${account?.brandVoice.join("、") || "专业、清晰"}`,
         "写作风格约束:",

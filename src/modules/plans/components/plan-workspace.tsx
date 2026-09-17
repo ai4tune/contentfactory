@@ -134,6 +134,7 @@ export function PlanWorkspace({
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-sm font-semibold text-amber-950">生成前请留意</p>
               <p className="mt-2 text-sm leading-6 text-amber-900">{onboarding.informationGaps[0]}</p>
+              {onboarding.informationGaps[0].startsWith("账号分析待补充：") ? <Link className="mt-3 inline-block text-sm font-semibold text-amber-950 underline underline-offset-4" href="/positioning">去当前账号补充 →</Link> : null}
             </div>
           ) : null}
           <button className={`${primaryButtonClass} mt-6`} disabled={busy !== null} onClick={generatePlan} type="button">

@@ -418,6 +418,7 @@ function formatAccountContext(context?: AccountContext) {
     `常用表达: ${context.preferredPhrases.join("、") || "待补充"}`,
     `禁用表达: ${context.bannedPhrases.join("、") || "无"}`,
     `内容方向: ${context.contentDirections.join("、") || "待补充"}`,
+    `已确认补充信息: ${context.answeredQuestions?.map(({ question, answer }) => `${question} ${answer}`).join("；") || "无"}`,
   ].join("\n");
 }
 
