@@ -715,6 +715,17 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(generated.body.project.brief.inspiration.title, "低价不等于省钱");
     assert.equal(generated.body.project.brief.inspirationPlan.items.length, 7);
     assert.equal(generated.body.project.channelDrafts[0].status, "generated");
+
+    const added = await requestJson("/api/content/generate/wechat_article", {
+      method: "POST",
+      body: { projectId: viralProjectResult.body.project.id },
+    });
+    assert.equal(added.response.status, 200, serverOutput);
+    assert.equal(added.body.project.channelDrafts.length, 2);
+    assert.equal(
+      added.body.project.channelDrafts.find((item) => item.channel === "xiaohongshu_note").content,
+      generated.body.project.channelDrafts[0].content,
+    );
   });
 
   await context.test("confirmed brief is saved as one atomic content project", async () => {
@@ -756,6 +767,19 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     const unchangedProject = await requestJson(`/api/content-drafts/${project.id}`);
     assert.equal(unchangedProject.body.draft.styleSnapshot.profileVersion, 1);
     assert.deepEqual(unchangedProject.body.draft.styleSnapshot.bannedPhrases, ["深度赋能"]);
+  });
+
+  await context.test("a saved project can add a missing channel from its brief without reselecting knowledge", async () => {
+    const result = await requestJson("/api/content/generate/wechat_article", {
+      method: "POST",
+      body: { projectId: project.id },
+    });
+    assert.equal(result.response.status, 200, serverOutput);
+    assert.equal(result.body.draft.channel, "wechat_article");
+    assert.equal(result.body.project.channelDrafts.length, 1);
+    assert.equal(result.body.project.channelDrafts[0].status, "generated");
+    const detail = await requestJson(`/api/content-drafts/${project.id}`);
+    assert.equal(detail.body.draft.channelDrafts[0].channel, "wechat_article");
   });
 
   await context.test("one project generates four structurally distinct channel drafts", async () => {

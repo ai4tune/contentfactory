@@ -5,7 +5,7 @@ import {
   replaceChannelDraft,
 } from "@/modules/content/server/project-repository";
 import { normalizeContentBrief, normalizeKnowledgeSources } from "@/modules/content/server/request";
-import { isContentChannel, type GenerateChannelsRequest } from "@/modules/content/types";
+import { isContentChannel, type BriefKnowledgeSource, type ContentCitation, type GenerateChannelsRequest } from "@/modules/content/types";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
@@ -36,7 +36,10 @@ export async function POST(
       return NextResponse.json({ error: "A content brief for the current topic is required" }, { status: 400 });
     }
 
-    const sources = normalizeKnowledgeSources(body.sources);
+    const suppliedSources = normalizeKnowledgeSources(body.sources);
+    const sources = suppliedSources.length || !existingProject
+      ? suppliedSources
+      : sourcesFromCitations(brief.citations);
     const sourceIds = new Set(sources.map((source) => source.id));
     const hasRequiredKnowledge = brief.citations.length
       ? brief.citations.every((citation) => sourceIds.has(citation.sourceId))
@@ -71,4 +74,24 @@ export async function POST(
       { status: 500 },
     );
   }
+}
+
+function sourcesFromCitations(citations: ContentCitation[]): BriefKnowledgeSource[] {
+  const sources = new Map<string, BriefKnowledgeSource>();
+  for (const citation of citations) {
+    const existing = sources.get(citation.sourceId);
+    if (existing) {
+      if (!existing.text.includes(citation.excerpt)) existing.text += `\n\n${citation.excerpt}`;
+      continue;
+    }
+    sources.set(citation.sourceId, {
+      id: citation.sourceId,
+      title: citation.sourceTitle,
+      source: citation.sourceType,
+      text: citation.excerpt,
+      url: citation.url,
+      path: citation.path,
+    });
+  }
+  return [...sources.values()];
 }
