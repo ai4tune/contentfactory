@@ -41,6 +41,10 @@ const server = http.createServer(async (request, response) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(messages.find((message) => message.role === "system")?.content ?? "");
   const user = String(messages.find((message) => message.role === "user")?.content ?? "");
+  if (system.includes("企业内容策略规划师")) {
+    const batchSize = Number(system.match(/items 本批必须恰好 (\d+) 个/)?.[1]);
+    if (!batchSize || batchSize > 10) return json(response, 504, { error: "simulated gateway timeout for oversized plan" });
+  }
   if (system.includes("写作风格分析师") && Number(process.env.MOCK_STYLE_DELAY_MS) > 0) {
     await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_STYLE_DELAY_MS)));
   }
@@ -87,6 +91,9 @@ function mockCompletion(system, user) {
   if (system.includes("企业内容策略规划师")) {
     const regenerated = user.includes("人工确认保留的选题");
     const incompletePillars = user.includes("验收缺失内容支柱");
+    const batchRange = user.match(/【本批次】只生成第 (\d+)～(\d+) 个新选题/);
+    const start = batchRange ? Number(batchRange[1]) : 1;
+    const count = batchRange ? Number(batchRange[2]) - start + 1 : 30;
     const prefix = regenerated ? "重新生成选题" : "首月选题";
     return {
       title: "验收账号 30 天内容计划",
@@ -95,16 +102,16 @@ function mockCompletion(system, user) {
         { name: "安装知识", description: "解释真实使用和交付条件" },
         { name: "真实案例", description: "用已确认案例建立信任" },
       ],
-      items: Array.from({ length: 30 }, (_, index) => ({
-        title: `${prefix} ${index + 1}`,
-        angle: `从客户第 ${index + 1} 个常见问题切入`,
-        pillarIndex: index % 3,
-        objective: ["reach", "trust", "conversion"][index % 3],
-        rationale: `对应目标客户的第 ${index + 1} 个决策问题`,
+      items: Array.from({ length: count }, (_, index) => ({
+        title: `${prefix} ${start + index}`,
+        angle: `从客户第 ${start + index} 个常见问题切入`,
+        pillarIndex: (start + index - 1) % 3,
+        objective: ["reach", "trust", "conversion"][(start + index - 1) % 3],
+        rationale: `对应目标客户的第 ${start + index} 个决策问题`,
         evidence: [{
-          type: index === 0 ? "enterprise_knowledge" : "customer_pain",
-          ...(index === 0 ? { refId: "local:flooring.md" } : {}),
-          label: index === 0 ? "地板选购资料" : `待验证的客户问题 ${index + 1}`,
+          type: start + index === 1 ? "enterprise_knowledge" : "customer_pain",
+          ...(start + index === 1 ? { refId: "local:flooring.md" } : {}),
+          label: start + index === 1 ? "地板选购资料" : `待验证的客户问题 ${start + index}`,
         }],
       })),
     };
