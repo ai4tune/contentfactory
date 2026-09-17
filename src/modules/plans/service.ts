@@ -101,7 +101,7 @@ async function requestPlanFromAi(
   const parsed = parseJsonObject(await chatCompletionJson([
     { role: "system", content: system },
     { role: "user", content: user },
-  ]));
+  ], { minimumTimeoutMs: 180_000 }));
   const record = asRecord(parsed);
   return {
     title: text(record.title, 200),

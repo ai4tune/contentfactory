@@ -32,6 +32,12 @@ export async function POST(
     });
     return NextResponse.json({ plan: updated });
   } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return NextResponse.json(
+        { error: "30 天内容计划重新生成超时，原计划未改变。请稍后重试。" },
+        { status: 504 },
+      );
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "内容计划重新生成失败。" },
       { status: error instanceof PlanValidationError ? 400 : 502 },

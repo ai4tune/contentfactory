@@ -139,6 +139,7 @@ export function PlanWorkspace({
           <button className={`${primaryButtonClass} mt-6`} disabled={busy !== null} onClick={generatePlan} type="button">
             {busy === "generate" ? "正在生成 30 天计划" : "生成内容计划"}
           </button>
+          {busy === "generate" ? <p className="mt-3 text-sm text-slate-500">正在生成 30 个选题，可能需要 1～3 分钟，请勿重复点击。</p> : null}
         </section>
       ) : (
         <>
@@ -172,6 +173,7 @@ export function PlanWorkspace({
                 {busy === "regenerate" ? "正在重新生成" : "重新生成未锁定选题"}
               </button>
             </div>
+            {busy === "regenerate" ? <p className="mt-3 text-sm text-white/70">正在重新生成选题，可能需要 1～3 分钟；原计划会保留到成功为止。</p> : null}
           </section>
 
           {editingPlan ? <PlanSettingsForm busy={busy !== null} key={plan.updatedAt} onCancel={() => setEditingPlan(false)} onSave={updatePlan} plan={plan} /> : null}
