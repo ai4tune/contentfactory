@@ -44,6 +44,18 @@ export async function PATCH(request: Request) {
 }
 
 function normalizeDraft(draft: AccountContextDraft): AccountContextDraft {
+  const answers = Array.isArray(draft.answeredQuestions)
+    ? draft.answeredQuestions.slice(0, 30).map((item) => ({
+        question: String(item?.question ?? "").trim().slice(0, 500),
+        answer: String(item?.answer ?? "").trim().slice(0, 2000),
+      })).filter((item) => item.question)
+    : [];
+  const answeredQuestions = answers.filter((item) => item.answer);
+  const answered = new Set(answeredQuestions.map((item) => item.question));
+  const informationGaps = [
+    ...toStrings(draft.informationGaps),
+    ...answers.filter((item) => !item.answer).map((item) => item.question),
+  ].filter((question) => !answered.has(question));
   return {
     source: draft.source === "capture" ? "capture" : "manual",
     input: draft.input,
@@ -61,7 +73,8 @@ function normalizeDraft(draft: AccountContextDraft): AccountContextDraft {
     contentDirections: toStrings(draft.contentDirections),
     recommendedTopics: toStrings(draft.recommendedTopics),
     analysisEvidence: toStrings(draft.analysisEvidence),
-    informationGaps: toStrings(draft.informationGaps),
+    informationGaps,
+    answeredQuestions,
   };
 }
 

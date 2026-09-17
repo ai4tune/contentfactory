@@ -170,6 +170,50 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.deepEqual(updated.body.context.analysisEvidence, current.body.context.analysisEvidence);
   });
 
+  await context.test("answered account questions persist and stop appearing as gaps", async () => {
+    const current = await requestJson("/api/positioning/current");
+    const question = current.body.context.informationGaps[0];
+    assert.ok(question);
+    const { id, status, confirmedAt, updatedAt, ...currentDraft } = current.body.context;
+    void id;
+    void status;
+    void confirmedAt;
+    void updatedAt;
+
+    const updated = await requestJson("/api/positioning/current", {
+      method: "PATCH",
+      body: {
+        action: "confirm",
+        draft: {
+          ...currentDraft,
+          input: draft.input,
+          answeredQuestions: [{ question, answer: "以顾问服务收费，暂不提供课程和带货。" }],
+        },
+      },
+    });
+    assert.equal(updated.response.status, 200);
+    assert.deepEqual(updated.body.context.answeredQuestions, [{ question, answer: "以顾问服务收费，暂不提供课程和带货。" }]);
+    assert.equal(updated.body.context.informationGaps.includes(question), false);
+
+    const onboarding = await requestJson("/api/onboarding/status");
+    assert.equal(onboarding.body.status.informationGaps.includes(`账号分析待补充：${question}`), false);
+
+    const reopened = await requestJson("/api/positioning/current", {
+      method: "PATCH",
+      body: {
+        action: "confirm",
+        draft: {
+          ...updated.body.context,
+          input: draft.input,
+          answeredQuestions: [{ question, answer: "" }],
+        },
+      },
+    });
+    assert.equal(reopened.response.status, 200);
+    assert.equal(reopened.body.context.informationGaps.includes(question), true);
+    assert.deepEqual(reopened.body.context.answeredQuestions, []);
+  });
+
   await context.test("first-use onboarding reuses existing data and persists explicit gaps", async () => {
     const initial = await requestJson("/api/onboarding/status");
     assert.equal(initial.response.status, 200);

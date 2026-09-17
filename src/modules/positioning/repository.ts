@@ -49,6 +49,7 @@ export async function skipAccountContext(): Promise<AccountContext> {
     recommendedTopics: current?.recommendedTopics ?? [],
     analysisEvidence: current?.analysisEvidence ?? [],
     informationGaps: current?.informationGaps ?? [],
+    answeredQuestions: current?.answeredQuestions ?? [],
     updatedAt: now,
   };
 
