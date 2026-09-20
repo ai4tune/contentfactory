@@ -1,5 +1,5 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import { isContentChannel, type ContentChannel, type ContentProject } from "@/modules/content/types";
 import { normalizeBriefList } from "@/modules/content/server/normalize-brief-list";
 import { normalizeContentBrief } from "@/modules/content/server/request";
@@ -19,7 +19,7 @@ import type {
 
 type ProjectStore = { projects: Array<ContentProject & Partial<ContentDraft>> };
 
-const projectStorePath = path.join(process.cwd(), "data", "content-projects.local.json");
+const projectStorePath = dataFilePath("content-projects.local.json");
 const emptyStore: ProjectStore = { projects: [] };
 
 export async function listContentDrafts(filters: DraftFilters = {}): Promise<DraftListItem[]> {

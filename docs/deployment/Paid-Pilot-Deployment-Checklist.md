@@ -4,19 +4,22 @@
 
 ## 1. 实例和访问边界
 
-- 为客户创建独立的代码部署、域名、环境变量和持久化 `data/` 目录。
+- 为客户创建独立的代码部署、域名、环境变量、持久化数据卷和备份卷。
 - 互联网部署优先使用 Cloudflare Access、反向代理身份验证或企业 VPN；应用内访问码作为试点期的最小保护。
 - 设置强随机 `CONTENT_FACTORY_ACCESS_CODE`，用户名可通过 `CONTENT_FACTORY_ACCESS_USER` 修改。
 - `/api/health` 保持匿名可用，只返回配置状态，不返回密钥；其他页面和 API 需要授权。
-- Chrome 扩展使用的 `/api/capture/*` 和 `/api/topics/search-plan` 由精确扩展 Origin 或 `CONTENT_FACTORY_CAPTURE_TOKEN` 单独保护，不经过页面访问码。
+- Chrome 扩展使用的 `/api/capture/*` 和 `/api/topics/search-plan` 必须携带 `CONTENT_FACTORY_CAPTURE_TOKEN`，不经过页面访问码。
+- `CAPTURE_ALLOWED_ORIGINS` 只用于限制 CORS，不能单独作为身份凭证；伪造同源 Origin 的请求必须被拒绝。
 - 不要把客户实例放在可公开访问、但没有任何身份验证的网络上。
 
 ## 2. 服务端配置
 
 从 `.env.example` 创建部署平台的服务端环境变量，不要提交 `.env.local`：
 
-- 必需：`AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL`、`CONTENT_FACTORY_ACCESS_CODE`。
+- 必需：`AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL`、`CONTENT_FACTORY_ACCESS_CODE`、`CONTENT_FACTORY_DATA_DIR`。
 - 按功能可选：飞书、生图、市场数据、Chrome 采集配置。
+- 使用 Chrome 扩展时必需：`CONTENT_FACTORY_CAPTURE_TOKEN`；建议同时设置精确 `CAPTURE_ALLOWED_ORIGINS`。
+- 建议：`CONTENT_FACTORY_BACKUP_DIR` 指向独立备份卷。
 - 费用估算可选：AI 每百万 token 单价、生图单次成本、市场数据单次成本。
 - 超时可配置，但应先使用示例默认值。市场数据不可用时，已有过期缓存会降级返回，创作主流程不依赖它。
 
@@ -24,24 +27,37 @@
 
 ## 3. 构建与启动
 
+推荐使用仓库内的单实例 Docker Compose：
+
+```bash
+cp .env.example .env.production
+# 编辑 .env.production，不要提交该文件
+docker compose up --build -d
+docker compose ps
+```
+
+本地或传统 Node 部署仍可使用：
+
 ```bash
 npm ci
 npm run test:acceptance
 npm run build
-npm run start
+CONTENT_FACTORY_DATA_DIR=/absolute/persistent/data npm run start
 ```
 
-部署平台必须持久化项目根目录下的 `data/`。滚动部署或容器重建时，不能使用临时文件系统保存客户数据。
+Docker Compose 将 `/app/data` 和 `/app/backups` 挂载为独立命名卷。其他部署方式必须把 `CONTENT_FACTORY_DATA_DIR` 指向持久化磁盘；滚动部署或容器重建时，不能使用临时文件系统保存 SQLite/JSON 权威数据。当前版本不得直接部署到没有持久化文件系统的 Serverless 环境。
 
 ## 4. 上线前检查
 
 1. `GET /api/health` 返回 `ready: true`，且 `missingRequired` 为空。
 2. 未带授权访问首页返回 `401`；错误访问码也返回 `401`。
 3. 正确授权后能进入建档、计划和创作页面。
-4. 用一份客户授权资料跑通：知识搜索 → 简报 → 主渠道生成 → 审核 → 人工确认。
-5. 生图、飞书和市场数据未配置时，页面给出可理解提示，不阻塞核心创作。
-6. `GET /api/operations/summary?days=7` 只显示调用数、失败数、耗时和估算成本，不出现提示词或正文。
-7. 完成一次真实备份与恢复演练，再开始收费试用。
+4. 对 `/api/capture/import` 分别验证：无 Token 返回 `403`、伪造同源 Origin 仍返回 `403`、正确 Bearer Token 才能进入业务校验。
+5. 用一份客户授权资料跑通：知识搜索 → 简报 → 主渠道生成 → 审核 → 人工确认。
+6. 生图、飞书和市场数据未配置时，页面给出可理解提示，不阻塞核心创作。
+7. `GET /api/operations/summary?days=7` 只显示调用数、失败数、耗时和估算成本，不出现提示词或正文。
+8. 重启容器，确认账号、计划、草稿、发布记录和调用日志仍存在。
+9. 完成一次真实备份与恢复演练，再开始收费试用。
 
 ## 5. 备份、恢复与删除
 
@@ -58,7 +74,14 @@ npm run data:restore -- /absolute/path/to/backup --confirm=RESTORE
 npm run data:delete -- --confirm=DELETE_CUSTOMER_DATA
 ```
 
-备份包含 `data/` 中的 SQLite、JSON 和市场缓存，并生成 SHA-256 清单。它不包含浏览器 IndexedDB 中的本地文件夹句柄，也不会复制客户电脑上的原始本地知识库。
+Docker Compose 中执行：
+
+```bash
+docker compose exec contentfactory npm run data:backup
+docker compose exec contentfactory npm run data:restore -- /app/backups/<备份目录> --confirm=RESTORE
+```
+
+备份包含 `CONTENT_FACTORY_DATA_DIR` 中的 SQLite、JSON 和市场缓存，并生成 SHA-256 清单。它不包含浏览器 IndexedDB 中的本地文件夹句柄，也不会复制客户电脑上的原始本地知识库。
 
 ## 6. 回滚与故障处理
 

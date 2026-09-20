@@ -37,9 +37,32 @@ test("destructive commands require an explicit confirmation phrase", async () =>
   await rm(root, { recursive: true, force: true });
 });
 
+test("data and backup environment directories are honored", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "contentfactory-env-data-"));
+  const dataDir = path.join(root, "customer-data");
+  const backupDir = path.join(root, "customer-backups");
+  await mkdir(dataDir);
+  await writeFile(path.join(dataDir, "onboarding.local.json"), '{"version":1}\n');
+
+  const output = runWithEnv(
+    { CONTENT_FACTORY_DATA_DIR: dataDir, CONTENT_FACTORY_BACKUP_DIR: backupDir },
+    "backup",
+  );
+  const createdPath = output.trim().replace(/^备份完成：/, "");
+  const manifest = JSON.parse(await readFile(path.join(createdPath, "manifest.json"), "utf8"));
+  assert.ok(manifest.files["onboarding.local.json"]);
+  assert.equal(path.dirname(createdPath), backupDir);
+  await rm(root, { recursive: true, force: true });
+});
+
 function run(...args) {
+  return runWithEnv({}, ...args);
+}
+
+function runWithEnv(env, ...args) {
   return execFileSync(process.execPath, [script, ...args], {
     cwd: repositoryRoot,
+    env: { ...process.env, ...env },
     encoding: "utf8",
     stdio: "pipe",
   });

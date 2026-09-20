@@ -1,8 +1,8 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type { RemoteKnowledgeSource } from "../types";
 
-const sourceStorePath = path.join(process.cwd(), "data", "knowledge-sources.local.json");
+const sourceStorePath = dataFilePath("knowledge-sources.local.json");
 const emptySourceStore = { sources: [] as RemoteKnowledgeSource[] };
 
 export async function listRemoteKnowledgeSources() {

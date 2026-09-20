@@ -75,9 +75,9 @@ Markdown 面向人工阅读和 Obsidian；JSON 保留完整结构化数据，便
 
 ## 连接独立部署
 
-在扩展的“连接设置”中填写内容工厂地址，点击“保存并授权该地址”。远程部署还必须选择一种服务端授权方式：
+在扩展的“连接设置”中填写内容工厂地址，点击“保存并授权该地址”。远程部署必须配置独立采集令牌：
 
-- 在 `CAPTURE_ALLOWED_ORIGINS` 中配置扩展的精确 Origin，例如 `chrome-extension://abcdefghijklmnopabcdefghijklmnop`；
-- 或设置 `CONTENT_FACTORY_CAPTURE_TOKEN`，并将同一访问码填入扩展。
+- 服务端设置 `CONTENT_FACTORY_CAPTURE_TOKEN`，并将同一令牌填入扩展；
+- 可在 `CAPTURE_ALLOWED_ORIGINS` 中配置扩展的精确 Origin，例如 `chrome-extension://abcdefghijklmnopabcdefghijklmnop`，用于收紧 CORS。
 
-多个允许的 Origin 使用英文逗号分隔。服务端不使用通配 CORS Origin。
+多个允许的 Origin 使用英文逗号分隔。Origin 不是身份凭证；即使 Origin 正确，生产接口没有 Bearer Token 仍会拒绝。只有连接本地非生产开发服务时可以免令牌调试。

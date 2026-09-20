@@ -2,6 +2,8 @@ export type AppConfigStatus = {
   ready: boolean;
   environment: string;
   accessConfigured: boolean;
+  dataDirectoryConfigured: boolean;
+  captureConfigured: boolean;
   feishuConfigured: boolean;
   aiConfigured: boolean;
   imageConfigured: boolean;
@@ -13,16 +15,21 @@ export type AppConfigStatus = {
 export function getConfigStatus(): AppConfigStatus {
   const environment = process.env.NODE_ENV || "development";
   const accessConfigured = Boolean(process.env.CONTENT_FACTORY_ACCESS_CODE);
+  const dataDirectoryConfigured = Boolean(process.env.CONTENT_FACTORY_DATA_DIR);
+  const captureConfigured = Boolean(process.env.CONTENT_FACTORY_CAPTURE_TOKEN);
   const aiConfigured = Boolean(process.env.AI_BASE_URL && process.env.AI_API_KEY && process.env.AI_MODEL);
   const missingRequired = [
     ...(!aiConfigured ? ["AI_BASE_URL / AI_API_KEY / AI_MODEL"] : []),
     ...(environment === "production" && !accessConfigured ? ["CONTENT_FACTORY_ACCESS_CODE"] : []),
+    ...(environment === "production" && !dataDirectoryConfigured ? ["CONTENT_FACTORY_DATA_DIR"] : []),
   ];
 
   return {
     ready: missingRequired.length === 0,
     environment,
     accessConfigured,
+    dataDirectoryConfigured,
+    captureConfigured,
     feishuConfigured: Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET),
     aiConfigured,
     imageConfigured: Boolean(

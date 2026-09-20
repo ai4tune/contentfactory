@@ -1,12 +1,12 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type { ContentChannel, ContentProject } from "@/modules/content/types";
 import type { ChannelReview } from "../types";
 import { appendStyleFeedback } from "@/modules/style-profile/server/feedback-repository";
 
 type ProjectStore = { projects: ContentProject[] };
 
-const projectStorePath = path.join(process.cwd(), "data", "content-projects.local.json");
+const projectStorePath = dataFilePath("content-projects.local.json");
 const emptyStore: ProjectStore = { projects: [] };
 
 export class ReviewUpdateError extends Error {

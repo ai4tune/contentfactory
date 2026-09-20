@@ -1,5 +1,5 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "./local-store/json-file";
+import { dataFilePath } from "./data-directory";
 import type { AccountContext } from "@/modules/positioning/types";
 import type { AccountCapture } from "@/modules/positioning/capture";
 import type {
@@ -53,7 +53,7 @@ export type ContentStore = {
   articles: ArticleRecord[];
 };
 
-const storePath = path.join(process.cwd(), "data", "contentfactory.local.json");
+const storePath = dataFilePath("contentfactory.local.json");
 
 const emptyStore: ContentStore = {
   accountContext: null,

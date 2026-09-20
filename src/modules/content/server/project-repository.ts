@@ -1,5 +1,5 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type { AccountContext } from "@/modules/positioning/types";
 import type {
   ChannelDraft,
@@ -14,7 +14,7 @@ import type { StyleContract } from "@/modules/style-profile/types";
 type StoredContentProject = ContentProject & { reviewStatus?: DraftReviewStatus };
 type ProjectStore = { projects: StoredContentProject[] };
 
-const projectStorePath = path.join(process.cwd(), "data", "content-projects.local.json");
+const projectStorePath = dataFilePath("content-projects.local.json");
 const emptyStore: ProjectStore = { projects: [] };
 
 export async function listContentProjects() {

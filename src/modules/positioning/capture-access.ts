@@ -18,14 +18,26 @@ export function checkCaptureAccess(request: Request, preflight = false): Capture
   const suppliedToken = readBearerToken(request.headers.get("authorization"));
   const tokenValid = configuredToken ? safeEqual(configuredToken, suppliedToken) : false;
   const sameOrigin = origin === requestUrl.origin;
-  const localExtension = isLoopback(requestUrl.hostname) && origin.startsWith("chrome-extension://");
+  const extensionOrigin = origin.startsWith("chrome-extension://");
+  const localDevelopmentExtension = process.env.NODE_ENV !== "production"
+    && isLoopback(requestUrl.hostname)
+    && extensionOrigin;
   const configuredOrigin = allowedOrigins.has(origin);
-  const tokenPreflight = preflight && Boolean(configuredToken) && origin.startsWith("chrome-extension://");
-  const allowed = Boolean(origin) && (sameOrigin || localExtension || configuredOrigin || tokenValid || tokenPreflight);
+  const extensionCorsAllowed = extensionOrigin
+    && (allowedOrigins.size > 0 ? configuredOrigin : Boolean(configuredToken));
+  const corsAllowed = !origin
+    || sameOrigin
+    || configuredOrigin
+    || extensionCorsAllowed
+    || localDevelopmentExtension;
+  const credentialValid = tokenValid || localDevelopmentExtension;
+  const allowed = preflight
+    ? Boolean(origin) && corsAllowed && (Boolean(configuredToken) || localDevelopmentExtension)
+    : corsAllowed && credentialValid;
 
   return {
     allowed,
-    corsHeaders: origin ? {
+    corsHeaders: origin && corsAllowed ? {
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
