@@ -26,11 +26,13 @@ before(async () => {
   processes.push(mock);
   await waitForUrl(`http://127.0.0.1:${aiPort}/health`, 10_000);
 
-  const nextBinary = process.env.NEXT_BIN || path.join(repositoryRoot, "node_modules/.bin/next");
-  const app = spawn(nextBinary, ["start", "--hostname", "127.0.0.1", "--port", String(appPort)], {
+  const standaloneServer = path.join(repositoryRoot, ".next/standalone/server.js");
+  const app = spawn(process.execPath, [standaloneServer], {
     cwd: repositoryRoot,
     env: {
       ...process.env,
+      HOSTNAME: "127.0.0.1",
+      PORT: String(appPort),
       AI_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
       AI_API_KEY: "acceptance-test-key",
       AI_MODEL: "acceptance-mock",

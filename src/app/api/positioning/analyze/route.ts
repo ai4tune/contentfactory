@@ -3,6 +3,7 @@ import type { PositioningRequest } from "@/lib/ai";
 import { analyzeAccountContext } from "@/modules/positioning/service";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {

@@ -27,11 +27,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "缺少必要参数: title" }, { status: 400 });
     }
 
-    const existing = listIdeasFromDb().find(idea => idea.title === title.trim() && (marketItemId ? idea.market_item_id === marketItemId : !idea.market_item_id && (idea.summary || "") === (summary?.trim() || "") && (idea.platform || "") === (platform || "")));
+    const existing = (await listIdeasFromDb()).find(idea => idea.title === title.trim() && (marketItemId ? idea.market_item_id === marketItemId : !idea.market_item_id && (idea.summary || "") === (summary?.trim() || "") && (idea.platform || "") === (platform || "")));
     if (existing) return NextResponse.json({ success: true, data: existing });
     const id = `idea_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    saveIdeaToDb({
+    await saveIdeaToDb({
       id,
       title: title.trim(),
       summary: summary?.trim(),

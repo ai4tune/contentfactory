@@ -15,6 +15,10 @@ test("example environment contains deployment guardrails without real secrets", 
     "IMAGE_API_KEY",
     "FEISHU_APP_SECRET",
     "REDFOX_API_KEY",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "CONTENT_FACTORY_WORKSPACE_ID",
   ]) {
     assert.match(example, new RegExp(`^${name}=$`, "m"));
   }
@@ -28,8 +32,24 @@ test("client bundles do not reference public secret environment variables", asyn
   const files = await sourceFiles(path.join(repositoryRoot, "src"));
   for (const file of files) {
     const source = await readFile(file, "utf8");
-    assert.doesNotMatch(source, /NEXT_PUBLIC_[A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD)/, file);
+    assert.doesNotMatch(
+      source,
+      /NEXT_PUBLIC_(?!SUPABASE_PUBLISHABLE_KEY)[A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD)/,
+      file,
+    );
   }
+});
+
+test("Supabase service-role persistence stays server-only and has a migration", async () => {
+  const [admin, migration] = await Promise.all([
+    readFile(path.join(repositoryRoot, "src/lib/supabase/admin.ts"), "utf8"),
+    readFile(path.join(repositoryRoot, "supabase/migrations/202609200001_content_factory_cloud.sql"), "utf8"),
+  ]);
+  assert.match(admin, /SUPABASE_SERVICE_ROLE_KEY|supabaseServiceRoleKey/);
+  assert.doesNotMatch(admin, /NEXT_PUBLIC_SUPABASE_SERVICE/);
+  assert.match(migration, /content_factory_workspace_members/);
+  assert.match(migration, /content_factory_state/);
+  assert.match(migration, /enable row level security/);
 });
 
 test("production access middleware protects application routes and leaves health public", async () => {

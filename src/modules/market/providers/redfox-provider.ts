@@ -95,13 +95,13 @@ export function createRedFoxProvider(config: ProviderConfig) {
     const configuredCost = marketRequestCost();
 
     // 检查缓存
-    const cached = getProviderCache(cacheKey);
+    const cached = await getProviderCache(cacheKey);
     if (cached) {
       const ttl = CACHE_TTL[endpoint] || CACHE_TTL.default;
       const cachedAt = new Date(`${String(cached.updated_at).replace(" ", "T")}Z`).getTime();
       if (Date.now() - cachedAt < ttl) {
         // 记录缓存命中
-        saveProviderCallLog({
+        await saveProviderCallLog({
           provider: "redfox",
           endpoint,
           startedAt: startTime,
@@ -121,10 +121,10 @@ export function createRedFoxProvider(config: ProviderConfig) {
       const data = await callRedFoxApi(endpoint, params, method);
 
       // 缓存响应
-      setProviderCache(cacheKey, "redfox", endpoint, JSON.stringify(data));
+      await setProviderCache(cacheKey, "redfox", endpoint, JSON.stringify(data));
 
       // 记录调用
-      saveProviderCallLog({
+      await saveProviderCallLog({
         provider: "redfox",
         endpoint,
         startedAt: startTime,
@@ -140,7 +140,7 @@ export function createRedFoxProvider(config: ProviderConfig) {
     } catch (error) {
       const safeMessage = (error instanceof Error ? error.message : String(error)).replaceAll(apiKey!, "[redacted]");
       if (cached) {
-        saveProviderCallLog({
+        await saveProviderCallLog({
           provider: "redfox",
           endpoint,
           startedAt: startTime,
@@ -155,7 +155,7 @@ export function createRedFoxProvider(config: ProviderConfig) {
         return JSON.parse(cached.response as string) as T;
       }
 
-      saveProviderCallLog({
+      await saveProviderCallLog({
         provider: "redfox",
         endpoint,
         startedAt: startTime,

@@ -26,7 +26,7 @@ export async function POST(
     const ideaId = generateId();
 
     // 保存到 SQLite
-    saveIdeaToDb({
+    await saveIdeaToDb({
       id: ideaId,
       title: inspiration.content.title,
       summary: inspiration.analysis.summary || undefined,

@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { readCloudState, updateCloudState } from "@/lib/cloud-state";
+import { isSupabasePersistenceConfigured } from "@/lib/supabase/config";
 
 const updateQueues = new Map<string, Promise<unknown>>();
 
 export async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
+  if (isSupabasePersistenceConfigured()) {
+    return readCloudState(storeKey(filePath), fallback);
+  }
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as T;
   } catch (error) {
@@ -21,6 +26,9 @@ export async function updateJsonFile<T>(
   fallback: T,
   update: (current: T) => T | Promise<T>,
 ): Promise<T> {
+  if (isSupabasePersistenceConfigured()) {
+    return updateCloudState(storeKey(filePath), fallback, update);
+  }
   const previous = updateQueues.get(filePath) ?? Promise.resolve();
   const next = previous.then(async () => {
     const current = await readJsonFile(filePath, fallback);
@@ -40,6 +48,10 @@ export async function updateJsonFile<T>(
       updateQueues.delete(filePath);
     }
   }
+}
+
+function storeKey(filePath: string) {
+  return `json:${path.basename(filePath)}`;
 }
 
 async function writeJsonFileAtomic(filePath: string, value: unknown) {

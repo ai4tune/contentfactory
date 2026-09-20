@@ -8,7 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const nextBinary = process.env.NEXT_BIN || path.join(repositoryRoot, "node_modules/.bin/next");
+const standaloneServer = path.join(repositoryRoot, ".next/standalone/server.js");
 const maintenanceScript = path.join(repositoryRoot, "ops/data-maintenance.mjs");
 const port = Number(process.env.PERSISTENCE_TEST_PORT || 4331);
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -22,10 +22,12 @@ test("configured data survives restart and verified backup restore", async (t) =
   let output = "";
 
   async function start() {
-    app = spawn(nextBinary, ["start", "--hostname", "127.0.0.1", "--port", String(port)], {
+    app = spawn(process.execPath, [standaloneServer], {
       cwd: repositoryRoot,
       env: {
         ...process.env,
+        HOSTNAME: "127.0.0.1",
+        PORT: String(port),
         AI_BASE_URL: "http://127.0.0.1:9/v1",
         AI_API_KEY: "persistence-test-key",
         AI_MODEL: "persistence-test-model",

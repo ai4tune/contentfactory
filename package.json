@@ -14,9 +14,12 @@
     "test:acceptance": "npm run lint && npm run test:guardrails && npm run test:extension && npm run test:api && node --test src/tests/v2-handoff.test.mjs",
     "data:backup": "node ops/data-maintenance.mjs backup",
     "data:restore": "node ops/data-maintenance.mjs restore",
-    "data:delete": "node ops/data-maintenance.mjs delete"
+    "data:delete": "node ops/data-maintenance.mjs delete",
+    "data:migrate:supabase": "node ops/migrate-local-data-to-supabase.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
     "better-sqlite3": "^11.0.0",
     "next": "16.3.5",
     "react": "19.2.4",

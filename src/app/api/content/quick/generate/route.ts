@@ -3,6 +3,7 @@ import { parseQuickCreationRequest, QuickRequestError } from "@/modules/content/
 import { generateQuickContent } from "@/modules/content/quick/service";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {

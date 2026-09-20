@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 const DEFAULT_USER = "contentfactory";
 
 // Next.js 16 的 Node proxy 仍存在请求体克隆竞态。试点期保留 Edge middleware
 // 兼容入口，避免内容生成等 JSON 请求被偶发截断。
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  if (isPublicPath(request.nextUrl.pathname)) return NextResponse.next();
+  if (hasSupabaseAuthConfiguration()) return supabaseAccess(request);
   const accessCode = process.env.CONTENT_FACTORY_ACCESS_CODE;
 
   if (!accessCode) {
@@ -27,6 +30,67 @@ export function middleware(request: NextRequest) {
       "WWW-Authenticate": 'Basic realm="AI Content Factory", charset="UTF-8"',
     },
   });
+}
+
+async function supabaseAccess(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  if (isPublicPath(pathname)) return NextResponse.next();
+
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll(values) {
+          values.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          values.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        },
+      },
+    },
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return unauthorized(request, "/login");
+
+  const workspaceId = process.env.CONTENT_FACTORY_WORKSPACE_ID;
+  if (!workspaceId) return unavailable(request);
+  const { data: membership, error } = await supabase
+    .from("content_factory_workspace_members")
+    .select("role")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error || !membership) return unauthorized(request, "/access-denied", 403);
+  return response;
+}
+
+function hasSupabaseAuthConfiguration() {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL
+    && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  );
+}
+
+function isPublicPath(pathname: string) {
+  return pathname === "/login"
+    || pathname === "/access-denied"
+    || pathname === "/api/health"
+    || pathname === "/api/auth/signout"
+    || pathname.startsWith("/api/capture/")
+    || pathname === "/api/topics/search-plan";
+}
+
+function unauthorized(request: NextRequest, destination: string, status = 401) {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: status === 403 ? "无权访问此客户空间。" : "请先登录。" }, { status });
+  }
+  const url = request.nextUrl.clone();
+  url.pathname = destination;
+  url.search = "";
+  if (destination === "/login") url.searchParams.set("next", request.nextUrl.pathname);
+  return NextResponse.redirect(url);
 }
 
 function readBasicCredentials(value: string | null) {
@@ -63,6 +127,6 @@ function unavailable(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api/health|api/capture|api/topics/search-plan|_next/static|_next/image|favicon.ico|icon.svg|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico)$).*)",
   ],
 };

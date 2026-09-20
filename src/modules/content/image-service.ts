@@ -205,7 +205,7 @@ async function requestImage(prompt: string) {
     const imageUrl = payload.data?.[0]?.url;
     if (!imageUrl) throw new Error("生图服务没有返回可保存的图片地址。");
 
-    recordImageCall(startedAt, model, true);
+    await recordImageCall(startedAt, model, true);
     return {
       url: normalizeGeneratedImageUrl(imageUrl),
       revisedPrompt: payload.data?.[0]?.revised_prompt,
@@ -214,16 +214,16 @@ async function requestImage(prompt: string) {
     const code = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
       ? "TIMEOUT"
       : "REQUEST_ERROR";
-    recordImageCall(startedAt, model, false, code);
+    await recordImageCall(startedAt, model, false, code);
     throw error;
   }
 }
 
-function recordImageCall(startedAt: Date, model: string, success: boolean, errorCode?: string) {
+async function recordImageCall(startedAt: Date, model: string, success: boolean, errorCode?: string) {
   const finishedAt = new Date();
   const configuredCost = Number(process.env.IMAGE_COST_PER_REQUEST);
   try {
-    saveProviderCallLog({
+    await saveProviderCallLog({
       provider: "image",
       endpoint: "images.generations",
       model,

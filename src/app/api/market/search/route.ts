@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     // 保存到数据库
     let publicItems;
     try {
-      publicItems = persistMarketItems(rankedItems);
+      publicItems = await persistMarketItems(rankedItems);
     } catch (dbError) {
       console.error("保存到数据库失败:", dbError);
       return NextResponse.json({ error: "搜索结果保存失败，请重试后再收藏。" }, { status: 500 });

@@ -10,15 +10,15 @@ export function marketProvider() {
     baseUrl: process.env.REDFOX_BASE_URL || (process.env.REDFOX_HOST ? `https://${process.env.REDFOX_HOST}` : undefined) });
 }
 
-export function persistMarketItems(items: Array<MarketItem & { opportunityScore?: OpportunityScore }>) {
-  return items.map(item => publicMarketItem({ ...item, id: upsertMarketItemToDb({
+export async function persistMarketItems(items: Array<MarketItem & { opportunityScore?: OpportunityScore }>) {
+  return Promise.all(items.map(async (item) => publicMarketItem({ ...item, id: await upsertMarketItemToDb({
       ...item, authorId: item.author.id, authorName: item.author.name,
       authorFollowers: item.author.followers ?? undefined, authorProfileUrl: item.author.profileUrl,
       views: item.metrics.views ?? undefined, likes: item.metrics.likes ?? undefined,
       collects: item.metrics.collects ?? undefined, comments: item.metrics.comments ?? undefined,
       shares: item.metrics.shares ?? undefined,
       opportunityScore: item.opportunityScore?.total,
-    }) }));
+    }) })));
 }
 
 export function publicMarketItem(item: MarketItem): MarketItem {
