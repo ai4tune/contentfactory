@@ -24,7 +24,7 @@ export function getConfigStatus(): AppConfigStatus {
   );
   const supabasePersistenceConfigured = Boolean(
     supabaseAuthConfigured
-    && process.env.SUPABASE_SERVICE_ROLE_KEY
+    && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)
     && process.env.CONTENT_FACTORY_WORKSPACE_ID,
   );
   const captureConfigured = Boolean(process.env.CONTENT_FACTORY_CAPTURE_TOKEN);
@@ -34,7 +34,7 @@ export function getConfigStatus(): AppConfigStatus {
     ...(environment === "production" && !supabaseAuthConfigured && !accessConfigured
       ? ["Supabase auth or CONTENT_FACTORY_ACCESS_CODE"] : []),
     ...(environment === "production" && supabaseAuthConfigured && !supabasePersistenceConfigured
-      ? ["SUPABASE_SERVICE_ROLE_KEY / CONTENT_FACTORY_WORKSPACE_ID"] : []),
+      ? ["SUPABASE_SECRET_KEY / CONTENT_FACTORY_WORKSPACE_ID"] : []),
     ...(environment === "production" && !supabaseAuthConfigured && !dataDirectoryConfigured
       ? ["CONTENT_FACTORY_DATA_DIR"] : []),
   ];

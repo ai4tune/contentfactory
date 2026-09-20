@@ -6,8 +6,10 @@ export function supabasePublishableKey() {
   return process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() || "";
 }
 
-export function supabaseServiceRoleKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+export function supabaseSecretKey() {
+  return process.env.SUPABASE_SECRET_KEY?.trim()
+    || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+    || "";
 }
 
 export function contentFactoryWorkspaceId() {
@@ -19,5 +21,5 @@ export function isSupabaseAuthConfigured() {
 }
 
 export function isSupabasePersistenceConfigured() {
-  return Boolean(supabaseUrl() && supabaseServiceRoleKey() && contentFactoryWorkspaceId());
+  return Boolean(supabaseUrl() && supabaseSecretKey() && contentFactoryWorkspaceId());
 }

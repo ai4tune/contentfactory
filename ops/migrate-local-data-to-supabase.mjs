@@ -8,7 +8,9 @@ const confirmed = process.argv.includes("--confirm=MIGRATE");
 const replace = process.argv.includes("--replace");
 const dataDir = path.resolve(process.env.CONTENT_FACTORY_DATA_DIR || path.join(process.cwd(), "data"));
 const url = required("NEXT_PUBLIC_SUPABASE_URL");
-const key = required("SUPABASE_SERVICE_ROLE_KEY");
+const key = process.env.SUPABASE_SECRET_KEY?.trim()
+  || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  || required("SUPABASE_SECRET_KEY");
 const workspaceId = required("CONTENT_FACTORY_WORKSPACE_ID");
 const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 

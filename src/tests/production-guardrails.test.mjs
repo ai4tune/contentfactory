@@ -17,7 +17,7 @@ test("example environment contains deployment guardrails without real secrets", 
     "REDFOX_API_KEY",
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_SECRET_KEY",
     "CONTENT_FACTORY_WORKSPACE_ID",
   ]) {
     assert.match(example, new RegExp(`^${name}=$`, "m"));
@@ -40,12 +40,12 @@ test("client bundles do not reference public secret environment variables", asyn
   }
 });
 
-test("Supabase service-role persistence stays server-only and has a migration", async () => {
+test("Supabase secret-key persistence stays server-only and has a migration", async () => {
   const [admin, migration] = await Promise.all([
     readFile(path.join(repositoryRoot, "src/lib/supabase/admin.ts"), "utf8"),
     readFile(path.join(repositoryRoot, "supabase/migrations/202609200001_content_factory_cloud.sql"), "utf8"),
   ]);
-  assert.match(admin, /SUPABASE_SERVICE_ROLE_KEY|supabaseServiceRoleKey/);
+  assert.match(admin, /SUPABASE_SECRET_KEY|supabaseSecretKey/);
   assert.doesNotMatch(admin, /NEXT_PUBLIC_SUPABASE_SERVICE/);
   assert.match(migration, /content_factory_workspace_members/);
   assert.match(migration, /content_factory_state/);

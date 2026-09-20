@@ -10,7 +10,7 @@
 - Supabase Storage：私有门店图片、资料和后续需要长期保存的生成资产。
 - 每位首批客户仍使用独立 Vercel 项目和独立 Supabase workspace；暂不建设公开注册、付费和复杂多租户后台。
 
-App Router 使用 `@supabase/ssr`。浏览器只获得 URL 和 publishable key；service role key 只存在于 Vercel 服务端环境变量。
+App Router 使用 `@supabase/ssr`。浏览器只获得 URL 和 publishable key；secret key 只存在于 Vercel 服务端环境变量。
 
 ## 需要准备的资源
 
@@ -22,7 +22,7 @@ App Router 使用 `@supabase/ssr`。浏览器只获得 URL 和 publishable key�
 
 - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
 - Publishable key → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- Service role key → `SUPABASE_SERVICE_ROLE_KEY`，仅服务端保存
+- Secret key（`sb_secret_...`）→ `SUPABASE_SECRET_KEY`，仅服务端保存。旧项目的 `service_role` key 仍兼容，但新部署优先使用 secret key
 
 在 SQL Editor 执行：
 
@@ -71,7 +71,7 @@ workspace UUID 配置为 `CONTENT_FACTORY_WORKSPACE_ID`。owner 可以查看内�
 ```env
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_SECRET_KEY=
 CONTENT_FACTORY_WORKSPACE_ID=
 NEXT_PUBLIC_SITE_URL=https://你的域名
 
@@ -119,7 +119,7 @@ MARKET_COST_PER_REQUEST=
 
 1. 创建并连接 Vercel 项目；
 2. 在 Vercel Dashboard → Settings → Environment Variables 中填写；
-3. service role、AI、图片、市场和飞书密钥标记为 Sensitive，只给 Production；
+3. Supabase secret、AI、图片、市场和飞书密钥标记为 Sensitive，只给 Production；
 4. Preview 使用单独测试值；
 5. 本地需要验证时，通过 `vercel env pull .env.local --environment=preview` 拉取，不提交 `.env.local`。
 

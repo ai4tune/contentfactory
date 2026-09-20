@@ -51,7 +51,7 @@ create policy "members can read their membership"
   to authenticated
   using (user_id = auth.uid());
 
--- Application state is intentionally accessed by the server-only service-role client.
+-- Application state is intentionally accessed by a server-only secret-key client.
 -- Browser clients never receive direct access to customer state.
 
 commit;
