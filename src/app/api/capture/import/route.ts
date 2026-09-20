@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const access = checkCaptureAccess(request);
   if (!access.allowed) {
     return NextResponse.json(
-      { error: "Capture origin is not allowed" },
+      { error: "Capture authorization is required" },
       { status: 403, headers: access.corsHeaders },
     );
   }

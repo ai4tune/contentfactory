@@ -1,5 +1,5 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type { WeeklyReview } from "./types";
 
 type WeeklyReviewStore = {
@@ -7,7 +7,7 @@ type WeeklyReviewStore = {
   reviews: WeeklyReview[];
 };
 
-const storePath = path.join(process.cwd(), "data", "weekly-reviews.local.json");
+const storePath = dataFilePath("weekly-reviews.local.json");
 const emptyStore: WeeklyReviewStore = { schemaVersion: 1, reviews: [] };
 
 export async function listWeeklyReviews(contentPlanId: string): Promise<WeeklyReview[]> {

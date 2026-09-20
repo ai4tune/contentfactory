@@ -2,15 +2,15 @@
 // 使用 better-sqlite3 作为本地数据库
 
 import Database from "better-sqlite3";
-import path from "path";
 import fs from "fs";
 import type { MarketAccount, MarketItem } from "@/modules/market/types";
+import { dataFilePath, getDataDirectory } from "@/lib/data-directory";
 
 // 数据目录
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = getDataDirectory();
 
 // 数据库文件路径
-const DB_PATH = path.join(DATA_DIR, "contentfactory.db");
+const DB_PATH = dataFilePath("contentfactory.db");
 
 let connection: Database.Database | undefined;
 

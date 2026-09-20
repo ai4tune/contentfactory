@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,25 +12,12 @@ const appPort = Number(process.env.ACCEPTANCE_APP_PORT || 4319);
 const aiPort = Number(process.env.MOCK_AI_PORT || 4320);
 const baseUrl = `http://127.0.0.1:${appPort}`;
 const authorization = `Basic ${Buffer.from("acceptance:acceptance-access-code").toString("base64")}`;
-const dataFiles = [
-  "data/contentfactory.local.json",
-  "data/content-projects.local.json",
-  "data/knowledge-sources.local.json",
-  "data/style-profiles.local.json",
-  "data/style-feedback.local.json",
-  "data/content-plans.local.json",
-  "data/weekly-reviews.local.json",
-  "data/onboarding.local.json",
-  "data/contentfactory.db",
-  "data/contentfactory.db-wal",
-  "data/contentfactory.db-shm",
-];
-const backups = new Map();
 const processes = [];
 let serverOutput = "";
+let acceptanceDataDir = "";
 
 before(async () => {
-  await backupDataFiles();
+  acceptanceDataDir = await mkdtemp(path.join(tmpdir(), "contentfactory-acceptance-"));
   const mock = spawn(process.execPath, [path.join(testDirectory, "mock-ai-gateway.mjs")], {
     cwd: repositoryRoot,
     env: { ...process.env, MOCK_AI_PORT: String(aiPort), MOCK_STYLE_DELAY_MS: "2300", MOCK_PLAN_DELAY_MS: "2300" },
@@ -57,6 +45,7 @@ before(async () => {
       CONTENT_FACTORY_CAPTURE_TOKEN: "acceptance-capture-token",
       CONTENT_FACTORY_ACCESS_USER: "acceptance",
       CONTENT_FACTORY_ACCESS_CODE: "acceptance-access-code",
+      CONTENT_FACTORY_DATA_DIR: acceptanceDataDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -69,7 +58,7 @@ before(async () => {
 after(async () => {
   for (const child of processes.reverse()) child.kill("SIGTERM");
   await Promise.all(processes.map(waitForExit));
-  await restoreDataFiles();
+  await rm(acceptanceDataDir, { recursive: true, force: true });
 });
 
 test("P0 core API flow: account → knowledge → brief → four channels", async (context) => {
@@ -87,6 +76,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(health.body.ready, true);
     assert.deepEqual(health.body.missingRequired, []);
     assert.equal(health.body.imageConfigured, true);
+    assert.equal(health.body.dataDirectoryConfigured, true);
+    assert.equal(health.body.captureConfigured, true);
     assert.doesNotMatch(JSON.stringify(health.body), /acceptance-test-key|acceptance-image-key/);
 
     const positioningError = await requestJson("/api/positioning/analyze", {
@@ -451,7 +442,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
 
     const list = await requestJson("/api/content-plans");
     assert.equal(list.body.plans.some((plan) => plan.id === contentPlan.id), true);
-    const stored = JSON.parse(await readFile(path.join(repositoryRoot, "data/content-plans.local.json"), "utf8"));
+    const stored = JSON.parse(await readFile(path.join(acceptanceDataDir, "content-plans.local.json"), "utf8"));
     assert.equal(stored.schemaVersion, 1);
     assert.equal(stored.plans.some((plan) => plan.id === contentPlan.id), true);
   });
@@ -589,15 +580,30 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(preflight.status, 204);
     assert.equal(preflight.headers.get("access-control-allow-origin"), captureOrigin);
 
-    const unauthorizedCapture = await requestJson("/api/capture/import", {
+    const noCredentialResponse = await fetch(`${baseUrl}/api/capture/import`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "小红书", title: "未授权采集", content: "正文" }),
+    });
+    assert.equal(noCredentialResponse.status, 403);
+
+    const wrongCredential = await requestJson("/api/capture/import", {
+      method: "POST",
+      headers: { Authorization: "Bearer wrong-capture-token" },
       body: { platform: "小红书", title: "未授权采集", content: "正文" },
     });
-    assert.equal(unauthorizedCapture.response.status, 403);
+    assert.equal(wrongCredential.response.status, 403);
+
+    const forgedSameOrigin = await requestJson("/api/capture/import", {
+      method: "POST",
+      headers: { Origin: baseUrl },
+      body: { platform: "小红书", title: "伪造同源采集", content: "正文" },
+    });
+    assert.equal(forgedSameOrigin.response.status, 403);
 
     const recaptured = await requestJson("/api/capture/import", {
       method: "POST",
-      headers: { Origin: captureOrigin },
+      headers: { Authorization: "Bearer acceptance-capture-token", Origin: captureOrigin },
       body: {
         platform: "小红书",
         sourceUrl: "https://www.xiaohongshu.com/explore/acceptance?xsec_token=temporary",
@@ -639,7 +645,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(invalid.response.status, 400);
 
-    const storeFile = path.join(repositoryRoot, "data/contentfactory.local.json");
+    const storeFile = path.join(acceptanceDataDir, "contentfactory.local.json");
     const stored = JSON.parse(await readFile(storeFile, "utf8"));
     stored.inspirations.push({
       id: "legacy-inspiration-001",
@@ -1173,13 +1179,13 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(plan.body.plan.items.find((item) => item.id === project.contentPlanItemId).status, "reviewed");
     assert.equal(plan.body.plan.items.find((item) => item.id === quickPlanItemId).status, "reviewed");
 
-    const stored = JSON.parse(await readFile(path.join(repositoryRoot, "data/weekly-reviews.local.json"), "utf8"));
+    const stored = JSON.parse(await readFile(path.join(acceptanceDataDir, "weekly-reviews.local.json"), "utf8"));
     assert.equal(stored.schemaVersion, 1);
     assert.equal(stored.reviews.length, 2);
   });
 
   await context.test("legacy object placeholders are removed when a saved draft is read", async () => {
-    const projectStorePath = path.join(repositoryRoot, "data/content-projects.local.json");
+    const projectStorePath = path.join(acceptanceDataDir, "content-projects.local.json");
     const store = JSON.parse(await readFile(projectStorePath, "utf8"));
     store.projects = store.projects.map((item) => {
       if (item.id !== project.id) return item;
@@ -1207,7 +1213,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
 
     const captured = await requestJson("/api/capture/account", {
       method: "POST",
-      headers: { Authorization: "Bearer acceptance-capture-token", Origin: baseUrl },
+      headers: { Authorization: "Bearer acceptance-capture-token", Origin: "chrome-extension://acceptance-extension" },
       body: {
         action: "analyze",
         capture: {
@@ -1251,7 +1257,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
 
     const confirmed = await requestJson("/api/capture/account", {
       method: "POST",
-      headers: { Authorization: "Bearer acceptance-capture-token", Origin: baseUrl },
+      headers: { Authorization: "Bearer acceptance-capture-token", Origin: "chrome-extension://acceptance-extension" },
       body: { action: "confirm", draft: refreshed.body.draft },
     });
     assert.equal(confirmed.response.status, 200);
@@ -1260,7 +1266,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
 
     const searchPlan = await requestJson("/api/topics/search-plan", {
       method: "POST",
-      headers: { Authorization: "Bearer acceptance-capture-token", Origin: baseUrl },
+      headers: { Authorization: "Bearer acceptance-capture-token", Origin: "chrome-extension://acceptance-extension" },
       body: {},
     });
     assert.equal(searchPlan.response.status, 200);
@@ -1386,31 +1392,6 @@ async function waitForUrl(url, timeout) {
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error(`Timed out waiting for ${url}\n${serverOutput}`);
-}
-
-async function backupDataFiles() {
-  for (const relativePath of dataFiles) {
-    const filePath = path.join(repositoryRoot, relativePath);
-    try {
-      await access(filePath);
-      backups.set(relativePath, await readFile(filePath));
-    } catch {
-      backups.set(relativePath, null);
-    }
-    await rm(filePath, { force: true });
-  }
-}
-
-async function restoreDataFiles() {
-  for (const [relativePath, content] of backups) {
-    const filePath = path.join(repositoryRoot, relativePath);
-    if (content === null) {
-      await rm(filePath, { force: true });
-    } else {
-      await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, content);
-    }
-  }
 }
 
 function waitForExit(child) {

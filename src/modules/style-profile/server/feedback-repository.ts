@@ -1,12 +1,12 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type { ContentChannel } from "@/modules/content/types";
 import type { StyleContract } from "../types";
 import type { StyleFeedbackAction, StyleFeedbackRecord } from "../feedback";
 
 type FeedbackStore = { feedback: StyleFeedbackRecord[] };
 
-const feedbackStorePath = path.join(process.cwd(), "data", "style-feedback.local.json");
+const feedbackStorePath = dataFilePath("style-feedback.local.json");
 const emptyStore: FeedbackStore = { feedback: [] };
 
 export async function listStyleFeedback(limit = 100) {

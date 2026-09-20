@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AppShell,
   PageHeader,
@@ -267,6 +267,7 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
 }
 
 function SearchResultCard({ item, compact = false }: { item: MarketItem; compact?: boolean }) {
+  const router = useRouter();
   const [imageFailed, setImageFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -317,7 +318,7 @@ function SearchResultCard({ item, compact = false }: { item: MarketItem; compact
       if (res.ok) {
         const data = await res.json();
         if (data.data?.id) {
-          window.location.href = `/ideas?tab=pool`;
+          router.push("/ideas?tab=pool");
         }
       } else {
         const data = await res.json();

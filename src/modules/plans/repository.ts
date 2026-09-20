@@ -1,6 +1,6 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type {
   ContentPlan,
   ContentPlanItem,
@@ -12,7 +12,7 @@ type ContentPlanStore = {
   plans: ContentPlan[];
 };
 
-const storePath = path.join(process.cwd(), "data", "content-plans.local.json");
+const storePath = dataFilePath("content-plans.local.json");
 const emptyStore: ContentPlanStore = { schemaVersion: 1, plans: [] };
 
 export async function listContentPlans(): Promise<ContentPlan[]> {

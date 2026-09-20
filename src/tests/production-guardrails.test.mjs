@@ -10,6 +10,7 @@ test("example environment contains deployment guardrails without real secrets", 
   const example = await readFile(path.join(repositoryRoot, ".env.example"), "utf8");
   for (const name of [
     "CONTENT_FACTORY_ACCESS_CODE",
+    "CONTENT_FACTORY_CAPTURE_TOKEN",
     "AI_API_KEY",
     "IMAGE_API_KEY",
     "FEISHU_APP_SECRET",
@@ -19,6 +20,8 @@ test("example environment contains deployment guardrails without real secrets", 
   }
   assert.match(example, /^AI_REQUEST_TIMEOUT_MS=\d+$/m);
   assert.match(example, /^MARKET_REQUEST_TIMEOUT_MS=\d+$/m);
+  assert.match(example, /^CONTENT_FACTORY_DATA_DIR=$/m);
+  assert.match(example, /^CONTENT_FACTORY_BACKUP_DIR=$/m);
 });
 
 test("client bundles do not reference public secret environment variables", async () => {
@@ -37,6 +40,29 @@ test("production access middleware protects application routes and leaves health
   assert.match(source, /api\/health/);
   assert.match(source, /api\/capture/);
   assert.match(source, /api\/topics\/search-plan/);
+});
+
+test("capture endpoints require credentials and never treat Origin as identity", async () => {
+  const source = await readFile(
+    path.join(repositoryRoot, "src/modules/positioning/capture-access.ts"),
+    "utf8",
+  );
+  assert.match(source, /const credentialValid = tokenValid/);
+  assert.match(source, /corsAllowed && credentialValid/);
+  assert.doesNotMatch(source, /const allowed = Boolean\(origin\).*sameOrigin/);
+});
+
+test("single-instance container uses standalone output and persistent volumes", async () => {
+  const [nextConfig, dockerfile, compose] = await Promise.all([
+    readFile(path.join(repositoryRoot, "next.config.ts"), "utf8"),
+    readFile(path.join(repositoryRoot, "Dockerfile"), "utf8"),
+    readFile(path.join(repositoryRoot, "docker-compose.yml"), "utf8"),
+  ]);
+  assert.match(nextConfig, /output:\s*["']standalone["']/);
+  assert.match(dockerfile, /USER nextjs/);
+  assert.match(dockerfile, /CONTENT_FACTORY_DATA_DIR=\/app\/data/);
+  assert.match(compose, /contentfactory-data:\/app\/data/);
+  assert.match(compose, /contentfactory-backups:\/app\/backups/);
 });
 
 test("market requests have bounded timeouts and stale-cache degradation", async () => {

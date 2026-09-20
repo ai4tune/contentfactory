@@ -1,5 +1,5 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type { ContentChannel } from "@/modules/content/types";
 import type {
   KnowledgeReadiness,
@@ -12,7 +12,7 @@ export type StoredOnboardingStatus = OnboardingStatus & {
   localKnowledgeCount: number;
 };
 
-const storePath = path.join(process.cwd(), "data", "onboarding.local.json");
+const storePath = dataFilePath("onboarding.local.json");
 
 export async function getStoredOnboardingStatus(): Promise<StoredOnboardingStatus> {
   const fallback = emptyStatus();

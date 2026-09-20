@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:api": "npm run build && node --test src/tests/core-api.test.mjs",
+    "test:api": "npm run build && node --test src/tests/core-api.test.mjs src/tests/persistence-restart.test.mjs",
     "test:extension": "node --test src/tests/extension-*.test.mjs",
     "test:guardrails": "node --test src/tests/production-guardrails.test.mjs src/tests/data-maintenance.test.mjs src/tests/json-file-store.test.mjs",
     "test:v2": "npm run build && node --test src/tests/v2-handoff.test.mjs",
@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
-    "next": "16.2.10",
+    "next": "16.3.5",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -29,7 +29,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

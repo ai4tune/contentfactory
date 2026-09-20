@@ -1,5 +1,5 @@
-import path from "node:path";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
+import { dataFilePath } from "@/lib/data-directory";
 import type { StyleProfile, StyleProfileInput, StyleProfileStatus } from "./types";
 
 type StyleProfileStore = {
@@ -8,7 +8,7 @@ type StyleProfileStore = {
   profile?: StyleProfile | null;
 };
 
-const styleProfileStorePath = path.join(process.cwd(), "data", "style-profiles.local.json");
+const styleProfileStorePath = dataFilePath("style-profiles.local.json");
 const emptyStore: StyleProfileStore = { confirmedProfile: null, draftProfile: null };
 
 export async function getCurrentStyleProfile() {

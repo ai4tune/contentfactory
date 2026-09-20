@@ -5,7 +5,14 @@ import { access, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } fro
 import path from "node:path";
 
 const [command, ...args] = process.argv.slice(2);
-const dataDir = path.resolve(readOption(args, "data-dir") || path.join(process.cwd(), "data"));
+const dataDir = path.resolve(
+  readOption(args, "data-dir")
+    || process.env.CONTENT_FACTORY_DATA_DIR
+    || path.join(process.cwd(), "data"),
+);
+const backupRoot = path.resolve(
+  process.env.CONTENT_FACTORY_BACKUP_DIR || path.join(process.cwd(), "backups"),
+);
 
 try {
   if (command === "backup") await backup();
@@ -22,9 +29,10 @@ async function backup() {
   const destination = path.resolve(
     positional(args)[0]
       || readOption(args, "backup-dir")
-      || path.join(process.cwd(), "backups", `contentfactory-${timestamp()}`),
+      || path.join(backupRoot, `contentfactory-${timestamp()}`),
   );
   if (isInside(destination, dataDir)) throw new Error("备份目录不能放在数据目录内部。");
+  await mkdir(path.dirname(destination), { recursive: true });
   await mkdir(destination, { recursive: false });
   await cp(dataDir, path.join(destination, "data"), { recursive: true, errorOnExist: true });
   const files = await hashDirectory(path.join(destination, "data"));
@@ -55,6 +63,7 @@ async function restore() {
   const exists = await pathExists(dataDir);
   if (exists) await rename(dataDir, previous);
   try {
+    await mkdir(path.dirname(dataDir), { recursive: true });
     await cp(sourceData, dataDir, { recursive: true, errorOnExist: true });
   } catch (error) {
     await rm(dataDir, { recursive: true, force: true });
