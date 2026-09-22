@@ -6,6 +6,7 @@ import { parsePlanGenerationOptions, PlanValidationError } from "@/modules/plans
 import { generateNewContentPlan } from "@/modules/plans/service";
 
 export const runtime = "nodejs";
+export const maxDuration = 800;
 
 export async function GET() {
   return NextResponse.json({ plans: await listContentPlans() });

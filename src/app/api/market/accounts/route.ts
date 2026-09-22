@@ -1,7 +1,7 @@
 import { listTrackedAccountBundles, saveTrackedAccountBundle } from "@/lib/db";
 import { marketError, marketProvider, persistMarketItems, publicMarketAccount, publicTrackedAccountBundle } from "@/modules/market/server";
 
-export async function GET() { return Response.json({ accounts: listTrackedAccountBundles().map(publicTrackedAccountBundle) }); }
+export async function GET() { return Response.json({ accounts: (await listTrackedAccountBundles()).map(publicTrackedAccountBundle) }); }
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -12,9 +12,9 @@ export async function POST(request: Request) {
   try {
     const provider = marketProvider();
     const account = publicMarketAccount(await provider.getAccount(body));
-    const items = persistMarketItems(await provider.getAccountWorks({ platform: account.platform, accountId: account.platformAccountId! }));
+    const items = await persistMarketItems(await provider.getAccountWorks({ platform: account.platform, accountId: account.platformAccountId! }));
     const bundle = { account, items };
-    saveTrackedAccountBundle(bundle);
+    await saveTrackedAccountBundle(bundle);
     return Response.json(bundle);
   } catch (error) { return marketError(error); }
 }

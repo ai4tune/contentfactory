@@ -8,7 +8,7 @@ import { findSavedMarketItem } from "@/modules/market/history";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const item = getMarketItemFromDb(id);
+  const item = await getMarketItemFromDb(id);
   if (!item) return Response.json({ id: null });
   const url = canonicalizeUrl(String(item.source_url || item.canonical_url || ""));
   const record = (await listInspirationRecords()).find(row => normalizePlatformIdentity(row.source.platform) === normalizePlatformIdentity(String(item.platform)) &&
@@ -24,7 +24,7 @@ export async function POST(
     const { id } = await segmentData.params;
 
     // 获取市场项目
-    const marketItem = getMarketItemFromDb(id);
+    const marketItem = await getMarketItemFromDb(id);
     if (!marketItem) {
       return NextResponse.json(
         { error: "未找到市场项目" },

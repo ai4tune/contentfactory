@@ -247,10 +247,10 @@ export async function chatCompletionJson(
     if (!content) throw new OperationError("AI gateway returned an empty response.", "EMPTY_RESPONSE");
 
     const usage = readUsage(responseText);
-    recordAiCall(startedAt, model, true, usage);
+    await recordAiCall(startedAt, model, true, usage);
     return content;
   } catch (error) {
-    recordAiCall(startedAt, model, false, undefined, operationErrorCode(error));
+    await recordAiCall(startedAt, model, false, undefined, operationErrorCode(error));
     throw error;
   }
 }
@@ -261,7 +261,7 @@ class OperationError extends Error {
   }
 }
 
-function recordAiCall(
+async function recordAiCall(
   startedAt: Date,
   model: string,
   success: boolean,
@@ -275,7 +275,7 @@ function recordAiCall(
     ? (usage.input * (inputRate || 0) + usage.output * (outputRate || 0)) / 1_000_000
     : undefined;
   try {
-    saveProviderCallLog({
+    await saveProviderCallLog({
       provider: "ai",
       endpoint: "chat.completions",
       model,

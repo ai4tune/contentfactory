@@ -3,6 +3,8 @@ export type AppConfigStatus = {
   environment: string;
   accessConfigured: boolean;
   dataDirectoryConfigured: boolean;
+  supabaseAuthConfigured: boolean;
+  supabasePersistenceConfigured: boolean;
   captureConfigured: boolean;
   feishuConfigured: boolean;
   aiConfigured: boolean;
@@ -16,12 +18,25 @@ export function getConfigStatus(): AppConfigStatus {
   const environment = process.env.NODE_ENV || "development";
   const accessConfigured = Boolean(process.env.CONTENT_FACTORY_ACCESS_CODE);
   const dataDirectoryConfigured = Boolean(process.env.CONTENT_FACTORY_DATA_DIR);
+  const supabaseAuthConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL
+    && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  );
+  const supabasePersistenceConfigured = Boolean(
+    supabaseAuthConfigured
+    && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)
+    && process.env.CONTENT_FACTORY_WORKSPACE_ID,
+  );
   const captureConfigured = Boolean(process.env.CONTENT_FACTORY_CAPTURE_TOKEN);
   const aiConfigured = Boolean(process.env.AI_BASE_URL && process.env.AI_API_KEY && process.env.AI_MODEL);
   const missingRequired = [
     ...(!aiConfigured ? ["AI_BASE_URL / AI_API_KEY / AI_MODEL"] : []),
-    ...(environment === "production" && !accessConfigured ? ["CONTENT_FACTORY_ACCESS_CODE"] : []),
-    ...(environment === "production" && !dataDirectoryConfigured ? ["CONTENT_FACTORY_DATA_DIR"] : []),
+    ...(environment === "production" && !supabaseAuthConfigured && !accessConfigured
+      ? ["Supabase auth or CONTENT_FACTORY_ACCESS_CODE"] : []),
+    ...(environment === "production" && supabaseAuthConfigured && !supabasePersistenceConfigured
+      ? ["SUPABASE_SECRET_KEY / CONTENT_FACTORY_WORKSPACE_ID"] : []),
+    ...(environment === "production" && !supabaseAuthConfigured && !dataDirectoryConfigured
+      ? ["CONTENT_FACTORY_DATA_DIR"] : []),
   ];
 
   return {
@@ -29,6 +44,8 @@ export function getConfigStatus(): AppConfigStatus {
     environment,
     accessConfigured,
     dataDirectoryConfigured,
+    supabaseAuthConfigured,
+    supabasePersistenceConfigured,
     captureConfigured,
     feishuConfigured: Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET),
     aiConfigured,

@@ -10,7 +10,7 @@ export async function POST(
     const { id } = await segmentData.params;
 
     // 从 SQLite 获取 Idea
-    const idea = getIdeaFromDb(id);
+    const idea = await getIdeaFromDb(id);
     if (!idea) {
       return NextResponse.json(
         { error: "未找到 Idea" },

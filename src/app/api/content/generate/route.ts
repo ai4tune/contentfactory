@@ -17,6 +17,7 @@ import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/req
 import { markPlanItemGenerated } from "@/modules/plans/repository";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {

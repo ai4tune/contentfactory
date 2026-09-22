@@ -4,11 +4,11 @@ import { listContentProjects } from "@/modules/content/server/project-repository
 import type { ContentIdeaContext } from "@/modules/content/types";
 
 export async function getIdeaContext(id: string): Promise<ContentIdeaContext | null> {
-  const idea = getIdeaFromDb(id);
+  const idea = await getIdeaFromDb(id);
   if (!idea) return null;
   const marketItemId = text(idea.market_item_id);
   const inspirationId = text(idea.inspiration_id);
-  const market = marketItemId ? getMarketItemFromDb(marketItemId) : null;
+  const market = marketItemId ? await getMarketItemFromDb(marketItemId) : null;
   const inspiration = inspirationId ? await getInspirationRecord(inspirationId) : null;
   return {
     id,
@@ -23,7 +23,7 @@ export async function getIdeaContext(id: string): Promise<ContentIdeaContext | n
 
 export async function listIdeas(status?: string) {
   const projects = await listContentProjects();
-  return listIdeasFromDb().map((idea) => {
+  return (await listIdeasFromDb()).map((idea) => {
     const contentProjectIds = projects.filter((project) => project.sourceIdeaId === idea.id).map((project) => project.id);
     return { ...idea, status: contentProjectIds.length ? "used" : "pool", contentProjectIds };
   }).filter((idea) => !status || idea.status === status);

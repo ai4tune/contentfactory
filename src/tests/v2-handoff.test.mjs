@@ -96,9 +96,9 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
     return { status: response.status, body: await response.json() };
   }
   async function start() {
-    app = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(port)], {
+    app = spawn(process.execPath, [path.join(root, ".next/standalone/server.js")], {
       cwd: directory,
-      env: { ...process.env, CONTENT_FACTORY_ACCESS_USER: "pilot", CONTENT_FACTORY_ACCESS_CODE: "pilot-test-code", CONTENT_FACTORY_DATA_DIR: path.join(directory, "data"), AI_BASE_URL: `http://127.0.0.1:${mockPort}/v1`, AI_API_KEY: "mock", AI_MODEL: "mock", REDFOX_API_KEY: "mock-redfox", REDFOX_BASE_URL: `http://127.0.0.1:${mockPort}`, FEISHU_APP_ID: "", FEISHU_APP_SECRET: "" },
+      env: { ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port), CONTENT_FACTORY_ACCESS_USER: "pilot", CONTENT_FACTORY_ACCESS_CODE: "pilot-test-code", CONTENT_FACTORY_DATA_DIR: path.join(directory, "data"), AI_BASE_URL: `http://127.0.0.1:${mockPort}/v1`, AI_API_KEY: "mock", AI_MODEL: "mock", REDFOX_API_KEY: "mock-redfox", REDFOX_BASE_URL: `http://127.0.0.1:${mockPort}`, FEISHU_APP_ID: "", FEISHU_APP_SECRET: "" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     app.stdout.resume(); app.stderr.resume();
