@@ -1,5 +1,7 @@
 # Content Factory V2 / AI Growth OS v2.0 升级规格说明书
 
+> **历史参考，不是当前执行入口。** 本文保留 V2 市场情报升级过程。当前产品范围、技术契约和开发顺序请分别使用 `docs/prd/Content-Factory-MVP-PRD-v0.1.md`、`docs/specs/AI-Growth-OS-Spec-v1.0.md` 和 `todo.md`；视频生产见 `docs/roadmap/Content-Factory-Video-Production-Roadmap-2026-09-22.md`，素材分类与 OSS 入库见 `docs/roadmap/Video-Asset-Library-Catalog-v0.1.md`。
+
 > 建议文件名：`docs/specs/AI-Growth-OS-Spec-v2.0.md`  
 > 产品名称：Content Factory / 内容工厂  
 > 内部产品定位：AI Growth OS / 企业内容增长工作台  
