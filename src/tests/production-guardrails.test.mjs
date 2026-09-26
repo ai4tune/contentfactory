@@ -95,6 +95,17 @@ test("market requests have bounded timeouts and stale-cache degradation", async 
   assert.match(source, /if \(cached\)/);
 });
 
+test("serverless function durations stay within the Vercel Hobby limit", async () => {
+  const files = await sourceFiles(path.join(repositoryRoot, "src/app/api"));
+  for (const file of files) {
+    const source = await readFile(file, "utf8");
+    for (const match of source.matchAll(/export const maxDuration\s*=\s*(\d+)/g)) {
+      assert.ok(Number(match[1]) <= 300, `${file} maxDuration must be between 1 and 300 seconds`);
+      assert.ok(Number(match[1]) >= 1, `${file} maxDuration must be between 1 and 300 seconds`);
+    }
+  }
+});
+
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];

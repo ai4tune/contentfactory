@@ -1,8 +1,8 @@
 # Vercel + Supabase 客户实例部署
 
-> 更新：2026-09-24
-> 适用代码：`main@8cf696b`
-> 当前状态：部署能力已合入主分支，仍需由实施者在真实 Vercel、Supabase 和域名上完成本文验收。
+> 更新：2026-09-26
+> 适用代码：`main`（包含 `a01f272`）
+> 当前状态：真实 Production、正式域名和 Supabase migration 已完成；仍需创建 Auth 用户、加入 workspace，并完成跨设备、移动端、备份恢复和客户数据删除验收。
 
 目标：客户通过正式域名访问，用邮箱账号和密码登录；业务数据跨设备保存；客户不安装软件、不配置模型密钥。
 
@@ -59,6 +59,7 @@ workspace UUID 配置为 `CONTENT_FACTORY_WORKSPACE_ID`。owner 可以查看内�
 - GitHub 仓库访问权限，Vercel 项目 Root Directory 指向 `contentfactory`（如果仓库根目录已经是本目录则留空）。
 - Production 与 Preview 使用不同 Supabase 项目或至少不同 workspace。Preview 禁止写入客户生产 workspace。
 - Vercel Functions 的区域尽量接近 Supabase 数据库区域。
+- Hobby 验证环境中的 Serverless Function `maxDuration` 必须在 1～300 秒内；仓库 guardrail 测试会拒绝更大的值。商业试用交付前仍应升级到适合商业使用的方案。
 
 ### 3. 域名
 
