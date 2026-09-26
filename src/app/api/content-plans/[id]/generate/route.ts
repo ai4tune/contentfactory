@@ -6,7 +6,7 @@ import { parseEvidenceList, PlanValidationError } from "@/modules/plans/request"
 import { regenerateUnlockedPlanItems } from "@/modules/plans/service";
 
 export const runtime = "nodejs";
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 export async function POST(
   request: Request,
