@@ -10,14 +10,14 @@ type NavItem = {
 };
 
 const primaryNavItems: NavItem[] = [
-  { label: "首页", href: "/", mark: "首", description: "今天要完成什么" },
-  { label: "内容计划", href: "/plans", mark: "计", description: "未来 30 天写什么" },
-  { label: "开始创作", href: "/create/quick", mark: "创", description: "把选题变成内容" },
+  { label: "AI 工作台", href: "/", mark: "AI", description: "下一步做什么" },
   { label: "内容库", href: "/articles", mark: "库", description: "审核、发布与数据" },
   { label: "企业资料", href: "/brand", mark: "企", description: "资料、定位与风格" },
 ];
 
 const advancedNavItems: NavItem[] = [
+  { label: "内容计划", href: "/plans", mark: "计" },
+  { label: "快速创作", href: "/create/quick", mark: "创" },
   { label: "高级创作", href: "/create", mark: "高" },
   { label: "内容项目", href: "/drafts", mark: "稿" },
   { label: "企业知识库", href: "/knowledge", mark: "知" },
@@ -54,7 +54,7 @@ export function AppShell({
 
           <details className="group mt-3 border-t border-white/10 pt-3" open={advancedNavItems.some((item) => isSelected(active, item.href))}>
             <summary className="cursor-pointer list-none rounded-xl px-3 py-2 text-xs font-semibold text-white/45 transition hover:bg-white/8 hover:text-white/75">
-              高级工具 <span aria-hidden="true" className="ml-1 inline-block transition group-open:rotate-90">›</span>
+              更多工具 <span aria-hidden="true" className="ml-1 inline-block transition group-open:rotate-90">›</span>
             </summary>
             <div className="mt-1 flex gap-1 overflow-x-auto lg:block lg:space-y-0.5 lg:overflow-visible">
               {advancedNavItems.map((item) => (
