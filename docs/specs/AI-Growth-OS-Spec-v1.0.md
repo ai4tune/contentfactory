@@ -1,15 +1,17 @@
 # AI Growth OS 产品规格说明书（Product Spec）
 
 > 文件名：`docs/specs/AI-Growth-OS-Spec-v1.0.md`  
-> 版本：v1.5
+> 版本：v1.6
 > 状态：首批企业付费共创版技术基线
 > 适用阶段：MVP / V1
 > 主要读者：产品负责人、Codex、Claude Code、Cursor、开发者、测试人员、实施顾问  
-> 最后更新：2026-09-19
+> 最后更新：2026-09-24
 > 上位产品需求：`docs/prd/Content-Factory-MVP-PRD-v0.1.md`
 > 服务交付蓝图：`docs/sbd/Content-Factory-Paid-Pilot-SBD-v1.0.md`
 > 执行清单：`todo.md`
 > 关联技术调研：`docs/spikes/Paid-Pilot-Architecture-and-Cost-Ledger-Spike-2026-09-19.md`
+> 视频制作路线：`docs/roadmap/Content-Factory-Video-Production-Roadmap-2026-09-22.md`
+> 视频素材目录：`docs/roadmap/Video-Asset-Library-Catalog-v0.1.md`
 
 ---
 
@@ -19,7 +21,7 @@
 
 产品目标、用户流程、商业验证标准和功能优先级以 PRD 为上位依据；人工服务、责任和交付边界以 SBD 为依据；本文件负责把两者转换为可实现、可测试的技术边界；实际领取顺序以 `todo.md` 为准。如有冲突，必须先同步文档，不能由代码自行决定产品范围。
 
-## 0.1 2026-09-19 当前实施决策
+## 0.1 2026-09-24 当前实施决策
 
 首批付费共创版采用以下黄金路径：
 
@@ -37,7 +39,7 @@
 当前约束：
 
 1. 对外名称为“AI 内容工厂”，“AI Growth OS”仅保留为内部架构名；
-2. 每家客户使用独立单租户 Web 实例，暂不建设公共注册、多租户、成员和支付；
+2. 每家客户使用独立 Vercel 项目和 Supabase workspace，通过 Supabase Auth 登录；暂不建设公共注册、共享多租户、成员和支付；
 3. 首次建档复用现有 `AccountContext`、知识来源、账号定位和风格画像，不创建内容重复的第二套企业档案；
 4. 新增 `ContentPlan` 作为定位、知识、市场输入和日常创作之间的核心对象；
 5. 首页从统计入口改为任务入口，用户必须一眼看到今日下一步；
@@ -48,18 +50,22 @@
 10. 第一版保留人工发布，只记录发布链接、指标、线索和主观反馈；
 11. 周复盘只输出有依据的“继续 / 减少 / 调整”，数据不足时不得制造结论；
 12. 真实客户实例至少具备访问保护、服务端 Secret、可追溯的 Token/成本账本、备份和恢复；
-13. 不新增自动发布、多账号矩阵、多租户、Agent/Skill 中心、新数据源或大型数据库重构；
+13. 当前付费试点不新增自动发布、多账号矩阵、共享多租户、Agent/Skill 中心或新数据源；自动视频只按独立路线分阶段实现；
 14. Skill 固定为代码内版本化方法；企业知识档案、账号/品牌画像、知识引用和本次任务分别保存与组合，不为每个客户复制一套 Skill；
 15. 本地文件夹默认只读；企业知识档案可由用户确认后显式导出，但网页不能在未授权时后台持续读取任意本地目录；
 16. `agent.md` 只是确认后企业上下文的精炼导出，不等于原始知识库；
 17. Token、图片和外部数据成本先作为内部经营数据，不建设客户算力余额、积分和充值系统；
-18. 实施顺序固定为文档收口、上线安全与持久化、响应式回归、Token/成本账本、内部运营视图、企业知识档案和付费试点验收。
+18. 当前先完成 Vercel + Supabase 真实部署和付费试点；视频后续按“通用素材目录、私有 OSS 媒体库、领域契约、异步 Worker、成片审核、真实发布”顺序推进；独立引擎已完成本地硬化验收。
+19. `short_video_script` 保持为现有渠道稿；最终 MP4 由独立 `VideoProduction` 领域管理，不进入 `ChannelDraft`。
+20. 市场雷达、爆款和趋势只是持续情报输入，不是每日创作或视频生产的阻塞依赖。
+21. 视频素材分为平台 `shared` 通用库和 `workspace` 客户私有库；真实门店、产品、员工和案例不得跨 workspace 复用。
+22. 视频和音乐二进制存入私有 OSS，`MediaAsset` / `MediaClip` 元数据存入 Postgres；Markdown 素材手册从元数据生成。
 
 本节优先于后文中 2026-07-29 及更早的页面、优先级和 Roadmap 描述。
 
-## 0.2 2026-09-19 当前代码快照
+## 0.2 2026-09-22 当前代码快照
 
-本节以 `main@f185620` 为代码基线。ContentPlan 契约、首次建档、完整计划页、任务型首页、快速创作、人工发布反馈、轻量周复盘和小红书配图均已实现。
+本节以 `main@8cf696b` 为代码基线。ContentPlan 契约、首次建档、完整计划页、任务型首页、快速创作、人工发布反馈、轻量周复盘、小红书配图、Supabase Auth 与云端持久化适配均已实现。
 
 ### 已实现页面
 
@@ -93,22 +99,19 @@
 
 ### 当前持久化
 
-- SQLite：市场内容、指标快照、搜索历史、对标账号、市场服务缓存/调用日志和选题；
-- 服务端轻量存储：账号、定位、风格、知识来源、爆款、内容计划、内容项目、草稿、审核与发布数据；
+- 托管模式：Supabase Auth 负责登录，Postgres-backed cloud adapter 负责账号、定位、风格、知识来源、爆款、计划、内容项目、审核、发布、市场状态和调用日志，私有 Storage 保存上传/生成资产；
+- 本地/Docker 兼容模式：SQLite 保存市场领域数据，带 schema 版本的原子 JSON 保存其他业务对象；
 - 浏览器 IndexedDB：本地目录句柄、授权状态和本地 Markdown/TXT 索引；
-- 已有独立、带 schema 版本且原子写入的 `ContentPlan`、`OnboardingStatus` 与 `WeeklyReview` 权威存储；
-- 本轮不要求把全部旧存储迁移到 SQLite，只为新增对象定义稳定契约。
+- 同一实例根据配置选择一个权威适配器，不进行云端/本地双写。
 
 ### 当前主要差距
 
 - 主导航、任务型首页与可编辑 ContentPlan 已完成收敛；
 - 计划选题可进入快速创作，用户确认 AI 匹配的资料后即可生成主渠道待审核稿；
 - 人工确认后可回填发布指标、线索和主观反馈；同周至少 2 条有效记录时可生成带发布证据的继续、减少、调整建议，样本不足只显示数据缺口；
-- 本地试用可用，但客户上线所需的接口鉴权、持久化部署、备份恢复仍未形成完整验收；
-- AI 调用已记录模型、输入/输出 Token、耗时和估算成本，但缺少任务类型、Prompt 版本、请求/实际模型、用量来源、单价快照和内容项目关联；
-- 当前运营汇总只能查看调用、失败、平均耗时和估算成本，不能查看 Token 覆盖率、任务/模型/项目成本和未知成本；
-- 本地与飞书知识可搜索和选用，但尚未形成由代表材料生成、带证据、可编辑、可确认、可版本化的企业知识档案；
-- 关键页面尚需在 390、768、1280、1440 宽度完成横向溢出回归。
+- 代码能力已合入，但真实 Vercel 项目、真实 Supabase workspace、域名、备份恢复、数据删除和跨设备移动端黄金路径仍需实施验证；
+- 当前只生成 `short_video_script`，内容工厂主项目没有 OSS 媒体库、视频领域对象、异步 Worker、成片审核或 MP4 交付；
+- 独立视频引擎已完成任务契约、幂等、人工素材标签、黑屏/静音校验和 10/10 固定回归，也已生成真实概念样片；但它仍是本地文件系统和独立进程，不得作为线上服务直接接入。
 
 ## 0.3 2026-07-29 历史实施决策
 
@@ -289,6 +292,13 @@ type ContentPlanItem = {
   week: number;
   scheduledDate?: string;
   priority: number;
+  targetDeliverable?:
+    | "wechat_article"
+    | "xiaohongshu_note"
+    | "xiaohongshu_cards"
+    | "moments_post"
+    | "short_video_script"
+    | "short_video"; // PR-VIDEO-1 新增；旧数据可缺省
   locked: boolean;
   origin: "ai" | "manual";
   status: "pending" | "writing" | "generated" | "published" | "reviewed";
@@ -425,7 +435,7 @@ type WeeklyReview = {
 
 技术通过不等于业务通过。业务验收以贝尔咖啡真实发布、修改比例、事实追溯、独立第二次创作和 2999 元购买结论为准。
 
-## 0.6 2026-09-19 下一轮技术契约
+## 0.6 2026-09-19 历史下一轮技术契约
 
 下一轮只补齐付费上线的五个底座，不扩大平台功能：
 
@@ -436,6 +446,173 @@ type WeeklyReview = {
 5. **企业知识档案**：把代表性资料整理为带证据、可编辑、可确认和可版本化的企业上下文。
 
 完成上述能力后，再执行贝尔咖啡或首批付费企业的完整黄金路径。共享多租户、本地常驻 Connector、动态 Skill 中心、积分和支付仍属于后续立项。
+
+## 0.7 2026-09-22 视频生产目标契约
+
+本节是视频后续 PR 的上位技术边界，不表示这些对象和接口已在当前代码中实现。详细验收闸门以视频路线文档为准。
+
+### 0.7.1 边界与对象
+
+```ts
+type VideoProductionPlan = {
+  id: string;
+  workspaceId: string;
+  contentPlanId?: string;
+  contentPlanItemId?: string;
+  contentProjectId: string;
+  scriptChannel: "short_video_script";
+  scriptVersionId: string;
+  storyboard: VideoStoryboardShot[];
+  aspectRatio: "9:16";
+  targetDurationSec: number;
+  templateId: string;
+  status: "draft" | "ready" | "rendering" | "review" | "approved" | "failed";
+  createdAt: string;
+  updatedAt: string;
+};
+
+type MediaAsset = {
+  id: string;
+  scope: "shared" | "workspace";
+  workspaceId?: string;
+  storageProvider: "oss";
+  storageKey: string;
+  kind: "video" | "image" | "audio";
+  mimeType: string;
+  sizeBytes: number;
+  durationSec?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
+  source: "customer_owned" | "platform_created" | "licensed_library";
+  rightsStatus: "approved" | "restricted" | "unknown" | "expired";
+  rightsNote?: string;
+  rightsExpiresAt?: string;
+  checksum: string;
+  reviewStatus: "draft" | "active" | "disabled";
+  createdAt: string;
+};
+
+type MediaClip = {
+  id: string;
+  assetId: string;
+  startSec: number;
+  endSec: number;
+  role: "hook" | "establishing" | "process" | "detail" | "proof" | "cta" | "transition";
+  industries: string[];
+  scenes: string[];
+  tags: string[];
+  shotType?: "wide" | "medium" | "closeup" | "macro";
+  orientation: "vertical" | "horizontal" | "square";
+  useCases: string[];
+  avoidCases: string[];
+  suggestedDurationSec?: [number, number];
+};
+
+type VideoRenderJob = {
+  id: string;
+  workspaceId: string;
+  videoProductionId: string;
+  idempotencyKey: string;
+  state:
+    | "queued"
+    | "preparing"
+    | "rendering"
+    | "validating"
+    | "completed"
+    | "failed"
+    | "cancelled";
+  progress?: number;
+  attempt: number;
+  errorCode?: string;
+  output?: {
+    storagePath: string;
+    mimeType: "video/mp4";
+    durationSec: number;
+    width: number;
+    height: number;
+    hasVideo: boolean;
+    hasAudio: boolean;
+    checksum: string;
+  };
+  usage?: {
+    provider: string;
+    operation: string;
+    quantity?: number;
+    estimatedCost?: number;
+    costStatus: "known" | "unknown";
+  }[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type VideoReview = {
+  id: string;
+  videoProductionId: string;
+  renderJobId: string;
+  technicalChecks: {
+    decodable: boolean;
+    nonBlack: boolean;
+    hasAudio: boolean;
+    durationMatches: boolean;
+    dimensionsMatch: boolean;
+  };
+  reviewerStatus: "pending" | "changes_requested" | "approved";
+  notes?: string;
+  reviewedAt?: string;
+};
+```
+
+`ChannelDraft` 继续只管理文字渠道稿和 `short_video_script`。`VideoProductionPlan` 通过 `contentProjectId + scriptVersionId` 引用已确认脚本，不复制一套不可追溯的脚本正文。
+
+### 0.7.2 系统边界
+
+```text
+内容工厂 Web / API
+  ├─ 计划项与脚本确认
+  ├─ 媒体元数据、素材选择、任务创建和状态展示
+  └─ 成片审核、签名预览与下载
+
+Supabase Postgres
+  └─ 对象、任务、状态、素材/片段元数据、审核、成本与审计
+
+私有 OSS
+  └─ shared/workspace 原素材、代理文件、音频、中间产物和最终 MP4
+
+Video Worker
+  ├─ 拉取带幂等键的任务
+  ├─ 脚本/分镜、素材匹配、TTS、BGM、Remotion / FFmpeg
+  ├─ 解码、黑屏、音轨、时长和尺寸检查
+  └─ 上传产物并更新任务结果
+```
+
+Next.js 请求链路不直接运行 FFmpeg 或等待渲染完成。Worker 必须支持超时、重试、取消、幂等、进度与可重放的结果回写。
+
+### 0.7.3 规划接口
+
+```text
+POST   /api/media/uploads                 创建可恢复上传或返回上传凭据
+GET    /api/media/assets                  列出当前 workspace 媒体资产
+DELETE /api/media/assets/:id              进入可审计删除链路
+POST   /api/video-productions             从已确认脚本创建生产计划
+GET    /api/video-productions/:id         读取分镜、素材、任务和审核
+PATCH  /api/video-productions/:id         修改分镜、素材、配音和模板参数
+POST   /api/video-productions/:id/render  以幂等键创建异步渲染任务
+GET    /api/video-render-jobs/:id         查询状态和进度
+POST   /api/video-render-jobs/:id/cancel  取消未完成任务
+POST   /api/video-productions/:id/review  提交人工审核结论
+```
+
+所有接口都必须从已登录 session 解析 workspace，不接受客户端自报的任意 workspace ID。媒体预览使用短时签名 URL，不建公共 bucket。
+
+### 0.7.4 最小验收
+
+1. 固定样本连续渲染 10 次，至少 9 次通过可解码、非黑屏、有音轨、时长和尺寸检查；
+2. 相同幂等键不重复计费或生成多个不可解释的任务；
+3. 失败、取消和重试均可恢复，未知成本显示为未知而不是 0；
+4. 上传支持大文件断点恢复，私有资产无法跨 workspace 访问，删除后元数据和存储产物都可核对；
+5. 390 px 移动端可预览、审核和下载成片，不出现非预期横向滚动；
+6. 真实业务至少完成两条视频的生成、修改、人工确认和发布，才可评估纳入收费交付。
 
 ---
 
@@ -593,7 +770,7 @@ V0.1 面向杏仁本人和单个试点企业，由企业创始人、负责人或
 
 ## 4.2 V0.1 访问方式
 
-第一版允许本地开发地址、客户专属网址或独立部署地址直接进入，不开发完整登录系统。
+本地开发允许使用明确的开发绕过。托管客户通过专属网址和 Supabase Auth 邮箱密码登录；Docker 兼容模式使用独立访问码或企业访问网关。
 
 约束：
 
@@ -601,7 +778,7 @@ V0.1 面向杏仁本人和单个试点企业，由企业创始人、负责人或
 2. 不提供跨企业切换；
 3. 真实企业资料仅用于其独立试点实例；
 4. Provider Key 不向客户前端暴露；
-5. 当应用公开部署或出现第二个真实客户时，再增加访问码或最小身份确认；
+5. 任何真实客户实例都不得在无身份验证状态下公开访问；
 6. 飞书 OAuth 只在知识授权确有需要时增加，不作为 V0.1 登录前置条件。
 
 ## 4.3 后续角色模型
@@ -614,7 +791,7 @@ V0.1 面向杏仁本人和单个试点企业，由企业创始人、负责人或
 
 ## 5.1 基本原则
 
-V0.1 每个真实试点企业使用独立实例或独立配置。首个付费验证前不强制使用独立数据库。
+每个真实试点企业使用独立实例和独立 workspace。托管模式使用 Supabase 作为权威业务数据源；Docker 兼容模式使用独立持久化目录。
 
 客户原始知识优先保存在飞书或 GitHub 等客户自有知识源；系统不建设自有企业文件云盘。
 
@@ -1754,7 +1931,7 @@ System Skill（通用方法与渠道规则）
 
 # 22. 异步任务
 
-V0.1 不预先建设独立任务队列。以下操作可以使用普通 Route Handler，并在前端展示明确进度：
+当前文本与图文 V1 不预先建设独立任务队列。以下操作可以使用普通 Route Handler，并在前端展示明确进度：
 
 - 本地文件索引；
 - 飞书文档读取；
@@ -1772,7 +1949,7 @@ failed
 cancelled
 ```
 
-只有出现明确的超时、重试、断点恢复或批量任务问题后，才增加数据库任务表、独立 Worker、Trigger.dev 或 Inngest。
+自动视频是明确例外：它天然需要数据库任务状态、独立 Worker、幂等、超时、重试、取消和断点恢复，不得沿用普通同步 Route Handler 渲染。是否使用自建队列、Trigger.dev 或 Inngest 由 PR-VIDEO-2 根据部署成本决定。
 
 ---
 
@@ -1789,18 +1966,18 @@ UI 组件库、React Hook Form 和 Zod 只在能减少实际代码时使用，�
 
 ## 23.2 持久化
 
-- 账号定位、草稿和审核结果：本地 JSON 或单实例轻量持久化；
+- 托管客户实例：Supabase Postgres-backed cloud adapter 保存业务状态和调用元数据；
+- 本地/Docker 兼容模式：本地 JSON、SQLite 与持久化目录；
 - 浏览器目录句柄和本地索引：IndexedDB；
 - 本地知识正文：按需读取，不上传保存整个副本；
 - 飞书知识：保存连接配置和文档标识；
-- 首个付费验证前不强制使用 Postgres、Drizzle 或 pgvector；
-- 单实例生产部署必须把服务端 JSON、SQLite、上传和备份目录挂载到持久化存储；
-- 出现多人并发、共享实例、统一查询或跨设备协作需求后，再迁移到托管 Postgres。
+- 同一实例只能选一个权威业务存储适配器，不做本地/云端双写；
+- 视频、音乐和中间产物保存在独立私有 OSS，数据库保存素材、可剪片段、授权、状态和可审计索引。
 
 ## 23.3 认证
 
-- 本地开发和内部试用不做登录；
-- 真实客户使用独立部署、访问码或人工配置；
+- 托管客户实例使用 Supabase Auth 邮箱和密码登录；
+- 本地开发可使用明确的开发绕过；Docker 兼容模式可使用单实例访问码；
 - 飞书 OAuth 仅在知识授权需要时使用；
 - 不开放公共注册；
 - 标准 Auth、多成员和角色系统后置。
@@ -1809,7 +1986,8 @@ UI 组件库、React Hook Form 和 Zod 只在能减少实际代码时使用，�
 
 - 企业原始知识：客户本地文件夹、飞书或本地 GitHub 克隆目录；
 - 临时文本：只在任务内存中使用或按明确期限删除；
-- 平台不建设永久企业文件云盘。
+- 平台不建设通用企业文件云盘；当前图文上传和生成资产保存在 workspace 私有 Supabase Storage。
+- 后续视频媒体使用独立私有 OSS，区分 shared 通用库和 workspace 私有库，支持分片/断点上传、权利字段和短时签名 URL，不受当前 20 MB 图文资产限制。
 
 ## 23.5 AI
 
@@ -1820,11 +1998,13 @@ UI 组件库、React Hook Form 和 Zod 只在能减少实际代码时使用，�
 ## 23.6 部署
 
 - 本地开发：`next dev`；
-- 首批付费实例：自托管 Node/Docker 单实例并挂载持久化数据目录；
+- 首批托管付费实例：Vercel + 客户独立 Supabase workspace；
+- 本地/传统 Node 兼容方案：Docker 单实例并挂载持久化数据和备份目录；
 - 浏览器 IndexedDB：本地目录句柄和本地知识索引；
 - 独立服务：AI Gateway；
-- 真实客户使用独立实例或独立配置；
-- 无持久化文件系统的 Serverless 环境不得直接承载当前 SQLite/JSON 权威数据；
+- 真实客户使用独立实例和独立 workspace；Preview 不写入生产 workspace；
+- Vercel 模式的权威数据在 Supabase，不依赖 Serverless 临时文件系统；
+- 后续视频渲染使用独立 Worker，不在 Next.js Route Handler 内同步执行。
 - 后续根据客户数量演进为标准多租户部署。
 
 ---
@@ -2620,19 +2800,20 @@ V1 不开发支付系统，报价、合同和交付确认在线下完成。
 
 ## 首批付费共创 P0（当前）
 
-已具备：`ContentPlan`、首次建档、任务首页、快速创作、发布反馈和轻量周复盘。
+已具备：`ContentPlan`、首次建档、任务首页、快速创作、发布反馈、轻量周复盘、企业知识档案、成本账本、Supabase Auth 与云端持久化适配。
 
 当前必须补齐：
 
-1. 独立实例接口鉴权、持久化部署、备份恢复和生产验收；
-2. 关键页面响应式与横向溢出回归；
-3. 文本、图片和外部数据的 Token/成本账本；
-4. 内部运营与成本视图；
-5. 企业知识档案的生成、确认、版本和来源追溯；
-6. 贝尔咖啡真实共创、发布、成本复盘和付费验证。
+1. 在真实 Vercel、Supabase 和域名上完成生产验收；
+2. 验证 Production / Preview 隔离、跨设备数据、备份恢复、客户删除和 390 px 黄金路径；
+3. 贝尔咖啡真实共创、发布、成本复盘和付费验证。
 
 ## P1（首批付费交付稳定后）
 
+- 视频引擎容器实测与云端服务化；
+- 通用素材目录、私有 OSS、shared/workspace 隔离和分片/断点上传；
+- 计划项交付类型和独立 `VideoProduction` 契约；
+- 异步视频 Worker、成片审核、移动端预览与下载；
 - 插件一键采集小红书笔记进入爆款库；
 - 关键词搜索和人工选择爆款样本；
 - GitHub 远程私有仓库连接；
@@ -2842,18 +3023,20 @@ extensions/
 
 # 36. 当前推荐执行顺序（给 Codex）
 
-截至 2026-09-19，已有内容计划、创作、发布和复盘能力已经形成技术基线。下一轮固定顺序：
+截至 2026-09-24，Vercel + Supabase 代码已合入，独立视频引擎已完成本地硬化验收，视频线开始建立通用 OSS 素材底座。下一轮固定顺序：
 
 ```text
-PR-DOC-0 文档、Spike 与范围冻结
-→ PR-LAUNCH-1 上线安全、持久化与备份恢复
-→ PR-UX-1 响应式和横向溢出回归
-→ PR-COST-1 Token 与成本账本
-→ PR-COST-2 内部运营与成本视图
-→ PR-KNOWLEDGE-1 企业知识档案与可选本地导出
-→ PR-ACCEPTANCE-1 黄金路径与付费试点验收
-→ 贝尔咖啡完整共创、真实发布和 2999 元验证
+DEPLOY-REAL-USE 真实 Vercel + Supabase 部署与付费试点 ─┐
+VIDEO-ENGINE-1 已验收 → ASSET-CATALOG-0 通用素材目录 ─┘
+                  ↓
+PR-MEDIA-1 私有 OSS、shared/workspace 隔离与素材手册
+→ PR-VIDEO-1 交付类型与视频领域契约
+→ PR-VIDEO-2 异步 Worker 集成
+→ PR-VIDEO-3 成片审核与移动端
+→ PR-REAL-USE 两条真实视频生成、修改、发布和收费判断
 ```
+
+这里的箭头表示产品依赖，不要求所有工作串行：实施者可并行完成 `DEPLOY-REAL-USE`。`PR-MEDIA-1` 实现独立 OSS 媒体面，不改造当前 Supabase 图文资产桶；`PR-VIDEO-2` 必须等引擎、媒体库和领域契约均完成。
 
 在真实使用与付费验证之前，不开发或继续优化：
 
@@ -2871,6 +3054,7 @@ PR-DOC-0 文档、Spike 与范围冻结
 - 客户积分、算力余额和充值系统；
 - 本地后台常驻 Connector；
 - 动态 Skill 中心。
+- 视频时间线编辑器、模板市场和数字人。
 
 ---
 
@@ -2902,6 +3086,7 @@ PR-DOC-0 文档、Spike 与范围冻结
 
 ## V1.5：首批付费交付稳定后增强
 
+- 视频引擎服务化、OSS 通用/私有素材库、`VideoProduction` 契约、异步 Worker、成片审核与真实发布验证；
 - 插件采集爆款与关键词搜索；
 - GitHub 远程私有仓库连接；
 - Word、PDF 解析；
@@ -2946,7 +3131,15 @@ PR-DOC-0 文档、Spike 与范围冻结
 
 # 39. 当前行动清单
 
-## 2026-09-14 当前轮次
+## 2026-09-24 当前轮次
+
+- [x] Vercel + Supabase 单客户实例代码已合入 `main@8cf696b`；
+- [ ] 完成真实 Vercel、Supabase、域名、备份恢复、跨设备和 390 px 黄金路径验收；
+- [x] 完成视频引擎非交互契约、幂等、成片校验、错误码、人工素材标签和 10/10 回归；
+- [x] 冻结视频产品链路、shared/workspace 素材范围、OSS 目录、`MediaAsset` / `MediaClip` 对象和验收闸门；
+- [ ] 实际 OSS 上传、素材索引、预览代理、Worker 与成片审核尚未进入内容工厂实现。
+
+## 2026-09-14 历史轮次
 
 - [x] 形成首批企业付费共创版的产品收敛结论；
 - [x] 识别当前实现与付费交付之间的核心差距；
@@ -2960,7 +3153,7 @@ PR-DOC-0 文档、Spike 与范围冻结
 - [ ] PR-6 部分完成：已具备基础访问、健康检查和调用日志，生产鉴权、持久化、成本账本和恢复验收仍需补齐；
 - [ ] 贝尔咖啡完成真实发布、独立第二次创作和 2999 元付费结论。
 
-## 2026-09-19 当前轮次
+## 2026-09-19 历史轮次
 
 - [x] 重新确认单客户独立实例作为首批交付边界；
 - [x] 明确 Skill、企业/账号画像、知识证据和本次任务的四层关系；

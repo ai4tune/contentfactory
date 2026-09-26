@@ -1,8 +1,9 @@
-# P0 代码归属与分支策略
+# 内容工厂代码归属与分支策略
 
-> 状态：PR0 开发基线  
-> 适用范围：PR1–PR9  
+> 状态：2026-09-24 当前开发基线
+> 适用范围：Vercel + Supabase 真实验收与视频生产路线
 > 上位文档：`docs/prd/Content-Factory-MVP-PRD-v0.1.md` 和 `docs/specs/AI-Growth-OS-Spec-v1.0.md`
+> 视频路线：`docs/roadmap/Content-Factory-Video-Production-Roadmap-2026-09-22.md`
 
 ---
 
@@ -17,9 +18,37 @@
 - 共享文件的修改权；
 - 分支创建、合并和冲突处理顺序。
 
+PR1–PR9 已是历史基线。下方旧分工保留用于理解已有模块；新工作的依赖、所有权和合并顺序以本文第 2 节为准。
+
 ---
 
-# 2. 核心原则
+# 2. 2026-09-24 当前 PR 边界与依赖
+
+| 任务 | 建议分支 | 主要所有权 | 明确不做 | 依赖 |
+|---|---|---|---|---|
+| DEPLOY-REAL-USE | 实施记录，必要时单独 `fix/deployment-*` | Vercel/Supabase 配置、部署验收和回归证据 | 不顺手开发视频 | `main@8cf696b` |
+| PR-SYNC | `docs/video-roadmap-sync` | README、TODO、PRD、Spec、SBD、部署、隐私、验收、本文档 | 不改业务代码和 migration | 当前基线 |
+| VIDEO-ENGINE-1 | 已完成：`feat/video-engine-hardening` | 任务契约、素材标签、TTS、编排、Remotion/FFmpeg、技术验证 | 不改内容工厂 | PR-SYNC |
+| ASSET-CATALOG-0 | 当前文档分支 | `docs/roadmap/Video-Asset-Library-Catalog-v0.1.md`、shared/workspace 范围、OSS key、元数据 | 不上传或迁移媒体 | VIDEO-ENGINE-1 |
+| PR-MEDIA-1 | `feat/video-media-library` | `src/modules/media/**`、媒体 API、Postgres migration、OSS 签名/分片上传、shared/workspace 隔离、素材手册生成和测试 | 不引入渲染 Worker，不改造 Supabase 图文资产桶 | DEPLOY-REAL-USE、ASSET-CATALOG-0 |
+| PR-VIDEO-1 | `feat/video-domain-contracts` | `src/modules/plans/types.ts`、`src/modules/video/**`、视频数据 migration/存储、契约测试 | 不连真实 Worker | PR-SYNC；在 PR-MEDIA-1 后合并 |
+| PR-VIDEO-2 | `feat/video-worker-integration` | Worker client、任务 API、幂等/重试/取消/回调、成本记录 | 不做复杂编辑器 | VIDEO-ENGINE-1、PR-MEDIA-1、PR-VIDEO-1 |
+| PR-VIDEO-3 | `feat/video-review-mobile` | 成片审核 UI、素材替换、手机预览/下载、端到端验收 | 不做时间线编辑器 | PR-VIDEO-2 |
+| PR-REAL-USE | `test/video-real-use` 或独立验收任务 | 固定样本、真实业务记录、成本/耗时/修改/发布证据 | 不用模拟数据宣布业务通过 | PR-VIDEO-3 |
+
+当前 `DEPLOY-REAL-USE` 与视频线可并行。`VIDEO-ENGINE-1` 已完成本地验收，`ASSET-CATALOG-0` 在当前文档分支收口；主项目中的视频合并顺序固定为 `PR-MEDIA-1 → PR-VIDEO-1 → PR-VIDEO-2 → PR-VIDEO-3 → PR-REAL-USE`。`PR-VIDEO-2` 同时依赖 VIDEO-ENGINE-1、PR-MEDIA-1 和 PR-VIDEO-1。
+
+共享文件规则：
+
+- `src/modules/plans/types.ts` 只由 PR-VIDEO-1 增加交付类型和兼容默认值；
+- Supabase migration 每个 PR 新建时间戳文件，不改写已部署 migration；
+- `src/lib/config.ts`、middleware 和环境变量说明如需修改，由当前集成 PR 单独提交，不与 UI 大面积交叉；
+- 视频引擎不复制到 Next.js 仓库；通过已版本化的 Worker 契约集成；
+- 每个 PR 都需先同步最新 `main`，只添加自己范围文件，合并前执行范围内测试、`git diff --check` 和实际浏览器路径。
+
+---
+
+# 3. 历史 PR1–PR9 核心原则
 
 1. 所有功能分支从最新 `main` 创建；
 2. PR1–PR9 按审计报告顺序线性合并；

@@ -1,5 +1,7 @@
 # Content Factory V2 - AI Growth OS v2.0 升级总结
 
+> **历史完成记录，不是当前 TODO。** 本文仅总结当时 TASK-01 至 TASK-15。当前基线以 `README.md`、`todo.md`、`docs/prd/Content-Factory-MVP-PRD-v0.1.md` 和 `docs/specs/AI-Growth-OS-Spec-v1.0.md` 为准；视频生产见 `docs/roadmap/Content-Factory-Video-Production-Roadmap-2026-09-22.md`，素材分类与 OSS 入库见 `docs/roadmap/Video-Asset-Library-Catalog-v0.1.md`。
+
 ## 升级概述
 
 根据 `Content Factory V2 - AI Growth OS v2.0 升级规格说明书`，本次升级完成了第一轮开发任务（TASK-01 到 TASK-15），将 Content Factory 从"企业知识驱动的 AI 内容生产工具"升级为"市场情报 → 机会判断 → 企业知识 → 内容生产 → 发布审核 → 运营复盘 → 下一轮增长"的一体化企业内容增长工作台。

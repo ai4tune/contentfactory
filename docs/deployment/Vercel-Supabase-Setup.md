@@ -1,5 +1,9 @@
 # Vercel + Supabase 客户实例部署
 
+> 更新：2026-09-24
+> 适用代码：`main@8cf696b`
+> 当前状态：部署能力已合入主分支，仍需由实施者在真实 Vercel、Supabase 和域名上完成本文验收。
+
 目标：客户通过正式域名访问，用邮箱账号和密码登录；业务数据跨设备保存；客户不安装软件、不配置模型密钥。
 
 ## 架构选择
@@ -7,7 +11,7 @@
 - Vercel：Next.js 页面、Server Components 和 API Routes。
 - Supabase Auth：邮箱与密码登录。
 - Supabase Postgres：当前单客户实例的账号、计划、草稿、审核、市场数据和调用日志。
-- Supabase Storage：私有门店图片、资料和后续需要长期保存的生成资产。
+- Supabase Storage：当前图文范围内的私有门店图片、资料和生成资产。后续视频/音乐使用独立私有 OSS，不改造当前图文资产桶。
 - 每位首批客户仍使用独立 Vercel 项目和独立 Supabase workspace；暂不建设公开注册、付费和复杂多租户后台。
 
 App Router 使用 `@supabase/ssr`。浏览器只获得 URL 和 publishable key；secret key 只存在于 Vercel 服务端环境变量。
@@ -55,8 +59,6 @@ workspace UUID 配置为 `CONTENT_FACTORY_WORKSPACE_ID`。owner 可以查看内�
 - GitHub 仓库访问权限，Vercel 项目 Root Directory 指向 `contentfactory`（如果仓库根目录已经是本目录则留空）。
 - Production 与 Preview 使用不同 Supabase 项目或至少不同 workspace。Preview 禁止写入客户生产 workspace。
 - Vercel Functions 的区域尽量接近 Supabase 数据库区域。
-
-当前连接器没有返回可用 Vercel Team。开始创建项目之前，需要先在 Codex/Vercel 连接中完成账号授权，或由用户在 Vercel Dashboard 创建项目后提供 Project ID/名称。
 
 ### 3. 域名
 
@@ -149,3 +151,16 @@ node ops/migrate-local-data-to-supabase.mjs --confirm=MIGRATE
 6. 绑定正式域名，用客户真实手机和网络完成登录、复制正文、取图和回填。
 
 Production 通过以上验收后再把账号和域名交给客户。
+
+## 当前视频范围
+
+本次 Vercel 部署只验收图文内容、小红书图卡和 `short_video_script`，不宣布自动 MP4 生产已上线。当前 migration 中的 `content-factory-assets` 桶限制为 20 MB，且未开放视频/音频 MIME，不得直接当作视频媒体库。
+
+后续视频接入需要单独实施：
+
+1. 创建独立私有 OSS 媒体面，建立 shared 通用库与 workspace 私有库隔离；
+2. 大文件使用分片/断点上传，并记录可剪片段、来源、权利、校验和删除状态；
+3. 部署独立异步 Video Worker，内容工厂 API 只创建任务和查询状态；
+4. 完成非黑屏、非静音、时长/尺寸、成片人工审核和手机下载验收。
+
+具体对象、PR 顺序和闸门见 `docs/roadmap/Content-Factory-Video-Production-Roadmap-2026-09-22.md`；素材分类和入库规则见 `docs/roadmap/Video-Asset-Library-Catalog-v0.1.md`。
