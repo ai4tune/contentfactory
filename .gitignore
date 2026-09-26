@@ -25,6 +25,8 @@
 .DS_Store
 *.pem
 /data/*.local.json
+/data/*.json
+/data/*.csv
 /data/*.db
 /data/*.db-wal
 /data/*.db-shm
