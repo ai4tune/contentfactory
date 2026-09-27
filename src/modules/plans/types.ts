@@ -61,6 +61,7 @@ export type ContentPlan = {
   schemaVersion: 1;
   accountContextUpdatedAt: string;
   styleProfileVersion?: number;
+  enterpriseKnowledgeProfileVersion?: number;
   title: string;
   operatingGoal: string;
   primaryChannel: ContentChannel;

@@ -64,6 +64,32 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user) {
+  if (system.includes("企业知识档案编译器")) {
+    const sourceId = user.match(/^\[([^\]]+)]/m)?.[1]
+      ?? user.match(/"sourceIds":\["([^"]+)"/)?.[1]
+      ?? "local:flooring.md";
+    return {
+      name: "验收企业知识档案",
+      businessSummary: "为装修家庭提供地板选购、安装与售后决策支持。",
+      targetCustomers: ["第一次装修的家庭"],
+      offers: [{
+        name: "地板选购顾问服务",
+        description: "结合空间、基层、安装与售后条件给出选购建议。",
+        differentiators: ["基于真实使用条件判断"],
+        sourceIds: [sourceId],
+      }],
+      strengths: ["能把复杂选购条件整理成清单"],
+      businessGoals: ["建立信任并获得有效咨询"],
+      preferredTopics: ["选购避坑", "安装知识"],
+      forbiddenClaims: ["绝对零风险"],
+      facts: [
+        { category: "服务", statement: "提供地板选购顾问服务。", confidence: "confirmed", sourceIds: [sourceId] },
+        { category: "业绩", statement: "已经服务一万名客户。", confidence: "confirmed", sourceIds: [] },
+      ],
+      gaps: ["具体收费标准仍需确认"],
+    };
+  }
+
   if (system.includes("企业内容运营复盘顾问")) {
     const payload = JSON.parse(user);
     const publications = payload.publications ?? [];

@@ -77,6 +77,7 @@ export async function POST(request: Request) {
           topic,
           accountSnapshot: accountContext,
           styleSnapshot,
+          knowledgeProfileVersion: brief.enterpriseKnowledgeProfileVersion,
           brief,
           channels,
           channelDrafts,

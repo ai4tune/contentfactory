@@ -65,6 +65,7 @@ export type ContentIdeaContext = {
 };
 
 export type ContentBrief = {
+  enterpriseKnowledgeProfileVersion?: number;
   ideaContext?: ContentIdeaContext;
   targetAudience: string;
   contentGoal: string;
@@ -127,6 +128,7 @@ export type ContentProject = {
   topic: string;
   accountSnapshot: AccountContext | null;
   styleSnapshot: StyleContract | null;
+  knowledgeProfileVersion?: number;
   selectedKnowledgeRefs: ContentCitation[];
   brief: ContentBrief;
   channels: ContentChannel[];

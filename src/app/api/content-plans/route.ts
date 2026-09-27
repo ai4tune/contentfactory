@@ -4,6 +4,7 @@ import { getConfirmedStyleProfile } from "@/modules/style-profile/repository";
 import { listContentPlans } from "@/modules/plans/repository";
 import { parsePlanGenerationOptions, PlanValidationError } from "@/modules/plans/request";
 import { generateNewContentPlan } from "@/modules/plans/service";
+import { getConfirmedKnowledgeProfile } from "@/modules/knowledge-profile/repository";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,10 +21,14 @@ export async function POST(request: Request) {
     }
     const body = await request.json().catch(() => ({}));
     const options = parsePlanGenerationOptions(body, account);
-    const styleProfile = await getConfirmedStyleProfile();
+    const [styleProfile, knowledgeProfile] = await Promise.all([
+      getConfirmedStyleProfile(),
+      getConfirmedKnowledgeProfile(),
+    ]);
     const plan = await generateNewContentPlan({
       account,
       styleProfileVersion: styleProfile?.version,
+      knowledgeProfile,
       options,
     });
     return NextResponse.json({ plan }, { status: 201 });

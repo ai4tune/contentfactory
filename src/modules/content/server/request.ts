@@ -67,6 +67,7 @@ export function normalizeContentBrief(value: unknown): ContentBrief | null {
     ? normalizeInspirationPlan(record.inspirationPlan, inspiration)
     : undefined;
   const brief: ContentBrief = {
+    enterpriseKnowledgeProfileVersion: optionalPositiveInteger(record.enterpriseKnowledgeProfileVersion),
     targetAudience: String(record.targetAudience ?? "").trim(),
     contentGoal: String(record.contentGoal ?? "").trim(),
     coreMessage: String(record.coreMessage ?? "").trim(),
@@ -205,4 +206,9 @@ function isPlanDecision(value: string): value is InspirationPlanDecision {
 function optionalString(value: unknown) {
   const normalized = String(value ?? "").trim();
   return normalized || undefined;
+}
+
+function optionalPositiveInteger(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
