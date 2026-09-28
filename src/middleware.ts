@@ -75,6 +75,9 @@ function hasSupabaseAuthConfiguration() {
 
 function isPublicPath(pathname: string) {
   return pathname === "/login"
+    || pathname === "/forgot-password"
+    || pathname === "/set-password"
+    || pathname === "/auth/confirm"
     || pathname === "/access-denied"
     || pathname === "/api/health"
     || pathname === "/api/auth/signout"

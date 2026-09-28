@@ -60,6 +60,28 @@ test("production access middleware protects application routes and leaves health
   assert.match(source, /api\/health/);
   assert.match(source, /api\/capture/);
   assert.match(source, /api\/topics\/search-plan/);
+  assert.match(source, /forgot-password/);
+  assert.match(source, /set-password/);
+  assert.match(source, /auth\/confirm/);
+});
+
+test("password onboarding verifies email tokens before updating the current user", async () => {
+  const [confirm, recovery, password, inviteTemplate, recoveryTemplate] = await Promise.all([
+    readFile(path.join(repositoryRoot, "src/app/auth/confirm/route.ts"), "utf8"),
+    readFile(path.join(repositoryRoot, "src/app/forgot-password/forgot-password-form.tsx"), "utf8"),
+    readFile(path.join(repositoryRoot, "src/app/set-password/set-password-form.tsx"), "utf8"),
+    readFile(path.join(repositoryRoot, "supabase/templates/invite.html"), "utf8"),
+    readFile(path.join(repositoryRoot, "supabase/templates/recovery.html"), "utf8"),
+  ]);
+  assert.match(confirm, /verifyOtp/);
+  assert.match(confirm, /exchangeCodeForSession/);
+  assert.match(confirm, /!value\.startsWith\("\/\/"\)/);
+  assert.match(recovery, /resetPasswordForEmail/);
+  assert.match(password, /updateUser\(\{ password \}\)/);
+  assert.match(inviteTemplate, /type=invite/);
+  assert.match(inviteTemplate, /接受邀请并设置密码/);
+  assert.match(recoveryTemplate, /type=recovery/);
+  assert.match(recoveryTemplate, /设置新密码/);
 });
 
 test("capture endpoints require credentials and never treat Origin as identity", async () => {
