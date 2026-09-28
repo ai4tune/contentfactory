@@ -4,6 +4,7 @@ import { getConfirmedStyleProfile } from "@/modules/style-profile/repository";
 import { getContentPlan } from "@/modules/plans/repository";
 import { parseEvidenceList, PlanValidationError } from "@/modules/plans/request";
 import { regenerateUnlockedPlanItems } from "@/modules/plans/service";
+import { getConfirmedKnowledgeProfile } from "@/modules/knowledge-profile/repository";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -14,10 +15,11 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
-    const [plan, account, styleProfile] = await Promise.all([
+    const [plan, account, styleProfile, knowledgeProfile] = await Promise.all([
       getContentPlan(id),
       getActiveAccountContext(),
       getConfirmedStyleProfile(),
+      getConfirmedKnowledgeProfile(),
     ]);
     if (!plan) return NextResponse.json({ error: "内容计划不存在。" }, { status: 404 });
     if (plan.status === "archived") {
@@ -29,6 +31,7 @@ export async function POST(
       plan,
       account,
       styleProfileVersion: styleProfile?.version,
+      knowledgeProfile,
       contextEvidence: parseEvidenceList(body.contextEvidence, 50),
     });
     return NextResponse.json({ plan: updated });

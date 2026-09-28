@@ -35,6 +35,7 @@ export async function saveContentProject(input: {
   contentPlanItemId?: string;
   accountSnapshot: AccountContext | null;
   styleSnapshot?: StyleContract | null;
+  knowledgeProfileVersion?: number;
   channels?: ContentChannel[];
   channelDrafts?: ChannelDraft[];
 }) {
@@ -47,6 +48,7 @@ export async function saveContentProject(input: {
     contentPlanItemId: input.contentPlanItemId,
     accountSnapshot: input.accountSnapshot,
     styleSnapshot: input.styleSnapshot ?? null,
+    knowledgeProfileVersion: input.knowledgeProfileVersion,
     selectedKnowledgeRefs: input.brief.citations,
     brief: input.brief,
     channels: input.channels ?? [],

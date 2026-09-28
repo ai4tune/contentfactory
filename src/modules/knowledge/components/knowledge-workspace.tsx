@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import {
   chooseKnowledgeDirectory,
@@ -18,6 +20,7 @@ import type { KnowledgePreview, LocalKnowledgeItem, RemoteKnowledgeSource } from
 type FeishuItem = Omit<RemoteKnowledgeSource, "updatedAt"> & { text?: string };
 
 export function KnowledgeWorkspace() {
+  const router = useRouter();
   const [localItems, setLocalItems] = useState<LocalKnowledgeItem[]>([]);
   const [remoteSources, setRemoteSources] = useState<RemoteKnowledgeSource[]>([]);
   const [feishuResults, setFeishuResults] = useState<FeishuItem[]>([]);
@@ -173,8 +176,44 @@ export function KnowledgeWorkspace() {
     setSelectedIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
   }
 
+  async function buildKnowledgeProfile() {
+    if (!selectedIds.length) return setMessage("请先选择要整理的知识资料。");
+    await run("profile", async () => {
+      const remoteById = new Map([...remoteSources, ...feishuResults].map((item) => [item.id, item]));
+      const sources = await Promise.all(selectedIds.map(async (id) => {
+        const local = localItems.find((item) => item.id === id);
+        if (local) return {
+          id: local.id,
+          title: local.title,
+          source: "local" as const,
+          path: local.path,
+          text: (await readLocalKnowledgeItem(local.id)).slice(0, 12_000),
+        };
+        if (preview?.id === id && preview.text.trim()) return preview;
+        const remote = remoteById.get(id);
+        if (!remote) throw new Error(`无法读取已选资料：${id}`);
+        const document = remote.source === "base" && remote.url
+          ? await fetchFeishu("/api/integrations/feishu/resolve", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: remote.url }),
+            })
+          : await fetchFeishu(`/api/integrations/feishu/documents/${encodeURIComponent(remote.id)}`);
+        return { ...document, text: document.text?.slice(0, 12_000) ?? "" };
+      }));
+      const response = await fetch("/api/knowledge-profile/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sources }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "企业知识档案整理失败。");
+      router.push("/knowledge/profile");
+    });
+  }
+
   return <AppShell active="/knowledge">
-    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="连接本地 Markdown / TXT 与飞书资料。本地目录索引留在当前浏览器，正文按需读取。" actions={<span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">已选择 {selectedIds.length} 份</span>} />
+    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="连接本地 Markdown / TXT 与飞书资料。本地目录索引留在当前浏览器，正文按需读取。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "AI 正在整理…" : `整理所选资料（${selectedIds.length}）`}</button></>} />
     {message ? <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{message}</p> : null}
 
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">

@@ -59,6 +59,7 @@ export async function POST(request: Request) {
       contentPlanItemId: contentPlanItemId || undefined,
       accountSnapshot,
       styleSnapshot,
+      knowledgeProfileVersion: brief.enterpriseKnowledgeProfileVersion,
     });
     if (contentPlanId && contentPlanItemId) {
       await linkContentProjectToPlanItem(contentPlanId, contentPlanItemId, project.id);

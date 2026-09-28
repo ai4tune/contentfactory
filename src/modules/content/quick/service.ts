@@ -23,6 +23,7 @@ import type {
   QuickCreationInput,
   QuickKnowledgeCandidate,
 } from "./types";
+import { getConfirmedKnowledgeProfile } from "@/modules/knowledge-profile/repository";
 
 type QuickPlanContext = { plan: ContentPlan; item: ContentPlanItem };
 
@@ -78,9 +79,10 @@ export async function generateQuickContent(input: QuickCreationInput) {
   }
 
   if (!project) {
-    const [accountSnapshot, styleSnapshot] = await Promise.all([
+    const [accountSnapshot, styleSnapshot, knowledgeProfile] = await Promise.all([
       getActiveAccountContext(),
       getActiveStyleContract(),
+      getConfirmedKnowledgeProfile(),
     ]);
     const brief = await createContentBrief(
       item.title,
@@ -95,6 +97,7 @@ export async function generateQuickContent(input: QuickCreationInput) {
         angle: item.angle,
         rationale: item.rationale,
       },
+      knowledgeProfile,
     );
     project = await saveContentProject({
       topic: item.title,
@@ -103,6 +106,7 @@ export async function generateQuickContent(input: QuickCreationInput) {
       contentPlanItemId: item.id,
       accountSnapshot,
       styleSnapshot,
+      knowledgeProfileVersion: brief.enterpriseKnowledgeProfileVersion,
     });
     await linkContentProjectToPlanItem(plan.id, item.id, project.id);
   }

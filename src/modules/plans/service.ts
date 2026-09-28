@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { chatCompletionJson, parseJsonObject } from "@/lib/ai";
 import type { AccountContext } from "@/modules/positioning/types";
+import { formatKnowledgeProfileForPrompt } from "@/modules/knowledge-profile/service";
+import type { EnterpriseKnowledgeProfile } from "@/modules/knowledge-profile/types";
 import {
   contentObjectives,
   contentPlanEvidenceTypes,
@@ -16,15 +18,17 @@ import { createContentPlan, replaceContentPlan } from "./repository";
 export async function generateNewContentPlan(input: {
   account: AccountContext;
   styleProfileVersion?: number;
+  knowledgeProfile?: EnterpriseKnowledgeProfile | null;
   options: ContentPlanGenerationOptions;
 }) {
-  const generated = await requestPlanFromAi(input.account, input.options);
+  const generated = await requestPlanFromAi(input.account, input.options, input.knowledgeProfile);
   const now = new Date().toISOString();
   const items = normalizeItems(generated.items, generated.pillars, [], now);
 
   return createContentPlan({
     accountContextUpdatedAt: input.account.updatedAt,
     styleProfileVersion: input.styleProfileVersion,
+    enterpriseKnowledgeProfileVersion: input.knowledgeProfile?.version,
     title: text(generated.title, 200) || `${input.account.accountName || "当前账号"} 30 天内容计划`,
     operatingGoal: input.options.operatingGoal,
     primaryChannel: input.options.primaryChannel,
@@ -42,6 +46,7 @@ export async function regenerateUnlockedPlanItems(input: {
   plan: ContentPlan;
   account: AccountContext;
   styleProfileVersion?: number;
+  knowledgeProfile?: EnterpriseKnowledgeProfile | null;
   contextEvidence: ContentPlanEvidence[];
 }) {
   if (input.plan.status === "archived") throw new Error("已归档计划不能重新生成。");
@@ -55,7 +60,7 @@ export async function regenerateUnlockedPlanItems(input: {
     contextEvidence: input.contextEvidence,
   };
   const lockedItems = input.plan.items.filter((item) => item.locked);
-  const generated = await requestPlanFromAi(input.account, options, {
+  const generated = await requestPlanFromAi(input.account, options, input.knowledgeProfile, {
     pillars: input.plan.pillars,
     lockedItems,
   });
@@ -65,6 +70,7 @@ export async function regenerateUnlockedPlanItems(input: {
     ...input.plan,
     accountContextUpdatedAt: input.account.updatedAt,
     styleProfileVersion: input.styleProfileVersion,
+    enterpriseKnowledgeProfileVersion: input.knowledgeProfile?.version,
     items,
   });
   if (!updated) throw new Error("内容计划不存在。");
@@ -74,6 +80,7 @@ export async function regenerateUnlockedPlanItems(input: {
 async function requestPlanFromAi(
   account: AccountContext,
   options: ContentPlanGenerationOptions,
+  knowledgeProfile?: EnterpriseKnowledgeProfile | null,
   existing?: { pillars: ContentPillar[]; lockedItems: ContentPlanItem[] },
 ): Promise<{ title: string; pillars: ContentPillar[]; items: GeneratedContentPlan["items"] }> {
   const needed = 30 - (existing?.lockedItems.length ?? 0);
@@ -84,7 +91,7 @@ async function requestPlanFromAi(
 
   for (let batchNumber = 1; batchNumber <= 4 && items.length < needed; batchNumber++) {
     const count = Math.min(10, needed - items.length);
-    const batch = await requestPlanBatch(account, options, pillars, existing?.lockedItems ?? [], {
+    const batch = await requestPlanBatch(account, options, knowledgeProfile, pillars, existing?.lockedItems ?? [], {
       count,
       start: items.length + 1,
       excludedTitles: [
@@ -111,6 +118,7 @@ async function requestPlanFromAi(
 async function requestPlanBatch(
   account: AccountContext,
   options: ContentPlanGenerationOptions,
+  knowledgeProfile: EnterpriseKnowledgeProfile | null | undefined,
   pillars: ContentPillar[] | undefined,
   lockedItems: ContentPlanItem[],
   batch: { count: number; start: number; excludedTitles: string[] },
@@ -130,6 +138,8 @@ async function requestPlanBatch(
     JSON.stringify(account, null, 2),
     "【计划要求】",
     JSON.stringify(options, null, 2),
+    "【已确认企业知识档案】",
+    formatKnowledgeProfileForPrompt(knowledgeProfile ?? null),
     pillars ? "【已确认内容支柱，不得修改；pillarIndex 按此数组从 0 开始】" : "【内容支柱】请根据账号上下文生成 3～5 个。",
     pillars ? JSON.stringify(pillars.map(({ name, description }) => ({ name, description })), null, 2) : "暂无预设。",
     `【本批次】只生成第 ${batch.start}～${batch.start + batch.count - 1} 个新选题；前批次已经生成的标题不得重复。`,
@@ -157,7 +167,12 @@ async function requestPlanBatch(
         })
       : [],
     items: Array.isArray(record.items)
-      ? record.items.slice(0, 20).map((value) => normalizeGeneratedItem(value, options.contextEvidence))
+      ? record.items.slice(0, 20).map((value) => normalizeGeneratedItem(value, [
+          ...options.contextEvidence,
+          ...(knowledgeProfile?.facts
+            .filter((fact) => fact.confidence === "confirmed")
+            .map((fact) => ({ type: "enterprise_knowledge" as const, refId: fact.id, label: fact.statement })) ?? []),
+        ]))
       : [],
   };
 }

@@ -324,6 +324,64 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(savedDraft.body.profile.version, 2);
   });
 
+  await context.test("enterprise knowledge is traceable, versioned, and does not persist local source text", async () => {
+    const profileSources = [
+      source,
+      ...Array.from({ length: 12 }, (_, index) => ({
+        ...source,
+        id: `${source.id}:extra-${index + 1}`,
+        title: `${source.title} 补充资料 ${index + 1}`,
+      })),
+    ];
+    const analyzed = await requestJson("/api/knowledge-profile/analyze", {
+      method: "POST",
+      body: { sources: profileSources },
+    });
+    assert.equal(analyzed.response.status, 200, serverOutput);
+    assert.equal(analyzed.body.profile.status, "draft");
+    assert.equal(analyzed.body.profile.version, 1);
+    assert.equal(analyzed.body.profile.sources.length, 13);
+    assert.equal(analyzed.body.profile.facts[0].confidence, "confirmed");
+    assert.equal(analyzed.body.profile.facts[0].sourceIds[0], source.id);
+    assert.equal(analyzed.body.profile.facts[1].confidence, "needs_confirmation");
+
+    const invalidProfile = structuredClone(analyzed.body.profile);
+    invalidProfile.facts[1].confidence = "confirmed";
+    const invalid = await requestJson("/api/knowledge-profile/current", {
+      method: "PATCH",
+      body: { action: "confirm", profile: invalidProfile },
+    });
+    assert.equal(invalid.response.status, 400);
+    assert.match(invalid.body.error, /缺少有效来源/);
+
+    const confirmed = await requestJson("/api/knowledge-profile/current", {
+      method: "PATCH",
+      body: { action: "confirm", profile: analyzed.body.profile },
+    });
+    assert.equal(confirmed.response.status, 200);
+    assert.equal(confirmed.body.profile.status, "confirmed");
+
+    const nextDraft = await requestJson("/api/knowledge-profile/analyze", {
+      method: "POST",
+      body: { sources: [source] },
+    });
+    assert.equal(nextDraft.body.profile.version, 2);
+    nextDraft.body.profile.businessGoals.push("验证第二版档案");
+    const nextConfirmed = await requestJson("/api/knowledge-profile/current", {
+      method: "PATCH",
+      body: { action: "confirm", profile: nextDraft.body.profile },
+    });
+    assert.equal(nextConfirmed.response.status, 200);
+    assert.equal(nextConfirmed.body.profile.version, 2);
+
+    const current = await requestJson("/api/knowledge-profile/current");
+    assert.equal(current.body.confirmed.version, 2);
+    assert.equal(current.body.history[0].version, 1);
+    const storedText = await readFile(path.join(acceptanceDataDir, "enterprise-knowledge-profiles.local.json"), "utf8");
+    assert.equal(storedText.includes(source.text.slice(0, 120)), false);
+    assert.equal(storedText.includes(source.id), true);
+  });
+
   await context.test("a plan can reuse confirmed account pillars when AI omits pillar details", async () => {
     const created = await requestJson("/api/content-plans", {
       method: "POST",
@@ -359,6 +417,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(contentPlan.pillars.length, 3);
     assert.equal(contentPlan.primaryChannel, "wechat_article");
     assert.equal(contentPlan.styleProfileVersion, 1);
+    assert.equal(contentPlan.enterpriseKnowledgeProfileVersion, 2);
     assert.equal(contentPlan.status, "draft");
     assert.equal(contentPlan.items[0].evidence[0].refId, "local:flooring.md");
 
@@ -497,6 +556,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(quickProject.channelDrafts[0].channel, "wechat_article");
     assert.ok(quickProject.channelDrafts[0].review);
     assert.equal(quickProject.styleSnapshot.profileVersion, 1);
+    assert.equal(quickProject.knowledgeProfileVersion, 2);
     assert.equal(quickProject.brief.citations[0].sourceId, source.id);
 
     const reviewPage = await appFetch(`${baseUrl}/drafts/${encodeURIComponent(quickProject.id)}`);
@@ -550,6 +610,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(result.response.status, 200);
     brief = result.body.brief;
+    assert.equal(brief.enterpriseKnowledgeProfileVersion, 2);
     assert.equal(brief.citations[0].sourceId, source.id);
     assert.ok(source.text.includes(brief.citations[0].excerpt));
     assert.equal(brief.outline.some((item) => item.includes("[object Object]")), false);
@@ -752,6 +813,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(project.status, "brief_confirmed");
     assert.equal(project.accountSnapshot.status, "confirmed");
     assert.equal(project.styleSnapshot.profileVersion, 1);
+    assert.equal(project.knowledgeProfileVersion, 2);
     assert.equal(project.styleSnapshot.hardRules[0].evidence[0].sourceTitle, "验收风格指南");
     assert.deepEqual(project.styleSnapshot.bannedPhrases, ["深度赋能"]);
     assert.equal(project.styleSnapshot.mode, "temporary");

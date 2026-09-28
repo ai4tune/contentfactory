@@ -6,6 +6,7 @@ import { getActiveAccountContext } from "@/modules/positioning/service";
 import { normalizeTemporaryStyleInstructions } from "@/modules/style-profile/request";
 import { getActiveStyleContract } from "@/modules/style-profile/service";
 import { getIdeaContext } from "@/modules/ideas/service";
+import { getConfirmedKnowledgeProfile } from "@/modules/knowledge-profile/repository";
 
 export const runtime = "nodejs";
 
@@ -35,13 +36,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const [account, styleContract] = await Promise.all([
+    const [account, styleContract, knowledgeProfile] = await Promise.all([
       getActiveAccountContext(),
       getActiveStyleContract({
         temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
       }),
+      getConfirmedKnowledgeProfile(),
     ]);
-    const brief = await createContentBrief(topic, account, sources, inspiration, styleContract, ideaContext);
+    const brief = await createContentBrief(topic, account, sources, inspiration, styleContract, ideaContext, null, knowledgeProfile);
     const normalizedBrief = normalizeContentBrief(brief);
     if (!normalizedBrief) {
       return NextResponse.json(
