@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <body style="margin:0;background:#f5f6f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;color:#17231f">
+    <div style="display:none;max-height:0;overflow:hidden">使用此邮件为内容工厂账号设置新密码。</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f6f3;padding:32px 12px">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8e5;border-radius:20px;overflow:hidden">
+          <tr><td style="padding:32px">
+            <div style="display:inline-block;background:#dfb967;color:#12231d;font-size:20px;font-weight:700;line-height:48px;text-align:center;width:48px;height:48px;border-radius:14px">C</div>
+            <p style="margin:24px 0 6px;color:#17715a;font-size:12px;font-weight:700;letter-spacing:2px">AI CONTENT FACTORY</p>
+            <h1 style="margin:0 0 16px;font-size:26px;line-height:1.35">为内容工厂设置新密码</h1>
+            <p style="margin:0 0 26px;color:#52615c;font-size:15px;line-height:1.8">我们收到了你的密码重置请求。点击下方按钮设置新密码，然后继续使用内容工厂。</p>
+            <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=recovery&amp;next=/set-password" style="display:block;background:#173e32;border-radius:12px;color:#ffffff;font-size:16px;font-weight:700;padding:15px 20px;text-align:center;text-decoration:none">设置新密码</a>
+            <p style="margin:24px 0 0;color:#8a9691;font-size:12px;line-height:1.7">如果这不是你本人的操作，请忽略这封邮件，你的密码不会被修改。</p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>

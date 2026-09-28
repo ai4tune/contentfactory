@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
@@ -9,7 +10,9 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(
+    searchParams.get("error") === "invalid_link" ? "链接无效或已过期，请重新获取密码邮件。" : null,
+  );
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -67,7 +70,12 @@ export function LoginForm() {
       >
         {busy ? "正在登录…" : "登录内容工厂"}
       </button>
-      <p className="text-center text-xs leading-5 text-slate-400">账号由服务方创建。如需重置密码，请联系管理员。</p>
+      <div className="flex items-center justify-between gap-4 text-xs leading-5">
+        <span className="text-slate-400">账号由服务方创建</span>
+        <Link className="font-medium text-emerald-700 hover:text-emerald-900" href="/forgot-password">
+          忘记密码？
+        </Link>
+      </div>
     </form>
   );
 }
