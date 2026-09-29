@@ -324,6 +324,7 @@ export function KnowledgeWorkspace() {
           <div>
             <h3 className="text-sm font-semibold text-emerald-950">扫描完成，尚未改动原文件</h3>
             <p className="mt-1 text-xs leading-5 text-emerald-900/75">共发现 {scanReport.totalFiles} 份，可读取 {scanReport.readableFiles} 份 Markdown / TXT，空文件 {scanReport.emptyFiles} 份，跳过 {scanReport.skippedFiles} 份。</p>
+            <p className={`mt-1 text-xs leading-5 ${scanNeedsNarrowerFolder(scanReport) ? "text-amber-800" : "text-emerald-800"}`}>{knowledgeScanGuidance(scanReport)}</p>
             {scanReport.skippedFiles ? <p className="mt-1 text-xs text-amber-800">未读取格式：{formatSkippedExtensions(scanReport.skippedByExtension)}。</p> : null}
           </div>
           <button className={secondaryButtonClass} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "AI 正在制定目录…" : `为所选本地资料生成整理方案（${selectedLocalCount}）`}</button>
@@ -440,5 +441,18 @@ function sourceName(source: KnowledgePreview["source"]) {
 }
 
 function formatSkippedExtensions(values: Record<string, number>) {
-  return Object.entries(values).map(([extension, count]) => `.${extension} ${count} 份`).join("、") || "未知";
+  const entries = Object.entries(values).sort((left, right) => right[1] - left[1]);
+  const summary = entries.slice(0, 8).map(([extension, count]) => `${extension === "无扩展名" ? extension : `.${extension}`} ${count} 份`);
+  if (entries.length > 8) summary.push(`其他 ${entries.length - 8} 种格式`);
+  return summary.join("、") || "未知";
+}
+
+function scanNeedsNarrowerFolder(report: KnowledgeScanReport) {
+  return report.totalFiles > 500 || report.skippedFiles > report.readableFiles * 2;
+}
+
+function knowledgeScanGuidance(report: KnowledgeScanReport) {
+  if (!report.readableFiles) return "当前文件夹没有可读取资料，请更换为包含 Markdown 或 TXT 的企业资料文件夹。";
+  if (scanNeedsNarrowerFolder(report)) return "当前扫描范围可能过大，且包含较多非知识文件。建议点击“更换文件夹”，改选仅包含企业资料的目录。";
+  return "这批资料已通过基础可读性检查，可以选择文件后生成整理方案。";
 }
