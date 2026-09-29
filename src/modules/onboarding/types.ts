@@ -33,6 +33,7 @@ export type OnboardingSnapshot = {
   account: AccountContext | null;
   styleProfile: StyleProfile | null;
   serverKnowledgeCount: number;
+  knowledgeProfileConfirmed: boolean;
 };
 
 export type OnboardingAction = "start" | "sync" | "complete" | "restart";

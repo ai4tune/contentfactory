@@ -146,6 +146,7 @@ export function formatKnowledgeProfileForPrompt(
 ) {
   if (!profile) return "尚未确认企业知识档案，不得补造企业事实。";
   return JSON.stringify({
+    name: profile.name,
     version: profile.version,
     businessSummary: profile.businessSummary,
     targetCustomers: profile.targetCustomers,

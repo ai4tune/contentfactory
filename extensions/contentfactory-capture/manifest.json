@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "内容工厂采集助手",
-  "version": "0.7.0",
-  "description": "Recommend long-tail keywords, filter visible Xiaohongshu search results, and save accounts or notes locally.",
+  "version": "0.8.0",
+  "description": "Capture visible Xiaohongshu and WeChat Official Account information for positioning and content research.",
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://www.xiaohongshu.com/*"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://www.xiaohongshu.com/*", "https://mp.weixin.qq.com/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "content_scripts": [
     {

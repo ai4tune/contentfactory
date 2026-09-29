@@ -1,5 +1,6 @@
 import { readStore } from "@/lib/store";
 import { listRemoteKnowledgeSources } from "@/modules/knowledge/server/source-store";
+import { getConfirmedKnowledgeProfile } from "@/modules/knowledge-profile/repository";
 import { getCurrentAccountContext } from "@/modules/positioning/repository";
 import { getConfirmedStyleProfile } from "@/modules/style-profile/repository";
 import {
@@ -26,10 +27,11 @@ export class OnboardingCompletionError extends Error {
 }
 
 export async function getOnboardingSnapshot(): Promise<OnboardingSnapshot> {
-  const [stored, account, styleProfile, store, remoteSources] = await Promise.all([
+  const [stored, account, styleProfile, knowledgeProfile, store, remoteSources] = await Promise.all([
     getStoredOnboardingStatus(),
     getCurrentAccountContext(),
     getConfirmedStyleProfile(),
+    getConfirmedKnowledgeProfile(),
     readStore(),
     listRemoteKnowledgeSources(),
   ]);
@@ -42,10 +44,12 @@ export async function getOnboardingSnapshot(): Promise<OnboardingSnapshot> {
       account,
       styleProfile,
       serverKnowledgeCount: serverKnowledgeKeys.size,
+      knowledgeProfileConfirmed: Boolean(knowledgeProfile),
     }),
     account,
     styleProfile,
     serverKnowledgeCount: serverKnowledgeKeys.size,
+    knowledgeProfileConfirmed: Boolean(knowledgeProfile),
   };
 }
 
@@ -95,11 +99,11 @@ export async function updateOnboardingStatus(update: OnboardingUpdate) {
 
 function deriveStatus(
   stored: StoredOnboardingStatus,
-  snapshot: Pick<OnboardingSnapshot, "account" | "styleProfile" | "serverKnowledgeCount">,
+  snapshot: Pick<OnboardingSnapshot, "account" | "styleProfile" | "serverKnowledgeCount" | "knowledgeProfileConfirmed">,
 ): OnboardingStatus {
   const account = snapshot.account?.status === "confirmed" ? snapshot.account : null;
   const totalKnowledge = stored.localKnowledgeCount + snapshot.serverKnowledgeCount;
-  const knowledgeReadiness: KnowledgeReadiness = totalKnowledge >= 5
+  const knowledgeReadiness: KnowledgeReadiness = snapshot.knowledgeProfileConfirmed
     ? "ready"
     : totalKnowledge > 0 ? "minimum" : "missing";
   const completedSteps: OnboardingStepId[] = [];
@@ -121,7 +125,7 @@ function deriveStatus(
   if (!completedSteps.includes("knowledge")) {
     informationGaps.push("尚未连接企业资料。生成内容时无法引用产品、案例和 FAQ 中的真实细节。");
   } else if (knowledgeReadiness === "minimum") {
-    informationGaps.push("当前资料较少。可以先生成计划，但案例细节和事实表达可能需要更多人工补充。");
+    informationGaps.push("资料已连接，但还没有生成并确认企业知识档案。请先在知识库检查扫描结果，再带入账号定位。");
   }
   if (!completedSteps.includes("business")) {
     informationGaps.push("企业业务、核心产品、目标客户或经营目标尚未完整确认，内容转化方向会不够明确。");

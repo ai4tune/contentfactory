@@ -33,9 +33,9 @@ before(async () => {
       ...process.env,
       HOSTNAME: "127.0.0.1",
       PORT: String(appPort),
-      AI_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
+      AI_BASE_URL: `http://127.0.0.1:${aiPort}/v1\n`,
       AI_API_KEY: "acceptance-test-key",
-      AI_MODEL: "acceptance-mock",
+      AI_MODEL: "acceptance-mock\n",
       AI_REQUEST_TIMEOUT_MS: "2000",
       IMAGE_BASE_URL: `http://127.0.0.1:${aiPort}/v1`,
       IMAGE_API_KEY: "acceptance-image-key",
@@ -248,7 +248,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(completed.response.status, 200);
     assert.equal(completed.body.status.state, "completed");
     assert.match(completed.body.status.informationGaps.join("\n"), /写作风格/);
-    assert.match(completed.body.status.informationGaps.join("\n"), /资料较少/);
+    assert.match(completed.body.status.informationGaps.join("\n"), /知识档案/);
 
     const persisted = await requestJson("/api/onboarding/status");
     assert.equal(persisted.body.status.state, "completed");
@@ -333,6 +333,14 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
         title: `${source.title} 补充资料 ${index + 1}`,
       })),
     ];
+    const organization = await requestJson("/api/knowledge/organize-plan", {
+      method: "POST",
+      body: { sources: profileSources.slice(0, 2) },
+    });
+    assert.equal(organization.response.status, 200);
+    assert.equal(organization.body.plan.assignments.length, 2);
+    assert.equal(organization.body.plan.assignments[0].folderId, "offers");
+
     const analyzed = await requestJson("/api/knowledge-profile/analyze", {
       method: "POST",
       body: { sources: profileSources },
@@ -360,6 +368,19 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(confirmed.response.status, 200);
     assert.equal(confirmed.body.profile.status, "confirmed");
+    const onboarding = await requestJson("/api/onboarding/status");
+    assert.equal(onboarding.body.status.knowledgeReadiness, "ready");
+    const positioningWithKnowledge = await requestJson("/api/positioning/analyze", {
+      method: "POST",
+      body: {
+        accountName: "验收账号",
+        business: "建材顾问服务",
+        audience: "装修家庭",
+        offer: "选购顾问",
+      },
+    });
+    assert.equal(positioningWithKnowledge.response.status, 200);
+    assert.match(positioningWithKnowledge.body.draft.analysisEvidence.join("\n"), /验收企业知识档案/);
 
     const nextDraft = await requestJson("/api/knowledge-profile/analyze", {
       method: "POST",

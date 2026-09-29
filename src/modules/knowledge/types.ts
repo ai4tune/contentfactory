@@ -11,6 +11,15 @@ export type LocalKnowledgeItem = {
   indexedAt: string;
 };
 
+export type KnowledgeScanReport = {
+  totalFiles: number;
+  readableFiles: number;
+  emptyFiles: number;
+  skippedFiles: number;
+  skippedByExtension: Record<string, number>;
+  scannedAt: string;
+};
+
 export type KnowledgePreview = {
   id: string;
   title: string;

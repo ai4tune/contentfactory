@@ -1,10 +1,30 @@
-const CONTENT_FACTORY_PAGES = [
-  "http://localhost/*",
-  "http://127.0.0.1/*",
-];
+const BRIDGE_SCRIPT_ID = "contentfactory-dynamic-bridge";
 
-async function connectOpenContentFactoryPages() {
-  const tabs = await chrome.tabs.query({ url: CONTENT_FACTORY_PAGES });
+function originPattern(baseUrl) {
+  try {
+    return `${new URL(baseUrl).origin}/*`;
+  } catch {
+    return "http://localhost/*";
+  }
+}
+
+async function registerContentFactoryBridge(baseUrl) {
+  const matches = [originPattern(baseUrl)];
+  await chrome.scripting.unregisterContentScripts({ ids: [BRIDGE_SCRIPT_ID] }).catch(() => {});
+  await chrome.scripting.registerContentScripts([{
+    id: BRIDGE_SCRIPT_ID,
+    matches,
+    js: ["bridge.js"],
+    runAt: "document_start",
+    persistAcrossSessions: true,
+  }]);
+  return matches;
+}
+
+async function connectOpenContentFactoryPages(baseUrl) {
+  const settings = baseUrl ? { baseUrl } : await chrome.storage.local.get({ baseUrl: "http://localhost:3000" });
+  const pages = [originPattern(settings.baseUrl)];
+  const tabs = await chrome.tabs.query({ url: pages });
   await Promise.all(tabs.map(async (tab) => {
     if (!tab.id) return;
     try {
@@ -16,7 +36,11 @@ async function connectOpenContentFactoryPages() {
 }
 
 function reconnectOpenPages() {
-  void connectOpenContentFactoryPages().catch(() => {});
+  void (async () => {
+    const settings = await chrome.storage.local.get({ baseUrl: "http://localhost:3000" });
+    await registerContentFactoryBridge(settings.baseUrl);
+    await connectOpenContentFactoryPages(settings.baseUrl);
+  })().catch(() => {});
 }
 
 reconnectOpenPages();
@@ -30,6 +54,13 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "contentfactory-register-origin") {
+    registerContentFactoryBridge(message.baseUrl)
+      .then(() => connectOpenContentFactoryPages(message.baseUrl))
+      .then(() => sendResponse({ registered: true }))
+      .catch((error) => sendResponse({ registered: false, error: String(error) }));
+    return true;
+  }
   if (message?.type !== "contentfactory-open-capture-popup") return false;
 
   (async () => {

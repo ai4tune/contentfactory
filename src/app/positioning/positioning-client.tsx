@@ -7,6 +7,7 @@ import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "
 import type { PositioningRequest } from "@/lib/ai";
 import type { AccountContext, AccountContextDraft } from "@/modules/positioning/types";
 import type { AccountCapture, CaptureMetricValue } from "@/modules/positioning/capture";
+import type { EnterpriseKnowledgeProfile } from "@/modules/knowledge-profile/types";
 
 const emptyForm: PositioningRequest = {
   accountName: "",
@@ -22,19 +23,19 @@ const emptyForm: PositioningRequest = {
 export function PositioningClient({
   initialContext,
   initialCapture,
-  extensionPath,
+  initialKnowledgeProfile,
   bare = false,
 }: {
   initialContext: AccountContext | null;
   initialCapture: AccountCapture | null;
-  extensionPath: string;
+  initialKnowledgeProfile: EnterpriseKnowledgeProfile | null;
   /** 为 true 时只渲染业务内容，不包裹 AppShell（用于嵌入其他页面） */
   bare?: boolean;
 }) {
   const router = useRouter();
   const [context, setContext] = useState(initialContext);
   const [editing, setEditing] = useState(initialContext?.status !== "confirmed");
-  const [form, setForm] = useState<PositioningRequest>(() => formFromContext(initialContext));
+  const [form, setForm] = useState<PositioningRequest>(() => formFromContext(initialContext, initialKnowledgeProfile));
   const [draft, setDraft] = useState<AccountContextDraft | null>(null);
   const [editSource, setEditSource] = useState<"manual" | "analysis" | null>(null);
   const [showCaptureSettings, setShowCaptureSettings] = useState(false);
@@ -139,7 +140,7 @@ export function PositioningClient({
 
   function cancelEditing() {
     setDraft(null);
-    setForm(formFromContext(context));
+    setForm(formFromContext(context, initialKnowledgeProfile));
     setEditSource(null);
     setEditing(false);
     setError(null);
@@ -153,7 +154,6 @@ export function PositioningClient({
           capture={initialCapture}
           compact={!showCaptureSettings}
           confirmed
-          extensionPath={extensionPath}
           refreshing={busy === "analyze"}
           onManage={() => setShowCaptureSettings((value) => !value)}
           onRefresh={refreshCapture}
@@ -188,8 +188,9 @@ export function PositioningClient({
   const content = (
     <>
       <PageHeader eyebrow={editSource === "manual" ? "EDIT POSITIONING" : "QUICK POSITIONING"} title={pageTitle} description={pageDescription} />
-      {!draft ? <CaptureExtensionCard capture={initialCapture} extensionPath={extensionPath} refreshing={busy === "analyze"} onRefresh={refreshCapture} /> : null}
+      {!draft ? <CaptureExtensionCard capture={initialCapture} refreshing={busy === "analyze"} onRefresh={refreshCapture} /> : null}
       {context?.status === "skipped" && !draft ? <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">你上次选择了暂时跳过。现在可以补充定位，也可以继续直接创作。</div> : null}
+      {!draft && !context && initialKnowledgeProfile ? <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">已从确认的企业知识档案 v{initialKnowledgeProfile.version} 带入业务、客户、产品和优势。你只需要核对和补充，AI 分析时也会引用该档案中的已确认事实。</div> : null}
       {draft ? <DraftEditor draft={draft} onChange={setDraft} /> : <PositioningForm form={form} onChange={setForm} />}
       {draft ? <AnalysisDetails analysisEvidence={draft.analysisEvidence} informationGaps={draft.informationGaps} editing /> : null}
       {error ? <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
@@ -203,7 +204,6 @@ export function PositioningClient({
 
 function CaptureExtensionCard({
   capture,
-  extensionPath,
   refreshing,
   onRefresh,
   compact = false,
@@ -211,7 +211,6 @@ function CaptureExtensionCard({
   onManage,
 }: {
   capture: AccountCapture | null;
-  extensionPath: string;
   refreshing: boolean;
   onRefresh: () => Promise<void>;
   compact?: boolean;
@@ -219,8 +218,10 @@ function CaptureExtensionCard({
   onManage?: () => void;
 }) {
   const [extensionVersion, setExtensionVersion] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [probeAttempt, setProbeAttempt] = useState(0);
+  const [selectedPlatform, setSelectedPlatform] = useState<"xiaohongshu" | "wechat">(
+    capture?.platform === "公众号" ? "wechat" : "xiaohongshu",
+  );
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -252,28 +253,36 @@ function CaptureExtensionCard({
     };
   }, [probeAttempt]);
 
-  async function copyPath() {
-    try {
-      await navigator.clipboard.writeText(extensionPath);
-      setCopied(true);
-    } catch {
-      const input = document.createElement("textarea");
-      input.value = extensionPath;
-      input.style.position = "fixed";
-      input.style.opacity = "0";
-      document.body.append(input);
-      input.select();
-      setCopied(document.execCommand("copy"));
-      input.remove();
-    }
-    window.setTimeout(() => setCopied(false), 1_500);
-  }
-
   const metrics: Array<[string, CaptureMetricValue | null | undefined]> = [
     ["关注", capture?.accountMetrics.following],
     ["粉丝", capture?.accountMetrics.followers],
     ["获赞与收藏", capture?.accountMetrics.likesAndCollects],
   ];
+  const platform = selectedPlatform === "wechat" ? {
+    eyebrow: "WECHAT OFFICIAL ACCOUNT",
+    name: "公众号",
+    openLabel: "打开并登录公众号 →",
+    openUrl: "https://mp.weixin.qq.com/",
+    title: confirmed ? "更新或更换公众号" : "从公众号一键建立定位",
+    description: "登录公众号管理后台，打开首页或内容管理页。插件只读取当前页面已显示的账号名称、简介、近期文章和可见数据。",
+    steps: [
+      ["登录后台", "打开微信公众平台，进入要定位的公众号。"],
+      ["打开可见资料", "留在后台首页或内容管理页，然后点击 Chrome 工具栏中的“内容工厂采集助手”。"],
+      ["确认 AI 定位", "核对账号和文章信息，生成定位预览后再确认生效。"],
+    ],
+  } : {
+    eyebrow: "XIAOHONGSHU CAPTURE",
+    name: "小红书",
+    openLabel: "打开并登录小红书 →",
+    openUrl: "https://www.xiaohongshu.com/explore",
+    title: confirmed ? "更新或更换小红书账号" : "从小红书账号一键建立定位",
+    description: "登录小红书后，插件会读取当前账号页公开可见的简介、关注、粉丝、获赞收藏和作品表现。",
+    steps: [
+      ["登录账号", "打开小红书，登录后点击左侧“我”，进入自己的账号主页。"],
+      ["采集当前账号", "点击页面右下角“采集当前账号”，或打开 Chrome 工具栏中的插件。"],
+      ["确认 AI 定位", "核对账号、粉丝和作品数据，生成定位预览后再确认生效。"],
+    ],
+  };
 
   if (compact) {
     return (
@@ -281,7 +290,7 @@ function CaptureExtensionCard({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-sm font-semibold text-slate-900">{capture?.accountName || "当前小红书账号"}</h2>
+              <h2 className="truncate text-sm font-semibold text-slate-900">{capture?.accountName || "当前平台账号"}</h2>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${extensionVersion ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
                 {extensionVersion ? `插件已连接 · v${extensionVersion}` : "插件状态待确认"}
               </span>
@@ -293,7 +302,7 @@ function CaptureExtensionCard({
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <a className={secondaryButtonClass} href="https://www.xiaohongshu.com/explore" target="_blank" rel="noreferrer">更新账号数据</a>
+            <a className={secondaryButtonClass} href={capture?.platform === "公众号" ? "https://mp.weixin.qq.com/" : "https://www.xiaohongshu.com/explore"} target="_blank" rel="noreferrer">更新账号数据</a>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在分析…" : "AI 重新分析"}</button>
             <button className={secondaryButtonClass} type="button" onClick={onManage}>更换账号 / 插件设置</button>
           </div>
@@ -306,28 +315,29 @@ function CaptureExtensionCard({
     <section className="mt-7 overflow-hidden rounded-3xl border border-emerald-200 bg-[linear-gradient(135deg,#f2faf6_0%,#fffdf7_100%)] shadow-sm">
       <div className="grid gap-6 p-6 lg:grid-cols-[1fr_0.9fr] lg:p-7">
         <div>
+          <div className="mb-5 flex w-fit rounded-xl bg-white/80 p-1 shadow-sm">
+            <button className={`rounded-lg px-4 py-2 text-sm font-semibold ${selectedPlatform === "xiaohongshu" ? "bg-[#173e32] text-white" : "text-slate-600"}`} onClick={() => setSelectedPlatform("xiaohongshu")} type="button">小红书</button>
+            <button className={`rounded-lg px-4 py-2 text-sm font-semibold ${selectedPlatform === "wechat" ? "bg-[#173e32] text-white" : "text-slate-600"}`} onClick={() => setSelectedPlatform("wechat")} type="button">公众号</button>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs font-semibold tracking-[0.18em] text-emerald-800">XIAOHONGSHU CAPTURE</p>
+            <p className="text-xs font-semibold tracking-[0.18em] text-emerald-800">{platform.eyebrow}</p>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${extensionVersion ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
               {extensionVersion ? `插件已连接 · v${extensionVersion}` : "未检测到插件"}
             </span>
           </div>
-          <h2 className="mt-4 text-xl font-semibold text-slate-950">{confirmed ? "更新或更换小红书账号" : "从你的小红书账号一键建立定位"}</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{confirmed ? "切换到需要绑定的小红书账号并重新采集。新数据不会自动覆盖当前定位，仍需回到这里确认 AI 重新分析结果。" : "登录小红书后，扩展会读取当前账号页公开可见的简介、关注、粉丝、获赞收藏和作品表现。你确认 AI 定位后，才会覆盖这里的当前账号。"}</p>
+          <h2 className="mt-4 text-xl font-semibold text-slate-950">{platform.title}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{platform.description}新数据不会自动覆盖当前定位，仍需要你确认 AI 分析结果。</p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <a className={primaryButtonClass} href="https://www.xiaohongshu.com/explore" target="_blank" rel="noreferrer">打开并登录小红书 →</a>
-            <button className={secondaryButtonClass} type="button" onClick={copyPath}>{copied ? "插件目录已复制" : "复制本地插件目录"}</button>
+            <a className={primaryButtonClass} href={platform.openUrl} target="_blank" rel="noreferrer">{platform.openLabel}</a>
+            <a className={secondaryButtonClass} href="/downloads/contentfactory-capture-v0.8.0.zip" download>下载采集插件 ZIP</a>
             <button className={secondaryButtonClass} type="button" onClick={() => { setExtensionVersion(null); setProbeAttempt((value) => value + 1); }}>重新检测插件</button>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在重新分析…" : "基于最新采集重新定位"}</button>
             {confirmed && onManage ? <button className={secondaryButtonClass} type="button" onClick={onManage}>收起设置</button> : null}
           </div>
-          {!extensionVersion ? <p className="mt-4 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-xs leading-5 text-amber-900">首次使用：打开 <code>chrome://extensions</code>，开启开发者模式，选择“加载已解压的扩展程序”，粘贴刚复制的目录。已经安装过时，请点击扩展卡片上的“重新加载”，然后刷新本页。</p> : null}
-          {!extensionVersion ? <code className="mt-3 block overflow-x-auto rounded-xl bg-slate-950 px-4 py-3 text-xs text-emerald-200">{extensionPath}</code> : null}
+          {!extensionVersion ? <p className="mt-4 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-xs leading-5 text-amber-900">首次使用：下载并解压 ZIP，打开 <code>chrome://extensions</code>，开启开发者模式，点击“加载已解压的扩展程序”并选择解压后的文件夹。安装后在插件的“连接设置”中保存当前内容工厂地址。</p> : null}
         </div>
         <ol className="grid gap-3 text-sm text-slate-700">
-          <CaptureStep number="1" title="登录账号" detail="打开小红书，登录后点击左侧“我”，进入自己的账号主页。" />
-          <CaptureStep number="2" title="采集当前账号" detail="进入“我”之后，点击页面右下角“采集当前账号”，无需再寻找 Chrome 工具栏入口。" />
-          <CaptureStep number="3" title="确认 AI 定位" detail="核对账号、粉丝和作品点赞，再生成定位预览；也可以回到这里基于最新采集重新分析。" />
+          {platform.steps.map(([title, detail], index) => <CaptureStep detail={detail} key={title} number={String(index + 1)} title={title} />)}
         </ol>
       </div>
       <div className="border-t border-emerald-100 bg-white/75 px-6 py-5 lg:px-7">
@@ -350,7 +360,7 @@ function CaptureMetric({ label, value }: { label: string; value: CaptureMetricVa
 }
 
 function PositioningForm({ form, onChange }: { form: PositioningRequest; onChange: (form: PositioningRequest) => void }) {
-  return <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><div className="grid gap-4 sm:grid-cols-2"><Field label="账号/品牌名" value={form.accountName} onChange={(accountName) => onChange({ ...form, accountName })} placeholder="例如：某某建材" /><Field label="业务类型" required value={form.business} onChange={(business) => onChange({ ...form, business })} placeholder="例如：本地建材门店" /><Field label="目标客户" required value={form.audience} onChange={(audience) => onChange({ ...form, audience })} placeholder="例如：准备装修的本地业主" /><Field label="产品/服务" required value={form.offer} onChange={(offer) => onChange({ ...form, offer })} placeholder="例如：地板和安装服务" /><Field label="主要平台" value={form.platforms || ""} onChange={(platforms) => onChange({ ...form, platforms })} placeholder="小红书、公众号、朋友圈、短视频" /><Field label="内容目标" value={form.goal || ""} onChange={(goal) => onChange({ ...form, goal })} placeholder="获客、信任建设、成交转化" /></div><div className="mt-4 grid gap-4"><TextArea label="差异化优势" value={form.differentiator || ""} onChange={(differentiator) => onChange({ ...form, differentiator })} placeholder="真实案例、服务能力、经验和交付保障" rows={3} /><TextArea label="现有内容或账号采集结果" value={form.currentContent || ""} onChange={(currentContent) => onChange({ ...form, currentContent })} placeholder="可选：粘贴账号简介、代表内容、表现摘要和已知问题" rows={6} /></div></section>;
+  return <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><div className="grid gap-4 sm:grid-cols-2"><Field label="账号/品牌名" value={form.accountName} onChange={(accountName) => onChange({ ...form, accountName })} placeholder="填写账号或品牌名称" /><Field label="业务类型" required value={form.business} onChange={(business) => onChange({ ...form, business })} placeholder="填写主营业务" /><Field label="目标客户" required value={form.audience} onChange={(audience) => onChange({ ...form, audience })} placeholder="填写希望服务的客户" /><Field label="产品/服务" required value={form.offer} onChange={(offer) => onChange({ ...form, offer })} placeholder="填写核心产品或服务" /><Field label="主要平台" value={form.platforms || ""} onChange={(platforms) => onChange({ ...form, platforms })} placeholder="填写准备经营的内容平台" /><Field label="内容目标" value={form.goal || ""} onChange={(goal) => onChange({ ...form, goal })} placeholder="填写希望内容带来的结果" /></div><div className="mt-4 grid gap-4"><TextArea label="差异化优势" value={form.differentiator || ""} onChange={(differentiator) => onChange({ ...form, differentiator })} placeholder="填写值得客户选择你的原因" rows={3} /><TextArea label="现有内容或账号采集结果" value={form.currentContent || ""} onChange={(currentContent) => onChange({ ...form, currentContent })} placeholder="可选：粘贴账号简介、代表内容、表现摘要和已知问题" rows={6} /></div></section>;
 }
 
 function DraftEditor({ draft, onChange }: { draft: AccountContextDraft; onChange: (draft: AccountContextDraft) => void }) {
@@ -364,7 +374,7 @@ function DraftEditor({ draft, onChange }: { draft: AccountContextDraft; onChange
           <TextArea label="业务类型 *" value={draft.business} onChange={(business) => onChange({ ...draft, business })} placeholder="主营业务" rows={3} />
           <TextArea label="产品/服务 *" value={draft.offer} onChange={(offer) => onChange({ ...draft, offer })} placeholder="核心产品或服务" rows={3} />
           <ListField label="主要平台" value={draft.platforms} onChange={(platforms) => onChange({ ...draft, platforms })} rows={3} />
-          <TextArea label="内容目标" value={draft.conversionGoal} onChange={(conversionGoal) => onChange({ ...draft, conversionGoal })} placeholder="例如：建立信任并获得咨询" rows={3} />
+          <TextArea label="内容目标" value={draft.conversionGoal} onChange={(conversionGoal) => onChange({ ...draft, conversionGoal })} placeholder="填写希望内容带来的结果" rows={3} />
         </div>
       </div>
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -453,7 +463,17 @@ function AnalysisDetails({
   );
 }
 
-function formFromContext(context: AccountContext | null): PositioningRequest {
+function formFromContext(context: AccountContext | null, knowledgeProfile: EnterpriseKnowledgeProfile | null = null): PositioningRequest {
+  if (!context && knowledgeProfile) return {
+    accountName: knowledgeProfile.name,
+    business: knowledgeProfile.businessSummary,
+    audience: knowledgeProfile.targetCustomers.join("、"),
+    offer: knowledgeProfile.offers.map((offer) => [offer.name, offer.description].filter(Boolean).join("：")).join("\n"),
+    differentiator: knowledgeProfile.strengths.join("、"),
+    platforms: emptyForm.platforms,
+    goal: knowledgeProfile.businessGoals.join("、") || emptyForm.goal,
+    currentContent: "",
+  };
   if (!context) return emptyForm;
   return { accountName: context.accountName, business: context.business, audience: context.targetAudience.join("、"), offer: context.offer, differentiator: context.preferredPhrases.join("、"), platforms: context.platforms.join("、"), goal: context.conversionGoal, currentContent: "" };
 }
