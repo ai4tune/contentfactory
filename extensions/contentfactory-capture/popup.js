@@ -91,6 +91,7 @@ async function initialize() {
   elements.saveDestination.value = archiveStatus?.configured ? "both" : "website";
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const path = tab?.url ? new URL(tab.url).pathname.toLowerCase() : "";
+  const isWechat = tab?.url?.includes("mp.weixin.qq.com");
   const isSearchPage = path.includes("/search_result");
   elements.searchWorkbench.hidden = !(isSearchPage || tab?.url?.includes("xiaohongshu.com"));
   elements.capture.textContent = path.includes("/user/profile/")
@@ -98,6 +99,7 @@ async function initialize() {
     : path.includes("/explore/") || path.includes("/discovery/item/")
       ? "预览当前笔记"
       : isSearchPage ? "采集当前搜索结果"
+      : isWechat ? "采集当前公众号信息"
       : "识别并采集当前页面";
 }
 
@@ -240,6 +242,8 @@ async function saveSettings() {
     const granted = await chrome.permissions.request({ origins: [permission] });
     if (!granted) throw new Error("未授予访问该内容工厂地址的权限");
     await chrome.storage.local.set({ baseUrl, accessToken: elements.accessToken.value.trim() });
+    const registration = await chrome.runtime.sendMessage({ type: "contentfactory-register-origin", baseUrl });
+    if (!registration?.registered) throw new Error(registration?.error || "插件连接脚本注册失败");
     elements.baseUrl.value = baseUrl;
     showStatus("连接设置已保存。", "success");
   } catch (error) {
@@ -285,7 +289,7 @@ async function captureCurrentPage() {
     renderCapture(result);
     elements.inspirationPreview.hidden = true;
     elements.draftPreview.hidden = true;
-    showStatus("已采集。请先检查可见信息，确认后再进行 AI 定位。", "success");
+    showStatus(`已采集${result.platform || "当前平台"}可见信息。请先检查，确认后再进行 AI 定位。`, "success");
   } catch (error) {
     showError(error);
   } finally {

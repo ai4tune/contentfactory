@@ -91,3 +91,39 @@ test("Xiaohongshu note capture keeps body, author, images, tags, date, and metri
     globalThis.location = previousLocation;
   }
 });
+
+test("WeChat article capture keeps the official account and visible article content", () => {
+  const previousDocument = globalThis.document;
+  const previousLocation = globalThis.location;
+  const nodes = {
+    "meta[property=\"og:article:author\"]": { content: "城市咖啡研究所" },
+    "meta[property=\"og:title\"]": { content: "一条街上的咖啡店如何被记住" },
+    "meta[name=\"description\"]": { content: "记录小店、豆子和城市日常。" },
+    "#js_content,.rich_media_content": { innerText: "这篇文章讲的是咖啡店的产品、顾客和街区故事。" },
+  };
+  globalThis.document = {
+    title: "一条街上的咖啡店如何被记住",
+    body: { innerText: "城市咖啡研究所 阅读 1200 点赞 86" },
+    scripts: [],
+    querySelector(selector) { return nodes[selector] ?? null; },
+    querySelectorAll() { return []; },
+  };
+  globalThis.location = {
+    hostname: "mp.weixin.qq.com",
+    pathname: "/s",
+    origin: "https://mp.weixin.qq.com",
+    href: "https://mp.weixin.qq.com/s/example",
+  };
+
+  try {
+    const capture = captureVisibleAccountPage();
+    assert.equal(capture.platform, "公众号");
+    assert.equal(capture.pageType, "content");
+    assert.equal(capture.accountName, "城市咖啡研究所");
+    assert.equal(capture.contents[0].title, "一条街上的咖啡店如何被记住");
+    assert.match(capture.contents[0].description, /咖啡店的产品/);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.location = previousLocation;
+  }
+});

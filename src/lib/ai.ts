@@ -132,7 +132,10 @@ export async function generateContent(request: GenerateRequest): Promise<Generat
   return normalizeGenerateResult(parseJsonObject(content) as Partial<GenerateResult>);
 }
 
-export async function analyzePositioning(request: PositioningRequest): Promise<PositioningResult> {
+export async function analyzePositioning(
+  request: PositioningRequest,
+  enterpriseKnowledge = "尚未确认企业知识档案。",
+): Promise<PositioningResult> {
   const content = await chatCompletionJson([
     {
       role: "system",
@@ -150,6 +153,9 @@ export async function analyzePositioning(request: PositioningRequest): Promise<P
         `主要平台: ${request.platforms || "小红书/公众号/视频号"}`,
         `内容目标: ${request.goal || "获客、信任建设、成交转化"}`,
         `当前内容情况: ${request.currentContent || "暂无"}`,
+        "已确认的企业知识档案:",
+        enterpriseKnowledge,
+        "企业事实以知识档案为准；手工填写与档案冲突时，在 questionsToConfirm 中明确提醒用户确认。",
         "请输出账号定位分析，重点帮助用户确定应该搜索哪些关键词、关注哪些爆款方向、先写哪些内容。",
       ].join("\n"),
     },
@@ -215,9 +221,9 @@ export async function chatCompletionJson(
   messages: Array<{ role: "system" | "user"; content: string }>,
   options: { minimumTimeoutMs?: number } = {},
 ) {
-  const baseUrl = requireEnv("AI_BASE_URL");
-  const apiKey = requireEnv("AI_API_KEY");
-  const model = requireEnv("AI_MODEL");
+  const baseUrl = requireEnv("AI_BASE_URL").trim();
+  const apiKey = requireEnv("AI_API_KEY").trim();
+  const model = requireEnv("AI_MODEL").trim();
   const url = normalizeChatCompletionsUrl(baseUrl);
   const startedAt = new Date();
 
@@ -240,7 +246,11 @@ export async function chatCompletionJson(
     const responseText = await response.text();
 
     if (!response.ok) {
-      throw new OperationError(`AI gateway request failed: ${response.status}`, `HTTP_${response.status}`);
+      const providerMessage = readProviderErrorMessage(responseText);
+      throw new OperationError(
+        `AI 服务请求失败（${response.status}）${providerMessage ? `：${providerMessage}` : ""}`,
+        `HTTP_${response.status}`,
+      );
     }
 
     const content = readChatCompletionContent(responseText);
@@ -352,6 +362,21 @@ function readChatCompletionContent(responseText: string): string | undefined {
   };
 
   return payload.choices?.[0]?.message?.content;
+}
+
+function readProviderErrorMessage(responseText: string) {
+  try {
+    const payload = JSON.parse(responseText) as {
+      error?: { message?: unknown } | string;
+      message?: unknown;
+    };
+    const message = typeof payload.error === "string"
+      ? payload.error
+      : payload.error?.message ?? payload.message;
+    return typeof message === "string" ? message.trim().slice(0, 300) : "";
+  } catch {
+    return "";
+  }
 }
 
 function normalizeChatCompletionsUrl(baseUrl: string): string {

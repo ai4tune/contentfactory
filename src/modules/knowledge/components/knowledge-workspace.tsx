@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import {
+  applyKnowledgeOrganization,
   chooseKnowledgeDirectory,
   disconnectKnowledgeDirectory,
   loadLocalKnowledge,
@@ -15,7 +16,8 @@ import {
   searchLocalKnowledge,
   supportsDirectoryPicker,
 } from "../local-index";
-import type { KnowledgePreview, LocalKnowledgeItem, RemoteKnowledgeSource } from "../types";
+import type { KnowledgeOrganizationPlan } from "../organization";
+import type { KnowledgePreview, KnowledgeScanReport, LocalKnowledgeItem, RemoteKnowledgeSource } from "../types";
 
 type FeishuItem = Omit<RemoteKnowledgeSource, "updatedAt"> & { text?: string };
 
@@ -29,10 +31,13 @@ export function KnowledgeWorkspace() {
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [permission, setPermission] = useState<PermissionState | "none" | "unsupported">("none");
+  const [scanReport, setScanReport] = useState<KnowledgeScanReport | null>(null);
+  const [organizationPlan, setOrganizationPlan] = useState<KnowledgeOrganizationPlan | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const localResults = useMemo(() => searchLocalKnowledge(localItems, query), [localItems, query]);
   const displayedRemoteResults = query.trim() ? feishuResults : remoteSources;
+  const selectedLocalCount = selectedIds.filter((id) => id.startsWith("local:")).length;
 
   useEffect(() => {
     let active = true;
@@ -43,6 +48,7 @@ export function KnowledgeWorkspace() {
         const restored = await reconnectKnowledgeDirectory();
         if (!active) return;
         setLocalItems(restored?.items ?? cached);
+        setScanReport(restored?.report ?? null);
         setPermission(restored?.permission ?? "none");
       } catch {
         if (active) setMessage("本地索引恢复失败，请重新选择知识库文件夹。");
@@ -69,24 +75,30 @@ export function KnowledgeWorkspace() {
 
   async function chooseDirectory() {
     await run("choose", async () => {
-      const items = await chooseKnowledgeDirectory();
-      setLocalItems(items);
+      const snapshot = await chooseKnowledgeDirectory();
+      setLocalItems(snapshot.items);
+      setScanReport(snapshot.report);
+      setOrganizationPlan(null);
       setPermission("granted");
-      setMessage(`已在当前浏览器建立 ${items.length} 份资料的轻量索引。`);
+      setMessage(`扫描完成：可读取 ${snapshot.report.readableFiles} 份，跳过 ${snapshot.report.skippedFiles} 份。此时只建立索引，还没有整理或移动文件。`);
     });
   }
 
   async function refreshDirectory() {
     await run("refresh", async () => {
-      const items = await refreshStoredDirectory();
-      setLocalItems(items);
-      setMessage(`索引已刷新，共 ${items.length} 份资料。`);
+      const snapshot = await refreshStoredDirectory();
+      setLocalItems(snapshot.items);
+      setScanReport(snapshot.report);
+      setOrganizationPlan(null);
+      setMessage(`索引已刷新，共 ${snapshot.items.length} 份可读取资料。`);
     });
   }
 
   async function grantPermission() {
     await run("grant", async () => {
-      setLocalItems(await requestStoredDirectoryPermission());
+      const snapshot = await requestStoredDirectoryPermission();
+      setLocalItems(snapshot.items);
+      setScanReport(snapshot.report);
       setPermission("granted");
       setMessage("文件夹读取权限已恢复。");
     });
@@ -96,6 +108,8 @@ export function KnowledgeWorkspace() {
     await run("disconnect", async () => {
       await disconnectKnowledgeDirectory();
       setLocalItems([]);
+      setScanReport(null);
+      setOrganizationPlan(null);
       setSelectedIds((ids) => ids.filter((id) => !id.startsWith("local:")));
       setPermission("none");
       if (preview?.source === "local") setPreview(null);
@@ -176,31 +190,59 @@ export function KnowledgeWorkspace() {
     setSelectedIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
   }
 
+  async function resolveSelectedSources(ids = selectedIds) {
+    const remoteById = new Map([...remoteSources, ...feishuResults].map((item) => [item.id, item]));
+    return Promise.all(ids.map(async (id) => {
+      const local = localItems.find((item) => item.id === id);
+      if (local) return {
+        id: local.id,
+        title: local.title,
+        source: "local" as const,
+        path: local.path,
+        text: (await readLocalKnowledgeItem(local.id)).slice(0, 12_000),
+      };
+      if (preview?.id === id && preview.text.trim()) return preview;
+      const remote = remoteById.get(id);
+      if (!remote) throw new Error(`无法读取已选资料：${id}`);
+      const document = remote.source === "base" && remote.url
+        ? await fetchFeishu("/api/integrations/feishu/resolve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: remote.url }),
+          })
+        : await fetchFeishu(`/api/integrations/feishu/documents/${encodeURIComponent(remote.id)}`);
+      return { ...document, text: document.text?.slice(0, 12_000) ?? "" };
+    }));
+  }
+
+  async function createOrganizationPlan() {
+    const localIds = selectedIds.filter((id) => id.startsWith("local:"));
+    if (!localIds.length) return setMessage("请先选择要整理的本地资料。");
+    await run("organize-plan", async () => {
+      const response = await fetch("/api/knowledge/organize-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sources: await resolveSelectedSources(localIds) }),
+      });
+      const payload = await response.json() as { plan?: KnowledgeOrganizationPlan; error?: string };
+      if (!response.ok || !payload.plan) throw new Error(payload.error ?? "整理方案生成失败。");
+      setOrganizationPlan(payload.plan);
+      setMessage("整理方案已生成。请先核对目录和文件归类，确认后才会创建副本。");
+    });
+  }
+
+  async function confirmOrganization() {
+    if (!organizationPlan) return;
+    await run("organize-apply", async () => {
+      const result = await applyKnowledgeOrganization(organizationPlan);
+      setMessage(`已在原文件夹中创建“${result.rootName}”，复制 ${result.copiedFiles} 份资料。原文件没有移动或删除。`);
+    });
+  }
+
   async function buildKnowledgeProfile() {
     if (!selectedIds.length) return setMessage("请先选择要整理的知识资料。");
     await run("profile", async () => {
-      const remoteById = new Map([...remoteSources, ...feishuResults].map((item) => [item.id, item]));
-      const sources = await Promise.all(selectedIds.map(async (id) => {
-        const local = localItems.find((item) => item.id === id);
-        if (local) return {
-          id: local.id,
-          title: local.title,
-          source: "local" as const,
-          path: local.path,
-          text: (await readLocalKnowledgeItem(local.id)).slice(0, 12_000),
-        };
-        if (preview?.id === id && preview.text.trim()) return preview;
-        const remote = remoteById.get(id);
-        if (!remote) throw new Error(`无法读取已选资料：${id}`);
-        const document = remote.source === "base" && remote.url
-          ? await fetchFeishu("/api/integrations/feishu/resolve", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: remote.url }),
-            })
-          : await fetchFeishu(`/api/integrations/feishu/documents/${encodeURIComponent(remote.id)}`);
-        return { ...document, text: document.text?.slice(0, 12_000) ?? "" };
-      }));
+      const sources = await resolveSelectedSources();
       const response = await fetch("/api/knowledge-profile/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,7 +255,7 @@ export function KnowledgeWorkspace() {
   }
 
   return <AppShell active="/knowledge">
-    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="连接本地 Markdown / TXT 与飞书资料。本地目录索引留在当前浏览器，正文按需读取。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "AI 正在整理…" : `整理所选资料（${selectedIds.length}）`}</button></>} />
+    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="先扫描并检查资料，再由你决定是否创建整理副本。只有人工确认的知识档案会进入定位和创作。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "AI 正在整理…" : `生成知识档案（${selectedIds.length}）`}</button></>} />
     {message ? <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{message}</p> : null}
 
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -277,7 +319,19 @@ export function KnowledgeWorkspace() {
           </label>
         </section>
       </div>
+      {scanReport ? <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-emerald-950">扫描完成，尚未改动原文件</h3>
+            <p className="mt-1 text-xs leading-5 text-emerald-900/75">共发现 {scanReport.totalFiles} 份，可读取 {scanReport.readableFiles} 份 Markdown / TXT，空文件 {scanReport.emptyFiles} 份，跳过 {scanReport.skippedFiles} 份。</p>
+            {scanReport.skippedFiles ? <p className="mt-1 text-xs text-amber-800">未读取格式：{formatSkippedExtensions(scanReport.skippedByExtension)}。</p> : null}
+          </div>
+          <button className={secondaryButtonClass} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "AI 正在制定目录…" : `为所选本地资料生成整理方案（${selectedLocalCount}）`}</button>
+        </div>
+      </div> : null}
     </section>
+
+    {organizationPlan ? <OrganizationPlanPanel busy={busy} items={localItems} plan={organizationPlan} onConfirm={confirmOrganization} /> : null}
 
     <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -342,6 +396,20 @@ function LocalRow({ item, busy, selected, onPreview, onToggle }: { item: LocalKn
   return <article className="flex items-start gap-3 p-4"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-slate-400">本地 · {item.path}</span><span className="mt-2 line-clamp-2 block text-xs leading-5 text-slate-500">{item.excerpt || "空文件"}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
 }
 
+function OrganizationPlanPanel({ busy, items, plan, onConfirm }: { busy: string | null; items: LocalKnowledgeItem[]; plan: KnowledgeOrganizationPlan; onConfirm: () => void }) {
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  return <section className="mt-5 rounded-2xl border border-amber-200 bg-white p-5 shadow-sm sm:p-6">
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div><p className="text-xs font-semibold tracking-[0.14em] text-amber-700">REVIEW BEFORE COPYING</p><h2 className="mt-2 text-lg font-semibold text-slate-950">确认知识库整理方案</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{plan.summary}</p><p className="mt-2 text-xs text-slate-500">确认后只会在原文件夹中新建“内容工厂-已整理”并复制文件，不移动、不删除原件。</p></div>
+      <button className={primaryButtonClass} disabled={busy !== null} onClick={onConfirm} type="button">{busy === "organize-apply" ? "正在创建整理副本…" : "确认并创建整理副本"}</button>
+    </div>
+    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{plan.folders.map((folder) => {
+      const assignments = plan.assignments.filter((assignment) => assignment.folderId === folder.id);
+      return <div className="rounded-xl bg-slate-50 p-4" key={folder.id}><h3 className="text-sm font-semibold text-slate-900">{folder.name}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{folder.purpose}</p><ul className="mt-3 grid gap-2">{assignments.length ? assignments.map((assignment) => <li className="text-xs leading-5 text-slate-700" key={assignment.sourceId}><span className="font-semibold">{itemById.get(assignment.sourceId)?.title ?? assignment.sourceId}</span><span className="block text-slate-400">{assignment.reason}</span></li>) : <li className="text-xs text-slate-400">暂无文件</li>}</ul></div>;
+    })}</div>
+  </section>;
+}
+
 function RemoteRow({ item, busy, selected, onPreview, onToggle }: { item: FeishuItem | RemoteKnowledgeSource; busy: string | null; selected: boolean; onPreview: () => void; onToggle: () => void }) {
   return <article className="flex items-start gap-3 p-4"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="block text-[10px] font-semibold text-emerald-700">{item.source === "base" ? "飞书多维表格" : "飞书文档"}</span><span className="mt-1 block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-slate-400">{busy === `preview:${item.id}` ? "读取正文中…" : item.id}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
 }
@@ -369,4 +437,8 @@ function toPreview(item: FeishuItem): KnowledgePreview {
 
 function sourceName(source: KnowledgePreview["source"]) {
   return source === "local" ? "本地" : source === "base" ? "飞书多维表格" : source === "feishu" ? "飞书文档" : "兼容上传";
+}
+
+function formatSkippedExtensions(values: Record<string, number>) {
+  return Object.entries(values).map(([extension, count]) => `.${extension} ${count} 份`).join("、") || "未知";
 }

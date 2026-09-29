@@ -415,22 +415,56 @@ export function captureVisibleAccountPage() {
   };
   const genericCapture = () => {
     const hostname = location.hostname.toLowerCase();
-    const platform = hostname.includes("weixin.qq.com") ? "公众号"
+    const isWechat = hostname.includes("weixin.qq.com");
+    const isWechatArticle = isWechat && location.pathname.startsWith("/s");
+    const platform = isWechat ? "公众号"
       : hostname.includes("douyin") ? "抖音"
         : hostname.includes("weibo") ? "微博"
           : hostname.includes("bilibili") ? "B站" : hostname;
     const accountName = clean(
-      hostname.includes("weixin.qq.com") ? meta("og:article:author") : "",
-    ) || firstText(["[class*='nickname']", "[class*='user-name']", "[class*='username']", "h1"])
+      isWechat ? meta("og:article:author") : "",
+    ) || firstText(isWechat ? [
+      "#js_name",
+      ".rich_media_meta_nickname",
+      ".weui-desktop-account__nickname",
+      ".account_setting_area .account_name",
+      "[class*='account'][class*='nickname']",
+      "[class*='nickname']",
+    ] : ["[class*='nickname']", "[class*='user-name']", "[class*='username']", "h1"])
       || meta("og:site_name") || clean(document.title).split(/[|–-]/)[0];
-    const bio = firstText(["[class*='signature']", "[class*='description']", "[class*='profile-desc']"])
+    const bio = firstText(isWechat ? [
+      ".weui-desktop-account__info",
+      ".account_meta",
+      "[class*='signature']",
+      "[class*='description']",
+    ] : ["[class*='signature']", "[class*='description']", "[class*='profile-desc']"])
       || meta("description") || meta("og:description");
     const bodyText = visibleText(document.body).slice(0, 100_000);
     const followers = metricFromText(bodyText, ["粉丝", "关注者"]);
     const accountMetrics = { following: null, followers, likesAndCollects: null };
-    const links = [...document.querySelectorAll("article a[href],main a[href],[class*='content'] a[href],[class*='note'] a[href]")];
+    const linkSelector = isWechat
+      ? "a[href*='appmsgid'],a[href*='mp.weixin.qq.com/s'],.weui-desktop-publish__cover__title a[href],.weui-desktop-mass-media__title a[href]"
+      : "article a[href],main a[href],[class*='content'] a[href],[class*='note'] a[href]";
+    const links = [...document.querySelectorAll(linkSelector)];
     const seen = new Set();
     const contents = [];
+    if (isWechatArticle) {
+      const title = clean(meta("og:title") || firstText(["#activity-name", ".rich_media_title"]) || document.title);
+      const articleText = visibleText(document.querySelector("#js_content,.rich_media_content"));
+      if (title) {
+        contents.push({
+          title,
+          url: location.href,
+          description: articleText.slice(0, 2_000),
+          type: "unknown",
+          tags: [],
+          imageUrls: [],
+          metrics: emptyContentMetrics(),
+          metricSummary: "",
+        });
+        seen.add(title);
+      }
+    }
     for (const link of links) {
       const container = link.closest("article,li,[class*='card'],[class*='item'],[class*='note']") || link;
       const title = clean(link.getAttribute("title")) || visibleText(link.querySelector("h1,h2,h3,[class*='title']")) || visibleText(link);
@@ -455,7 +489,7 @@ export function captureVisibleAccountPage() {
     }
     return {
       platform,
-      pageType: contents.length > 1 ? "account" : "unknown",
+      pageType: isWechatArticle ? "content" : isWechat ? "creator_backend" : contents.length > 1 ? "account" : "unknown",
       sourceUrl: location.href,
       accountName: accountName.slice(0, 160),
       bio: bio.slice(0, 2_000),

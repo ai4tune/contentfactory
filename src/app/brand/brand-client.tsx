@@ -12,6 +12,7 @@ import { StyleProfileWorkspace } from "@/modules/style-profile/components/style-
 import type { AccountContext } from "@/modules/positioning/types";
 import type { AccountCapture } from "@/modules/positioning/capture";
 import type { StyleProfile } from "@/modules/style-profile/types";
+import type { EnterpriseKnowledgeProfile } from "@/modules/knowledge-profile/types";
 
 type BrandTab = "positioning" | "style";
 
@@ -25,13 +26,13 @@ export function BrandClient({
   initialCapture,
   initialProfile,
   initialConfirmedProfile,
-  extensionPath,
+  initialKnowledgeProfile,
 }: {
   initialContext: AccountContext | null;
   initialCapture: AccountCapture | null;
   initialProfile: StyleProfile | null;
   initialConfirmedProfile: StyleProfile | null;
-  extensionPath: string;
+  initialKnowledgeProfile: EnterpriseKnowledgeProfile | null;
 }) {
   const [activeTab, setActiveTab] = useState<BrandTab>("positioning");
 
@@ -79,7 +80,7 @@ export function BrandClient({
             <PositioningClient
               initialContext={initialContext}
               initialCapture={initialCapture}
-              extensionPath={extensionPath}
+              initialKnowledgeProfile={initialKnowledgeProfile}
               bare
             />
           </div>

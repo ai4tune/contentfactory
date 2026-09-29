@@ -38,6 +38,9 @@ const server = http.createServer(async (request, response) => {
   }
 
   const body = await readJson(request);
+  if (body.model !== "acceptance-mock") {
+    return json(response, 400, { error: { message: `invalid model: ${String(body.model)}` } });
+  }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(messages.find((message) => message.role === "system")?.content ?? "");
   const user = String(messages.find((message) => message.role === "user")?.content ?? "");
@@ -64,6 +67,17 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user) {
+  if (system.includes("企业知识库整理助手")) {
+    const sources = JSON.parse(user.split("\n").slice(1).join("\n"));
+    return {
+      summary: `已为 ${sources.length} 份资料生成目录方案。`,
+      assignments: sources.map((source, index) => ({
+        sourceId: source.id,
+        folderId: index === 0 ? "offers" : "pending",
+        reason: index === 0 ? "主要内容是产品和服务。" : "需要人工确认。",
+      })),
+    };
+  }
   if (system.includes("企业知识档案编译器")) {
     const sourceId = user.match(/^\[([^\]]+)]/m)?.[1]
       ?? user.match(/"sourceIds":\["([^"]+)"/)?.[1]
@@ -264,7 +278,9 @@ function mockCompletion(system, user) {
       preferredPhrases: ["先确认使用条件"],
       bannedPhrases: ["绝对零风险"],
       recommendedTopics: ["SPC 地板选购不能只看价格"],
-      analysisEvidence: ["目标客户需要降低装修决策风险"],
+      analysisEvidence: user.includes("验收企业知识档案")
+        ? ["已读取并引用验收企业知识档案"]
+        : ["目标客户需要降低装修决策风险"],
       questionsToConfirm: ["实际产品参数与售后边界"],
       nextActions: ["选择真实资料生成首批内容"],
     };

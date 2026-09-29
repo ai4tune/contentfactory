@@ -208,7 +208,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             <SummaryCard label="当前定位" value={initialData.account?.accountPosition || "待补充"} />
             <SummaryCard label="默认主渠道" value={status.primaryChannel ? channelLabels[status.primaryChannel] : "待确认"} />
-            <SummaryCard label="知识资料" value={`${status.knowledgeReadiness === "ready" ? "资料较完整" : status.knowledgeReadiness === "minimum" ? "已有基础资料" : "尚未连接"}，当前浏览器与服务端共识别 ${totalKnowledgeCount} 份`} />
+            <SummaryCard label="知识资料" value={`${status.knowledgeReadiness === "ready" ? "知识档案已确认" : status.knowledgeReadiness === "minimum" ? "资料已连接，待整理确认" : "尚未连接"}，共识别 ${totalKnowledgeCount} 份`} />
             <SummaryCard label="写作风格" value={initialData.styleProfile?.name || "暂用账号品牌语气"} />
           </div>
           {visibleGaps.length ? <GapPanel gaps={visibleGaps} /> : null}
@@ -348,7 +348,7 @@ function StepPanel({
 
       {activeStep === "knowledge" ? (
         <div className="mt-7">
-          <p className="text-sm leading-6 text-slate-600">连接现有知识源，或先提供企业介绍、产品说明、1 到 3 个案例或 FAQ，以及 3 到 5 篇代表内容。</p>
+          <p className="text-sm leading-6 text-slate-600">连接后系统会先扫描可读资料，再给出整理目录和知识档案。“已连接”不代表“已整理”，需要你确认后才会带入账号定位。</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <SummaryCard label="当前浏览器本地资料" value={`${localKnowledgeCount} 份${localPermission === "prompt" || localPermission === "denied" ? "，需要重新授权" : ""}`} />
             <SummaryCard label="飞书与服务端资料" value={`${serverKnowledgeCount} 份`} />
