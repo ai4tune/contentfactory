@@ -101,6 +101,16 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(briefError.response.status, 400);
   });
 
+  await context.test("logged-in users can authorize the capture extension", async () => {
+    const unauthorized = await fetch(`${baseUrl}/api/capture/authorize`, { method: "POST" });
+    assert.equal(unauthorized.status, 401);
+
+    const authorized = await requestJson("/api/capture/authorize", { method: "POST" });
+    assert.equal(authorized.response.status, 200);
+    assert.equal(authorized.body.token, "acceptance-capture-token");
+    assert.equal(authorized.response.headers.get("cache-control"), "no-store");
+  });
+
   await context.test("account positioning is analyzed, confirmed, and reused", async () => {
     const analyzed = await requestJson("/api/positioning/analyze", {
       method: "POST",

@@ -59,6 +59,7 @@ test("production access middleware protects application routes and leaves health
   assert.match(source, /WWW-Authenticate/);
   assert.match(source, /api\/health/);
   assert.match(source, /api\/capture/);
+  assert.match(source, /pathname !== "\/api\/capture\/authorize"/);
   assert.match(source, /api\/topics\/search-plan/);
   assert.match(source, /forgot-password/);
   assert.match(source, /set-password/);

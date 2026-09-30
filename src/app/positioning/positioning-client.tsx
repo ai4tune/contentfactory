@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import type { PositioningRequest } from "@/lib/ai";
@@ -218,6 +218,10 @@ function CaptureExtensionCard({
   onManage?: () => void;
 }) {
   const [extensionVersion, setExtensionVersion] = useState<string | null>(null);
+  const [extensionAuthorized, setExtensionAuthorized] = useState(false);
+  const [authorizationStatus, setAuthorizationStatus] = useState<"idle" | "authorizing" | "success" | "error">("idle");
+  const [authorizationError, setAuthorizationError] = useState<string | null>(null);
+  const authorizationRequestId = useRef("");
   const [probeAttempt, setProbeAttempt] = useState(0);
   const [selectedPlatform, setSelectedPlatform] = useState<"xiaohongshu" | "wechat">(
     capture?.platform === "公众号" ? "wechat" : "xiaohongshu",
@@ -231,6 +235,24 @@ function CaptureExtensionCard({
         && event.data?.type === "ready"
       ) {
         setExtensionVersion(String(event.data.version || "已连接"));
+        setExtensionAuthorized(event.data.authorized === true);
+        if (event.data.authorized === true) setAuthorizationStatus("success");
+      }
+      if (
+        event.source === window
+        && event.data?.source === "contentfactory-capture-extension"
+        && event.data?.type === "authorization-complete"
+        && event.data.requestId === authorizationRequestId.current
+      ) {
+        authorizationRequestId.current = "";
+        if (event.data.authorized === true) {
+          setExtensionAuthorized(true);
+          setAuthorizationStatus("success");
+          setAuthorizationError(null);
+        } else {
+          setAuthorizationStatus("error");
+          setAuthorizationError("插件没有保存授权，请重新加载最新版插件后再试。");
+        }
       }
     }
     function probe() {
@@ -252,6 +274,34 @@ function CaptureExtensionCard({
       window.clearTimeout(timeout);
     };
   }, [probeAttempt]);
+
+  async function authorizeExtension() {
+    setAuthorizationStatus("authorizing");
+    setAuthorizationError(null);
+    try {
+      const response = await fetch("/api/capture/authorize", { method: "POST" });
+      const payload = (await response.json()) as { token?: string; error?: string };
+      if (!response.ok || !payload.token) throw new Error(payload.error ?? "获取采集授权失败");
+      const requestId = crypto.randomUUID();
+      authorizationRequestId.current = requestId;
+      window.postMessage({
+        source: "contentfactory-positioning-page",
+        type: "authorize",
+        requestId,
+        token: payload.token,
+        baseUrl: window.location.origin,
+      }, window.location.origin);
+      window.setTimeout(() => {
+        if (authorizationRequestId.current !== requestId) return;
+        authorizationRequestId.current = "";
+        setAuthorizationStatus("error");
+        setAuthorizationError("当前插件版本不支持一键授权，请重新下载并加载最新版插件。");
+      }, 5_000);
+    } catch (caught) {
+      setAuthorizationStatus("error");
+      setAuthorizationError(caught instanceof Error ? caught.message : "获取采集授权失败");
+    }
+  }
 
   const metrics: Array<[string, CaptureMetricValue | null | undefined]> = [
     ["关注", capture?.accountMetrics.following],
@@ -292,7 +342,7 @@ function CaptureExtensionCard({
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="truncate text-sm font-semibold text-slate-900">{capture?.accountName || "当前平台账号"}</h2>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${extensionVersion ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
-                {extensionVersion ? `插件已连接 · v${extensionVersion}` : "插件状态待确认"}
+                {extensionVersion ? `${extensionAuthorized ? "插件已授权" : "插件待授权"} · v${extensionVersion}` : "插件状态待确认"}
               </span>
               {capture ? <span className="text-xs text-slate-400">最近采集 {formatDateTime(capture.capturedAt)}</span> : null}
             </div>
@@ -302,11 +352,13 @@ function CaptureExtensionCard({
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
+            {extensionVersion && !extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
             <a className={secondaryButtonClass} href={capture?.platform === "公众号" ? "https://mp.weixin.qq.com/" : "https://www.xiaohongshu.com/explore"} target="_blank" rel="noreferrer">更新账号数据</a>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在分析…" : "AI 重新分析"}</button>
             <button className={secondaryButtonClass} type="button" onClick={onManage}>更换账号 / 插件设置</button>
           </div>
         </div>
+        {authorizationError ? <p className="mt-3 text-xs text-rose-700">{authorizationError}</p> : null}
       </section>
     );
   }
@@ -322,19 +374,23 @@ function CaptureExtensionCard({
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs font-semibold tracking-[0.18em] text-emerald-800">{platform.eyebrow}</p>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${extensionVersion ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
-              {extensionVersion ? `插件已连接 · v${extensionVersion}` : "未检测到插件"}
+              {extensionVersion ? `${extensionAuthorized ? "插件已授权" : "插件待授权"} · v${extensionVersion}` : "未检测到插件"}
             </span>
           </div>
           <h2 className="mt-4 text-xl font-semibold text-slate-950">{platform.title}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{platform.description}新数据不会自动覆盖当前定位，仍需要你确认 AI 分析结果。</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <a className={primaryButtonClass} href={platform.openUrl} target="_blank" rel="noreferrer">{platform.openLabel}</a>
-            <a className={secondaryButtonClass} href="/downloads/contentfactory-capture-v0.8.0.zip" download>下载采集插件 ZIP</a>
-            <button className={secondaryButtonClass} type="button" onClick={() => { setExtensionVersion(null); setProbeAttempt((value) => value + 1); }}>重新检测插件</button>
+            <a className={secondaryButtonClass} href="/downloads/contentfactory-capture-v0.9.0.zip" download>下载采集插件 ZIP</a>
+            {extensionVersion && !extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
+            <button className={secondaryButtonClass} type="button" onClick={() => { setExtensionVersion(null); setExtensionAuthorized(false); setAuthorizationStatus("idle"); setAuthorizationError(null); setProbeAttempt((value) => value + 1); }}>重新检测插件</button>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在重新分析…" : "基于最新采集重新定位"}</button>
             {confirmed && onManage ? <button className={secondaryButtonClass} type="button" onClick={onManage}>收起设置</button> : null}
           </div>
-          {!extensionVersion ? <p className="mt-4 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-xs leading-5 text-amber-900">首次使用：下载并解压 ZIP，打开 <code>chrome://extensions</code>，开启开发者模式，点击“加载已解压的扩展程序”并选择解压后的文件夹。安装后在插件的“连接设置”中保存当前内容工厂地址。</p> : null}
+          {!extensionVersion ? <p className="mt-4 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-xs leading-5 text-amber-900">首次使用：下载并解压 ZIP，打开 <code>chrome://extensions</code>，开启开发者模式，点击“加载已解压的扩展程序”并选择解压后的文件夹。安装或更新后回到本页，点击“一键授权此浏览器”。</p> : null}
+          {extensionVersion && !extensionAuthorized ? <p className="mt-4 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-xs leading-5 text-amber-900">当前浏览器里的插件还不能写入内容工厂。点击上方按钮完成一次授权，不需要手动复制访问码。</p> : null}
+          {authorizationStatus === "success" ? <p className="mt-4 rounded-2xl border border-emerald-200 bg-white/80 px-4 py-3 text-xs leading-5 text-emerald-900">当前浏览器已获得采集授权，可以前往小红书或公众号开始采集。</p> : null}
+          {authorizationError ? <p className="mt-4 rounded-2xl border border-rose-200 bg-white/80 px-4 py-3 text-xs leading-5 text-rose-800">{authorizationError}</p> : null}
         </div>
         <ol className="grid gap-3 text-sm text-slate-700">
           {platform.steps.map(([title, detail], index) => <CaptureStep detail={detail} key={title} number={String(index + 1)} title={title} />)}

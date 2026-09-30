@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "内容工厂采集助手",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Capture visible Xiaohongshu and WeChat Official Account information for positioning and content research.",
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://www.xiaohongshu.com/*", "https://mp.weixin.qq.com/*"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://nrgc.xingren.me/*", "https://www.xiaohongshu.com/*", "https://mp.weixin.qq.com/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "content_scripts": [
     {
-      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "matches": ["http://localhost/*", "http://127.0.0.1/*", "https://nrgc.xingren.me/*"],
       "js": ["bridge.js"],
       "run_at": "document_start"
     },

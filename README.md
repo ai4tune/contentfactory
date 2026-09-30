@@ -82,7 +82,7 @@ Feishu should use a self-built enterprise app, not a personal password. The app 
 
 生产环境缺少 AI 配置、Supabase 持久化配置或 Docker 访问码时，`/api/health` 会在 `missingRequired` 中明确列出缺项。它只暴露布尔状态和变量名，不返回变量值。
 
-Vercel 模式使用 Supabase Auth 与云端状态，不配置 `CONTENT_FACTORY_DATA_DIR`。Docker 模式必须设置持久化数据目录和访问码。使用 Chrome 扩展时必须设置独立的 `CONTENT_FACTORY_CAPTURE_TOKEN`；`CAPTURE_ALLOWED_ORIGINS` 只决定浏览器 CORS，不作为身份凭证。完整步骤见 [`docs/deployment/Vercel-Supabase-Setup.md`](docs/deployment/Vercel-Supabase-Setup.md)。
+Vercel 模式使用 Supabase Auth 与云端状态，不配置 `CONTENT_FACTORY_DATA_DIR`。Docker 模式必须设置持久化数据目录和访问码。使用 Chrome 扩展时必须设置独立的 `CONTENT_FACTORY_CAPTURE_TOKEN`；登录用户可以在账号定位页一键授权当前浏览器，手动填写令牌仅作为兜底。`CAPTURE_ALLOWED_ORIGINS` 只决定浏览器 CORS，不作为身份凭证。完整步骤见 [`docs/deployment/Vercel-Supabase-Setup.md`](docs/deployment/Vercel-Supabase-Setup.md)。
 
 ## Paid-pilot Docker deployment
 

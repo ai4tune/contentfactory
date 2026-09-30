@@ -485,7 +485,12 @@ async function callApi(path, body) {
     body: JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `内容工厂返回 ${response.status}`);
+  if (!response.ok) {
+    if (response.status === 403 && data.error === "Capture authorization is required") {
+      throw new Error("当前浏览器尚未获得采集授权。请登录内容工厂，在账号定位页点击“一键授权此浏览器”");
+    }
+    throw new Error(data.error || `内容工厂返回 ${response.status}`);
+  }
   return data;
 }
 
