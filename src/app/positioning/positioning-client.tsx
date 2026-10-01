@@ -276,6 +276,11 @@ function CaptureExtensionCard({
   }, [probeAttempt]);
 
   async function authorizeExtension() {
+    if (!extensionVersion) {
+      setAuthorizationStatus("error");
+      setAuthorizationError("未检测到采集插件。请先下载并加载 v0.9.0，然后点击“重新检测插件”。");
+      return;
+    }
     setAuthorizationStatus("authorizing");
     setAuthorizationError(null);
     try {
@@ -352,7 +357,7 @@ function CaptureExtensionCard({
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            {extensionVersion && !extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
+            {!extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
             <a className={secondaryButtonClass} href={capture?.platform === "公众号" ? "https://mp.weixin.qq.com/" : "https://www.xiaohongshu.com/explore"} target="_blank" rel="noreferrer">更新账号数据</a>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在分析…" : "AI 重新分析"}</button>
             <button className={secondaryButtonClass} type="button" onClick={onManage}>更换账号 / 插件设置</button>
@@ -382,7 +387,7 @@ function CaptureExtensionCard({
           <div className="mt-5 flex flex-wrap gap-3">
             <a className={primaryButtonClass} href={platform.openUrl} target="_blank" rel="noreferrer">{platform.openLabel}</a>
             <a className={secondaryButtonClass} href="/downloads/contentfactory-capture-v0.9.0.zip" download>下载采集插件 ZIP</a>
-            {extensionVersion && !extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
+            {!extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
             <button className={secondaryButtonClass} type="button" onClick={() => { setExtensionVersion(null); setExtensionAuthorized(false); setAuthorizationStatus("idle"); setAuthorizationError(null); setProbeAttempt((value) => value + 1); }}>重新检测插件</button>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在重新分析…" : "基于最新采集重新定位"}</button>
             {confirmed && onManage ? <button className={secondaryButtonClass} type="button" onClick={onManage}>收起设置</button> : null}
