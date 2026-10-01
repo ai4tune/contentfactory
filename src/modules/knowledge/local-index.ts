@@ -1,5 +1,11 @@
-import type { KnowledgeScanReport, LocalKnowledgeItem } from "./types";
+import type { KnowledgeScanReport, LocalKnowledgeExtension, LocalKnowledgeItem } from "./types";
 import type { KnowledgeOrganizationPlan } from "./organization";
+import { extractLocalDocumentText } from "./document-text";
+import {
+  classifyKnowledgeFile,
+  knowledgeFileExtension,
+  shouldIgnoreKnowledgeDirectory,
+} from "./file-classification";
 
 const DATABASE_NAME = "contentfactory-knowledge";
 const DATABASE_VERSION = 2;
@@ -10,7 +16,6 @@ const ROOT_HANDLE_KEY = "root-directory";
 const SCAN_REPORT_KEY = "scan-report";
 const MAX_INDEX_BYTES = 128_000;
 const MAX_SEARCH_CHARACTERS = 12_000;
-const SUPPORTED_EXTENSIONS = new Set(["md", "txt"]);
 const ORGANIZED_ROOT_NAME = "内容工厂-已整理";
 
 type LocalIndexRecord = LocalKnowledgeItem & {
@@ -123,7 +128,8 @@ export async function readLocalKnowledgeItem(id: string) {
     }
   }
 
-  return record.handle.getFile().then((file) => file.text());
+  const file = await record.handle.getFile();
+  return extractLocalDocumentText(file, record.extension);
 }
 
 export async function applyKnowledgeOrganization(plan: KnowledgeOrganizationPlan) {
@@ -218,38 +224,75 @@ async function collectFiles(root: IterableDirectoryHandle) {
   const records: LocalIndexRecord[] = [];
   let totalFiles = 0;
   let emptyFiles = 0;
+  let textFiles = 0;
+  let officeDocumentFiles = 0;
+  let imageFiles = 0;
+  let ignoredFiles = 0;
+  let needsOcrFiles = 0;
   const skippedByExtension: Record<string, number> = {};
+
+  function incrementSkipped(extension: string) {
+    const key = extension || "无扩展名";
+    skippedByExtension[key] = (skippedByExtension[key] ?? 0) + 1;
+  }
 
   async function visit(directory: IterableDirectoryHandle, parentPath: string) {
     for await (const [name, handle] of directory.entries()) {
       const path = parentPath ? `${parentPath}/${name}` : name;
 
       if (handle.kind === "directory") {
-        if (!parentPath && name === ORGANIZED_ROOT_NAME) continue;
+        if ((!parentPath && name === ORGANIZED_ROOT_NAME) || shouldIgnoreKnowledgeDirectory(name)) continue;
         await visit(handle, path);
         continue;
       }
 
       totalFiles += 1;
-      const extension = name.split(".").pop()?.toLocaleLowerCase();
-      if (!extension || !SUPPORTED_EXTENSIONS.has(extension)) {
-        const key = extension || "无扩展名";
-        skippedByExtension[key] = (skippedByExtension[key] ?? 0) + 1;
+      const extension = knowledgeFileExtension(name);
+      const category = classifyKnowledgeFile(extension);
+      if (category === "image") {
+        imageFiles += 1;
+        incrementSkipped(extension);
+        continue;
+      }
+      if (category === "ignored") {
+        ignoredFiles += 1;
+        incrementSkipped(extension);
         continue;
       }
 
+      const readableExtension = extension as LocalKnowledgeExtension;
       const file = await handle.getFile();
-      const text = await file.slice(0, MAX_INDEX_BYTES).text();
-      const frontMatter = readFrontMatter(text);
-      const title = frontMatter.title ?? readMarkdownTitle(text) ?? name.replace(/\.(md|txt)$/i, "");
+      let text = "";
+      try {
+        text = category === "text"
+          ? await file.slice(0, MAX_INDEX_BYTES).text()
+          : await extractLocalDocumentText(file, readableExtension);
+      } catch {
+        ignoredFiles += 1;
+        incrementSkipped(extension);
+        continue;
+      }
       const normalized = text.replace(/\s+/g, " ").trim();
+      if (!normalized && category === "office") {
+        if (readableExtension === "pdf") needsOcrFiles += 1;
+        else ignoredFiles += 1;
+        incrementSkipped(extension);
+        continue;
+      }
       if (!normalized) emptyFiles += 1;
+      if (category === "text") textFiles += 1;
+      else officeDocumentFiles += 1;
+
+      const frontMatter = category === "text" ? readFrontMatter(text) : { title: undefined, tags: [] as string[] };
+      const title = frontMatter.title
+        ?? (readableExtension === "md" ? readMarkdownTitle(text) : undefined)
+        ?? name.replace(/\.(md|txt|pdf|docx)$/i, "");
 
       records.push({
         id: `local:${path}`,
         title,
         path,
-        extension: extension as "md" | "txt",
+        extension: readableExtension,
         size: file.size,
         lastModified: file.lastModified,
         tags: frontMatter.tags,
@@ -271,6 +314,11 @@ async function collectFiles(root: IterableDirectoryHandle) {
       emptyFiles,
       skippedFiles: totalFiles - sortedRecords.length,
       skippedByExtension,
+      textFiles,
+      officeDocumentFiles,
+      imageFiles,
+      ignoredFiles,
+      needsOcrFiles,
       scannedAt: new Date().toISOString(),
     } satisfies KnowledgeScanReport,
   };

@@ -16,10 +16,13 @@ import {
   searchLocalKnowledge,
   supportsDirectoryPicker,
 } from "../local-index";
+import { recommendKnowledgeItems } from "../file-classification";
 import type { KnowledgeOrganizationPlan } from "../organization";
 import type { KnowledgePreview, KnowledgeScanReport, LocalKnowledgeItem, RemoteKnowledgeSource } from "../types";
 
 type FeishuItem = Omit<RemoteKnowledgeSource, "updatedAt"> & { text?: string };
+
+const MAX_AI_SOURCES = 30;
 
 export function KnowledgeWorkspace() {
   const router = useRouter();
@@ -38,6 +41,8 @@ export function KnowledgeWorkspace() {
   const localResults = useMemo(() => searchLocalKnowledge(localItems, query), [localItems, query]);
   const displayedRemoteResults = query.trim() ? feishuResults : remoteSources;
   const selectedLocalCount = selectedIds.filter((id) => id.startsWith("local:")).length;
+  const recommendedLocalItems = useMemo(() => recommendKnowledgeItems(localItems), [localItems]);
+  const scanSummary = scanReport ? summarizeKnowledgeScan(scanReport) : null;
 
   useEffect(() => {
     let active = true;
@@ -80,7 +85,7 @@ export function KnowledgeWorkspace() {
       setScanReport(snapshot.report);
       setOrganizationPlan(null);
       setPermission("granted");
-      setMessage(`扫描完成：可读取 ${snapshot.report.readableFiles} 份，跳过 ${snapshot.report.skippedFiles} 份。此时只建立索引，还没有整理或移动文件。`);
+      setMessage(`资料检查完成：找到 ${snapshot.report.readableFiles} 份可直接整理的文字与办公文档。原文件没有被修改。`);
     });
   }
 
@@ -90,7 +95,7 @@ export function KnowledgeWorkspace() {
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
       setOrganizationPlan(null);
-      setMessage(`索引已刷新，共 ${snapshot.items.length} 份可读取资料。`);
+      setMessage(`资料已重新检查，共 ${snapshot.items.length} 份文字与办公文档可以直接整理。`);
     });
   }
 
@@ -190,6 +195,21 @@ export function KnowledgeWorkspace() {
     setSelectedIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
   }
 
+  function selectRecommendedSources() {
+    const remoteIds = selectedIds.filter((id) => !id.startsWith("local:")).slice(0, MAX_AI_SOURCES);
+    const recommendedIds = recommendedLocalItems
+      .slice(0, MAX_AI_SOURCES - remoteIds.length)
+      .map((item) => item.id);
+    setSelectedIds([...remoteIds, ...recommendedIds]);
+    setMessage(recommendedIds.length
+      ? `已按系统建议选择 ${recommendedIds.length} 份本地资料。你可以继续生成整理方案，也可以在下方逐份调整。`
+      : "当前没有可以新增的文字或办公文档。");
+  }
+
+  function reviewLocalSources() {
+    document.getElementById("knowledge-file-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function resolveSelectedSources(ids = selectedIds) {
     const remoteById = new Map([...remoteSources, ...feishuResults].map((item) => [item.id, item]));
     return Promise.all(ids.map(async (id) => {
@@ -218,6 +238,7 @@ export function KnowledgeWorkspace() {
   async function createOrganizationPlan() {
     const localIds = selectedIds.filter((id) => id.startsWith("local:"));
     if (!localIds.length) return setMessage("请先选择要整理的本地资料。");
+    if (localIds.length > MAX_AI_SOURCES) return setMessage(`每次最多整理 ${MAX_AI_SOURCES} 份资料，请先取消一些选择。`);
     await run("organize-plan", async () => {
       const response = await fetch("/api/knowledge/organize-plan", {
         method: "POST",
@@ -241,6 +262,7 @@ export function KnowledgeWorkspace() {
 
   async function buildKnowledgeProfile() {
     if (!selectedIds.length) return setMessage("请先选择要整理的知识资料。");
+    if (selectedIds.length > MAX_AI_SOURCES) return setMessage(`每次最多生成 ${MAX_AI_SOURCES} 份资料的知识档案，请先取消一些选择。`);
     await run("profile", async () => {
       const sources = await resolveSelectedSources();
       const response = await fetch("/api/knowledge-profile/analyze", {
@@ -319,15 +341,27 @@ export function KnowledgeWorkspace() {
           </label>
         </section>
       </div>
-      {scanReport ? <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-emerald-950">扫描完成，尚未改动原文件</h3>
-            <p className="mt-1 text-xs leading-5 text-emerald-900/75">共发现 {scanReport.totalFiles} 份，可读取 {scanReport.readableFiles} 份 Markdown / TXT，空文件 {scanReport.emptyFiles} 份，跳过 {scanReport.skippedFiles} 份。</p>
-            <p className={`mt-1 text-xs leading-5 ${scanNeedsNarrowerFolder(scanReport) ? "text-amber-800" : "text-emerald-800"}`}>{knowledgeScanGuidance(scanReport)}</p>
-            {scanReport.skippedFiles ? <p className="mt-1 text-xs text-amber-800">未读取格式：{formatSkippedExtensions(scanReport.skippedByExtension)}。</p> : null}
+      {scanReport && scanSummary ? <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 sm:p-5">
+        <div>
+          <h3 className="text-sm font-semibold text-emerald-950">资料检查完成，原文件没有被修改</h3>
+          <p className="mt-1 text-xs leading-5 text-emerald-900/75">系统已自动排除常见程序、缓存和系统目录，并把剩余内容按用途分组。你不需要判断文件扩展名。</p>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-emerald-200 bg-white/85 p-4">
+            <div className="flex items-start gap-3"><input aria-label="读取文字与办公文档" checked readOnly type="checkbox" className="mt-0.5 size-4 accent-emerald-800" /><div><p className="text-sm font-semibold text-slate-900">文字与办公文档</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.readable} 份可直接整理：Markdown、TXT、PDF、Word</p></div></div>
           </div>
-          <button className={secondaryButtonClass} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "AI 正在制定目录…" : `为所选本地资料生成整理方案（${selectedLocalCount}）`}</button>
+          <div className="rounded-xl border border-slate-200 bg-white/70 p-4">
+            <div className="flex items-start gap-3"><input aria-label="读取图片与扫描件" disabled type="checkbox" className="mt-0.5 size-4" /><div><p className="text-sm font-semibold text-slate-800">图片与扫描件</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.imagesAndScans} 份暂不读取；图片 OCR 将在下一步单独开启</p></div></div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white/70 p-4">
+            <p className="text-sm font-semibold text-slate-800">已自动忽略</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.ignored} 份其他文件已忽略；常见程序、日志和缓存目录也会自动跳过</p>
+          </div>
+        </div>
+        <p className="mt-4 text-xs leading-5 text-slate-600">系统会根据文件名、所在目录和更新时间，先推荐最多 30 份资料作为第一批。{scanReport.emptyFiles ? `另有 ${scanReport.emptyFiles} 份空白文字文件，不会提供有效内容。` : ""}</p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button className={primaryButtonClass} disabled={!recommendedLocalItems.length || busy !== null} onClick={selectRecommendedSources} type="button">{`按系统建议选择（${recommendedLocalItems.length}）`}</button>
+          <button className={secondaryButtonClass} disabled={!localItems.length} onClick={reviewLocalSources} type="button">查看并调整文件</button>
+          <button className={secondaryButtonClass} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "AI 正在制定目录…" : `为所选资料生成整理方案（${selectedLocalCount}）`}</button>
         </div>
       </div> : null}
     </section>
@@ -335,7 +369,7 @@ export function KnowledgeWorkspace() {
     {organizationPlan ? <OrganizationPlanPanel busy={busy} items={localItems} plan={organizationPlan} onConfirm={confirmOrganization} /> : null}
 
     <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" id="knowledge-file-list">
         <div className="border-b border-slate-100 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -394,7 +428,7 @@ export function KnowledgeWorkspace() {
 }
 
 function LocalRow({ item, busy, selected, onPreview, onToggle }: { item: LocalKnowledgeItem; busy: string | null; selected: boolean; onPreview: () => void; onToggle: () => void }) {
-  return <article className="flex items-start gap-3 p-4"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-slate-400">本地 · {item.path}</span><span className="mt-2 line-clamp-2 block text-xs leading-5 text-slate-500">{item.excerpt || "空文件"}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
+  return <article className="flex items-start gap-3 p-4"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{item.title}</span><span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{item.extension === "docx" ? "Word" : item.extension}</span></span><span className="mt-1 block truncate text-xs text-slate-400">本地 · {item.path}</span><span className="mt-2 line-clamp-2 block text-xs leading-5 text-slate-500">{item.excerpt || "空文件"}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
 }
 
 function OrganizationPlanPanel({ busy, items, plan, onConfirm }: { busy: string | null; items: LocalKnowledgeItem[]; plan: KnowledgeOrganizationPlan; onConfirm: () => void }) {
@@ -440,19 +474,20 @@ function sourceName(source: KnowledgePreview["source"]) {
   return source === "local" ? "本地" : source === "base" ? "飞书多维表格" : source === "feishu" ? "飞书文档" : "兼容上传";
 }
 
-function formatSkippedExtensions(values: Record<string, number>) {
-  const entries = Object.entries(values).sort((left, right) => right[1] - left[1]);
-  const summary = entries.slice(0, 8).map(([extension, count]) => `${extension === "无扩展名" ? extension : `.${extension}`} ${count} 份`);
-  if (entries.length > 8) summary.push(`其他 ${entries.length - 8} 种格式`);
-  return summary.join("、") || "未知";
+function summarizeKnowledgeScan(report: KnowledgeScanReport) {
+  const images = report.imageFiles ?? imageCountFromExtensions(report.skippedByExtension);
+  const needsOcr = report.needsOcrFiles ?? 0;
+  return {
+    readable: Math.max(0, report.readableFiles - report.emptyFiles),
+    imagesAndScans: images + needsOcr,
+    ignored: report.ignoredFiles ?? Math.max(0, report.skippedFiles - images - needsOcr),
+  };
 }
 
-function scanNeedsNarrowerFolder(report: KnowledgeScanReport) {
-  return report.totalFiles > 500 || report.skippedFiles > report.readableFiles * 2;
-}
-
-function knowledgeScanGuidance(report: KnowledgeScanReport) {
-  if (!report.readableFiles) return "当前文件夹没有可读取资料，请更换为包含 Markdown 或 TXT 的企业资料文件夹。";
-  if (scanNeedsNarrowerFolder(report)) return "当前扫描范围可能过大，且包含较多非知识文件。建议点击“更换文件夹”，改选仅包含企业资料的目录。";
-  return "这批资料已通过基础可读性检查，可以选择文件后生成整理方案。";
+function imageCountFromExtensions(values: Record<string, number>) {
+  const extensions = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "tif", "tiff", "bmp"]);
+  return Object.entries(values).reduce(
+    (total, [extension, count]) => total + (extensions.has(extension) ? count : 0),
+    0,
+  );
 }

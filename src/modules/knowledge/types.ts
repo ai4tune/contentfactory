@@ -1,8 +1,10 @@
+export type LocalKnowledgeExtension = "md" | "txt" | "pdf" | "docx";
+
 export type LocalKnowledgeItem = {
   id: string;
   title: string;
   path: string;
-  extension: "md" | "txt";
+  extension: LocalKnowledgeExtension;
   size: number;
   lastModified: number;
   tags: string[];
@@ -17,6 +19,11 @@ export type KnowledgeScanReport = {
   emptyFiles: number;
   skippedFiles: number;
   skippedByExtension: Record<string, number>;
+  textFiles?: number;
+  officeDocumentFiles?: number;
+  imageFiles?: number;
+  ignoredFiles?: number;
+  needsOcrFiles?: number;
   scannedAt: string;
 };
 
