@@ -8,8 +8,10 @@ import {
   applyKnowledgeOrganization,
   chooseKnowledgeDirectory,
   disconnectKnowledgeDirectory,
+  KnowledgeDirectoryPermissionError,
   loadLocalKnowledge,
   readLocalKnowledgeItem,
+  readLocalKnowledgeItems,
   reconnectKnowledgeDirectory,
   refreshStoredDirectory,
   requestStoredDirectoryPermission,
@@ -70,6 +72,7 @@ export function KnowledgeWorkspace() {
     try {
       await task();
     } catch (error) {
+      if (error instanceof KnowledgeDirectoryPermissionError) setPermission(error.permission);
       setMessage(error instanceof DOMException && error.name === "AbortError"
         ? "没有选择文件夹，原有连接保持不变。"
         : error instanceof Error ? error.message : "操作失败，请重试。");
@@ -105,7 +108,7 @@ export function KnowledgeWorkspace() {
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
       setPermission("granted");
-      setMessage("文件夹读取权限已恢复。");
+      setMessage("文件夹读取权限已恢复，已选资料仍保留。请再次点击生成知识档案或目录整理建议。");
     });
   }
 
@@ -202,7 +205,7 @@ export function KnowledgeWorkspace() {
       .map((item) => item.id);
     setSelectedIds([...remoteIds, ...recommendedIds]);
     setMessage(recommendedIds.length
-      ? `已按系统建议选择 ${recommendedIds.length} 份本地资料。你可以继续生成整理方案，也可以在下方逐份调整。`
+      ? `已按系统建议选择 ${recommendedIds.length} 份本地资料。请点击“生成知识档案”，也可以在下方逐份调整。已有目录结构无需重新整理。`
       : "当前没有可以新增的文字或办公文档。");
   }
 
@@ -212,6 +215,8 @@ export function KnowledgeWorkspace() {
 
   async function resolveSelectedSources(ids = selectedIds) {
     const remoteById = new Map([...remoteSources, ...feishuResults].map((item) => [item.id, item]));
+    const localTexts = new Map((await readLocalKnowledgeItems(ids.filter((id) => id.startsWith("local:"))))
+      .map((item) => [item.id, item.text]));
     return Promise.all(ids.map(async (id) => {
       const local = localItems.find((item) => item.id === id);
       if (local) return {
@@ -219,7 +224,7 @@ export function KnowledgeWorkspace() {
         title: local.title,
         source: "local" as const,
         path: local.path,
-        text: (await readLocalKnowledgeItem(local.id)).slice(0, 12_000),
+        text: localTexts.get(local.id)!.slice(0, 12_000),
       };
       if (preview?.id === id && preview.text.trim()) return preview;
       const remote = remoteById.get(id);
@@ -277,7 +282,7 @@ export function KnowledgeWorkspace() {
   }
 
   return <AppShell active="/knowledge">
-    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="先扫描并检查资料，再由你决定是否创建整理副本。只有人工确认的知识档案会进入定位和创作。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "AI 正在整理…" : `生成知识档案（${selectedIds.length}）`}</button></>} />
+    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="已有目录结构可以直接使用，无需重新整理。选择代表性资料 → 生成知识档案 → 人工核对确认，再用于账号定位和创作。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "AI 正在生成档案…" : `生成知识档案（${selectedIds.length}）`}</button></>} />
     {message ? <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{message}</p> : null}
 
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -297,7 +302,7 @@ export function KnowledgeWorkspace() {
               <p className="mt-1 text-xs text-slate-500">{localItems.length ? `已索引 ${localItems.length} 份资料` : "浏览器内建立轻量索引"}</p>
             </div>
             <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${permission === "granted" ? "bg-emerald-100 text-emerald-800" : "bg-white text-slate-500"}`}>
-              {permission === "granted" ? "已连接" : "未连接"}
+              {permission === "granted" ? "已连接" : permission === "prompt" || permission === "denied" ? "等待授权" : "未连接"}
             </span>
           </div>
           {permission === "unsupported" ? (
@@ -307,7 +312,7 @@ export function KnowledgeWorkspace() {
               <button className={`${primaryButtonClass} min-h-9 px-3 text-xs`} disabled={busy !== null} onClick={chooseDirectory}>
                 {busy === "choose" ? "建立索引中…" : localItems.length ? "更换文件夹" : "选择文件夹"}
               </button>
-              {(permission === "prompt" || permission === "denied") ? <button className={`${secondaryButtonClass} min-h-9 px-3 text-xs`} disabled={busy !== null} onClick={grantPermission}>重新授权</button> : null}
+              {(permission === "prompt" || permission === "denied") ? <button className={`${primaryButtonClass} min-h-9 px-3 text-xs`} disabled={busy !== null} onClick={grantPermission}>{busy === "grant" ? "恢复中…" : "恢复读取权限"}</button> : null}
               {permission === "granted" ? <button className={`${secondaryButtonClass} min-h-9 px-3 text-xs`} disabled={busy !== null} onClick={refreshDirectory}>刷新</button> : null}
               {localItems.length ? <button className="min-h-9 px-2 text-xs font-semibold text-slate-500 hover:text-slate-800" disabled={busy !== null} onClick={disconnectDirectory}>移除</button> : null}
             </div>
@@ -361,8 +366,12 @@ export function KnowledgeWorkspace() {
         <div className="mt-4 flex flex-wrap gap-3">
           <button className={primaryButtonClass} disabled={!recommendedLocalItems.length || busy !== null} onClick={selectRecommendedSources} type="button">{`按系统建议选择（${recommendedLocalItems.length}）`}</button>
           <button className={secondaryButtonClass} disabled={!localItems.length} onClick={reviewLocalSources} type="button">查看并调整文件</button>
-          <button className={secondaryButtonClass} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "AI 正在制定目录…" : `为所选资料生成整理方案（${selectedLocalCount}）`}</button>
         </div>
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white/70 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">可选：整理文件夹目录</summary>
+          <p className="mt-3 text-xs leading-5 text-slate-600">仅在资料散乱、需要分类目录时使用。AI 会读取所选资料并建议目录归类，确认后才创建整理副本，不会移动或删除原文件。这不是生成知识档案的必经步骤；已有结构的知识库可以跳过。</p>
+          <button className={`${secondaryButtonClass} mt-3`} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "AI 正在制定目录…" : `生成目录整理建议（${selectedLocalCount}）`}</button>
+        </details>
       </div> : null}
     </section>
 
