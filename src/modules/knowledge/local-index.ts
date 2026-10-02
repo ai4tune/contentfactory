@@ -38,6 +38,20 @@ type DirectoryPickerWindow = Window & {
   showDirectoryPicker?: (options?: { mode?: "read" }) => Promise<ReadableDirectoryHandle>;
 };
 
+let connectedDirectory: ReadableDirectoryHandle | undefined;
+
+export class KnowledgeDirectoryPermissionError extends Error {
+  constructor(public permission: "prompt" | "denied" = "prompt") {
+    super("文件夹读取授权已失效，已选资料仍保留。请点击“恢复读取权限”并允许访问，再重试；若浏览器不再弹窗，请在站点设置中允许文件访问或重新选择原文件夹。");
+    this.name = "KnowledgeDirectoryPermissionError";
+  }
+}
+
+async function storedDirectory() {
+  connectedDirectory ??= await readRecord<ReadableDirectoryHandle>(HANDLE_STORE, ROOT_HANDLE_KEY);
+  return connectedDirectory;
+}
+
 export function supportsDirectoryPicker() {
   return typeof window !== "undefined" && "showDirectoryPicker" in window;
 }
@@ -51,6 +65,7 @@ export async function chooseKnowledgeDirectory() {
 
   const handle = await picker({ mode: "read" });
   await writeRecord(HANDLE_STORE, handle, ROOT_HANDLE_KEY);
+  connectedDirectory = handle;
   return refreshLocalIndex(handle);
 }
 
@@ -63,7 +78,7 @@ export async function loadKnowledgeScanReport() {
 }
 
 export async function reconnectKnowledgeDirectory() {
-  const handle = await readRecord<ReadableDirectoryHandle>(HANDLE_STORE, ROOT_HANDLE_KEY);
+  const handle = await storedDirectory();
 
   if (!handle) {
     return null;
@@ -83,22 +98,31 @@ export async function reconnectKnowledgeDirectory() {
 }
 
 export async function requestStoredDirectoryPermission() {
-  const handle = await readRecord<ReadableDirectoryHandle>(HANDLE_STORE, ROOT_HANDLE_KEY);
+  // Use the restored handle directly so the request stays in the user's click.
+  const handle = connectedDirectory ?? await storedDirectory();
 
   if (!handle) {
     throw new Error("没有已保存的文件夹，请重新选择。");
   }
 
-  const permission = await handle.requestPermission({ mode: "read" });
+  let permission: PermissionState;
+  try {
+    permission = await handle.requestPermission({ mode: "read" });
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === "SecurityError" || error.name === "NotAllowedError")) {
+      throw new KnowledgeDirectoryPermissionError();
+    }
+    throw error;
+  }
   if (permission !== "granted") {
-    throw new Error("未获得文件夹读取权限。");
+    throw new KnowledgeDirectoryPermissionError(permission);
   }
 
   return refreshLocalIndex(handle);
 }
 
 export async function refreshStoredDirectory() {
-  const handle = await readRecord<ReadableDirectoryHandle>(HANDLE_STORE, ROOT_HANDLE_KEY);
+  const handle = await storedDirectory();
 
   if (!handle) {
     throw new Error("没有已连接的文件夹，请先选择知识库文件夹。");
@@ -106,34 +130,46 @@ export async function refreshStoredDirectory() {
 
   const permission = await handle.queryPermission({ mode: "read" });
   if (permission !== "granted") {
-    throw new Error("文件夹授权已失效，请重新授权后刷新。");
+    throw new KnowledgeDirectoryPermissionError(permission);
   }
 
   return refreshLocalIndex(handle);
 }
 
 export async function readLocalKnowledgeItem(id: string) {
-  const record = await readRecord<LocalIndexRecord>(INDEX_STORE, id);
-  const root = await readRecord<ReadableDirectoryHandle>(HANDLE_STORE, ROOT_HANDLE_KEY);
+  const [item] = await readLocalKnowledgeItems([id]);
+  return item.text;
+}
 
-  if (!record || !root) {
-    throw new Error("没有找到这份本地资料，请刷新知识库后重试。");
-  }
+export async function readLocalKnowledgeItems(ids: string[]) {
+  if (!ids.length) return [];
+  const root = await storedDirectory();
+
+  if (!root) throw new Error("没有已连接的文件夹，请先选择知识库文件夹。");
 
   const permission = await root.queryPermission({ mode: "read" });
   if (permission !== "granted") {
-    const requested = await root.requestPermission({ mode: "read" });
-    if (requested !== "granted") {
-      throw new Error("未获得该文件的读取权限。");
-    }
+    throw new KnowledgeDirectoryPermissionError(permission);
   }
 
-  const file = await record.handle.getFile();
-  return extractLocalDocumentText(file, record.extension);
+  const records = new Map((await readAllRecords<LocalIndexRecord>(INDEX_STORE)).map((record) => [record.id, record]));
+  return Promise.all(ids.map(async (id) => {
+    const record = records.get(id);
+    if (!record) throw new Error("没有找到这份本地资料，请刷新知识库后重试。");
+    try {
+      const file = await record.handle.getFile();
+      return { id, text: await extractLocalDocumentText(file, record.extension) };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        throw new KnowledgeDirectoryPermissionError();
+      }
+      throw error;
+    }
+  }));
 }
 
 export async function applyKnowledgeOrganization(plan: KnowledgeOrganizationPlan) {
-  const root = await readRecord<ReadableDirectoryHandle>(HANDLE_STORE, ROOT_HANDLE_KEY);
+  const root = connectedDirectory ?? await storedDirectory();
   if (!root) throw new Error("没有已连接的本地文件夹，请先重新选择。");
   const permission = await root.requestPermission({ mode: "readwrite" });
   if (permission !== "granted") throw new Error("未获得创建整理副本的写入权限。");
@@ -174,6 +210,7 @@ export async function disconnectKnowledgeDirectory() {
   transaction.objectStore(META_STORE).clear();
   await transactionDone(transaction);
   database.close();
+  connectedDirectory = undefined;
 }
 
 export function searchLocalKnowledge(items: LocalKnowledgeItem[], query: string) {
