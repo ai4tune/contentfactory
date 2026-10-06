@@ -36,17 +36,20 @@ export async function getConfirmedKnowledgeProfile() {
 export async function saveKnowledgeProfile(
   input: EnterpriseKnowledgeProfileInput,
   status: Exclude<KnowledgeProfileStatus, "archived">,
+  idempotencyId?: string,
 ) {
   validateForPersistence(input, status);
   let saved: EnterpriseKnowledgeProfile | null = null;
   await updateJsonFile<KnowledgeProfileStore>(storePath, emptyStore, (store) => {
     const now = new Date().toISOString();
     const profiles = store.profiles ?? [];
+    const existing = idempotencyId && profiles.find((profile) => profile.id === idempotencyId);
+    if (existing) { saved = existing; return store; }
     const currentDraft = profiles.find((profile) => profile.status === "draft");
     const maxVersion = profiles.reduce((max, profile) => Math.max(max, profile.version), 0);
     const profile: EnterpriseKnowledgeProfile = {
       ...input,
-      id: currentDraft?.id ?? `knowledgeProfile_${randomUUID()}`,
+      id: idempotencyId ?? currentDraft?.id ?? `knowledgeProfile_${randomUUID()}`,
       schemaVersion: 1,
       status,
       version: currentDraft?.version ?? maxVersion + 1,

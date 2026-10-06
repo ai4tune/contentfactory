@@ -11,11 +11,12 @@
     "test:extension": "node --test src/tests/extension-*.test.mjs",
     "test:guardrails": "node --test src/tests/production-guardrails.test.mjs src/tests/data-maintenance.test.mjs src/tests/json-file-store.test.mjs src/tests/knowledge-local-*.test.mjs",
     "test:v2": "npm run build && node --test src/tests/v2-handoff.test.mjs",
-    "test:acceptance": "npm run lint && npm run test:guardrails && npm run test:extension && npm run test:api && node --test src/tests/v2-handoff.test.mjs",
+    "test:acceptance": "npm run lint && npm run test:guardrails && npm run test:extension && npm run test:api && node --test src/tests/v2-handoff.test.mjs && node --test src/tests/knowledge-tasks.test.mjs",
     "data:backup": "node ops/data-maintenance.mjs backup",
     "data:restore": "node ops/data-maintenance.mjs restore",
     "data:delete": "node ops/data-maintenance.mjs delete",
-    "data:migrate:supabase": "node ops/migrate-local-data-to-supabase.mjs"
+    "data:migrate:supabase": "node ops/migrate-local-data-to-supabase.mjs",
+    "test:knowledge-tasks": "npm run build && node --test src/tests/knowledge-tasks.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -25,7 +26,8 @@
     "next": "16.3.5",
     "pdfjs-dist": "^6.3.289",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "workflow": "5.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

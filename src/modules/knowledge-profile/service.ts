@@ -11,7 +11,7 @@ import type {
 
 const MAX_SOURCES = 30;
 const MAX_SOURCE_CHARS = 8_000;
-const MAX_BATCH_CHARS = 32_000;
+const MAX_BATCH_CHARS = 16_000;
 const sourceTypes = new Set<BriefKnowledgeSource["source"]>(["local", "feishu", "base", "upload"]);
 
 export function normalizeKnowledgeProfileSources(value: unknown): BriefKnowledgeSource[] {
@@ -42,20 +42,24 @@ export async function analyzeEnterpriseKnowledge(
     .slice(0, MAX_SOURCES);
   if (!usable.length) throw new Error("请至少选择一份有正文的知识资料。");
 
-  const batches = splitBatches(usable);
+  const batches = splitKnowledgeBatches(usable);
   const partials = [];
-  for (const batch of batches) partials.push(await compileBatch(batch));
-  if (partials.length === 1) return normalizeKnowledgeProfileInput(partials[0], usable);
+  for (const batch of batches) partials.push(await compileKnowledgeBatch(batch));
+  return mergeKnowledgeBatches(partials, usable);
+}
+
+export async function mergeKnowledgeBatches(partials: unknown[], sources: BriefKnowledgeSource[]) {
+  if (partials.length === 1) return normalizeKnowledgeProfileInput(partials[0], sources);
 
   const merged = await requestProfile([
     "下面是多批资料分别提炼出的结构化结果。请合并同义项、保留来源编号，输出一份完整企业知识档案。",
     "不得新增批次结果中不存在的企业事实。无法确认的推断必须放入 gaps，或把 fact.confidence 标成 needs_confirmation。",
     JSON.stringify(partials),
   ].join("\n"));
-  return normalizeKnowledgeProfileInput(merged, usable);
+  return normalizeKnowledgeProfileInput(merged, sources);
 }
 
-async function compileBatch(sources: BriefKnowledgeSource[]) {
+export async function compileKnowledgeBatch(sources: BriefKnowledgeSource[]) {
   const context = sources.map((source) => [
     `[${source.id}] ${source.title}`,
     source.text.slice(0, MAX_SOURCE_CHARS),
@@ -77,10 +81,11 @@ async function requestProfile(userContent: string) {
         "offers 每项包含 name, description, differentiators, sourceIds。",
         "facts 每项包含 category, statement, confidence, sourceIds；confidence 只能是 confirmed 或 needs_confirmation。",
         "资料明确支持且带有效 sourceIds 才能用 confirmed；任何推断或缺少来源的内容必须用 needs_confirmation。",
+        "表达简洁，合并重复项；每批最多提炼 20 条关键事实、10 项产品或服务。",
       ].join("\n"),
     },
     { role: "user", content: userContent },
-  ], { minimumTimeoutMs: 180_000 });
+  ], { timeoutMs: 120_000 });
   return parseJsonObject(content);
 }
 
@@ -160,7 +165,7 @@ export function formatKnowledgeProfileForPrompt(
   }, null, 2);
 }
 
-function splitBatches(sources: BriefKnowledgeSource[]) {
+export function splitKnowledgeBatches(sources: BriefKnowledgeSource[]) {
   const batches: BriefKnowledgeSource[][] = [];
   let current: BriefKnowledgeSource[] = [];
   let currentLength = 0;

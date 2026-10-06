@@ -8,6 +8,7 @@ services:
       NODE_ENV: production
       CONTENT_FACTORY_DATA_DIR: /app/data
       CONTENT_FACTORY_BACKUP_DIR: /app/backups
+      WORKFLOW_LOCAL_DATA_DIR: /app/data/workflow
     ports:
       - "${CONTENT_FACTORY_PORT:-3000}:3000"
     restart: unless-stopped

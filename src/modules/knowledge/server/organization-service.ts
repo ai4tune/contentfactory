@@ -35,7 +35,7 @@ export async function planKnowledgeOrganization(
       role: "user",
       content: `请为以下资料生成目录归类方案：\n${JSON.stringify(sourceSummary)}`,
     },
-  ], { minimumTimeoutMs: 180_000 });
+  ], { timeoutMs: 120_000 });
   return normalizePlan(parseJsonObject(content), sources);
 }
 

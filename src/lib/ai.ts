@@ -219,7 +219,7 @@ export async function analyzeInspiration(request: InspirationRequest): Promise<I
 
 export async function chatCompletionJson(
   messages: Array<{ role: "system" | "user"; content: string }>,
-  options: { minimumTimeoutMs?: number } = {},
+  options: { minimumTimeoutMs?: number; timeoutMs?: number } = {},
 ) {
   const baseUrl = requireEnv("AI_BASE_URL").trim();
   const apiKey = requireEnv("AI_API_KEY").trim();
@@ -241,7 +241,7 @@ export async function chatCompletionJson(
         messages,
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(Math.max(readTimeout("AI_REQUEST_TIMEOUT_MS", 60_000), options.minimumTimeoutMs ?? 0)),
+      signal: AbortSignal.timeout(options.timeoutMs ?? Math.max(readTimeout("AI_REQUEST_TIMEOUT_MS", 60_000), options.minimumTimeoutMs ?? 0)),
     });
     const responseText = await response.text();
 
