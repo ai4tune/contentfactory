@@ -2,11 +2,10 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,8 +25,8 @@ export function LoginForm() {
       });
       if (error) throw error;
       const next = searchParams.get("next");
-      router.replace(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
-      router.refresh();
+      // Reload all client state when switching identities, including local folder handles.
+      window.location.replace(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
     } catch {
       setMessage("账号或密码不正确，请检查后重试。");
     } finally {

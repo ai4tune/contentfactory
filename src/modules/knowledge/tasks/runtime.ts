@@ -1,4 +1,5 @@
 import { getRun, start } from "workflow/api";
+import { getDataWorkspaceId } from "@/lib/data-workspace";
 import { runKnowledgeTask } from "./workflow";
 import { listKnowledgeTasks, updateKnowledgeTask } from "./repository";
 import { isKnowledgeTaskActive, type StoredKnowledgeTask } from "./types";
@@ -6,7 +7,8 @@ import { isKnowledgeTaskActive, type StoredKnowledgeTask } from "./types";
 export async function launchKnowledgeTask(task: StoredKnowledgeTask) {
   let runId: string;
   try {
-    const run = await start(runKnowledgeTask, [task.id, task.attempt]);
+    const workspaceId = await getDataWorkspaceId();
+    const run = await start(runKnowledgeTask, [task.id, task.attempt, workspaceId]);
     runId = run.runId;
   } catch {
     await updateKnowledgeTask(task.id, task.attempt, (current) => current.runId ? current : ({

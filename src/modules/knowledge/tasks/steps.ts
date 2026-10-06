@@ -1,3 +1,4 @@
+import { withDataWorkspace } from "@/lib/data-workspace";
 import { FatalError, RetryableError, getStepMetadata, getWorkflowMetadata } from "workflow";
 import { compileKnowledgeBatch, mergeKnowledgeBatches, splitKnowledgeBatches } from "@/modules/knowledge-profile/service";
 import { saveKnowledgeProfile } from "@/modules/knowledge-profile/repository";
@@ -7,8 +8,12 @@ import { getKnowledgeTask, updateKnowledgeTask } from "./repository";
 import { canRetryKnowledgeError, knowledgeTaskError } from "./errors";
 import type { StoredKnowledgeTask } from "./types";
 
-export async function beginKnowledgeTask(id: string, attempt: number) {
+export async function beginKnowledgeTask(id: string, attempt: number, workspaceId: string | null) {
   "use step";
+  return withDataWorkspace(workspaceId, () => beginKnowledgeTaskInWorkspace(id, attempt));
+}
+
+async function beginKnowledgeTaskInWorkspace(id: string, attempt: number) {
   const task = await requireTask(id, attempt);
   await updateKnowledgeTask(id, attempt, (current) => ({
     ...current, status: "running", runId: getWorkflowMetadata().workflowRunId,
@@ -17,8 +22,12 @@ export async function beginKnowledgeTask(id: string, attempt: number) {
   return task.totalBatches;
 }
 
-export async function processKnowledgeBatch(id: string, attempt: number, index: number) {
+export async function processKnowledgeBatch(id: string, attempt: number, index: number, workspaceId: string | null) {
   "use step";
+  return withDataWorkspace(workspaceId, () => processKnowledgeBatchInWorkspace(id, attempt, index));
+}
+
+async function processKnowledgeBatchInWorkspace(id: string, attempt: number, index: number) {
   const task = await requireTask(id, attempt);
   if (task.batches[String(index)]) return;
   await updateKnowledgeTask(id, attempt, (current) => ({
@@ -38,8 +47,12 @@ export async function processKnowledgeBatch(id: string, attempt: number, index: 
 }
 processKnowledgeBatch.maxRetries = 2;
 
-export async function compileKnowledgeResult(id: string, attempt: number) {
+export async function compileKnowledgeResult(id: string, attempt: number, workspaceId: string | null) {
   "use step";
+  return withDataWorkspace(workspaceId, () => compileKnowledgeResultInWorkspace(id, attempt));
+}
+
+async function compileKnowledgeResultInWorkspace(id: string, attempt: number) {
   const task = await requireTask(id, attempt);
   if (task.kind === "organization" || task.compiledProfile) return;
   await updateKnowledgeTask(id, attempt, (current) => ({ ...current, status: "running", stage: "批次分析已完成，正在合并档案并核对来源" }));
@@ -51,8 +64,12 @@ export async function compileKnowledgeResult(id: string, attempt: number) {
 }
 compileKnowledgeResult.maxRetries = 2;
 
-export async function saveKnowledgeResult(id: string, attempt: number) {
+export async function saveKnowledgeResult(id: string, attempt: number, workspaceId: string | null) {
   "use step";
+  return withDataWorkspace(workspaceId, () => saveKnowledgeResultInWorkspace(id, attempt));
+}
+
+async function saveKnowledgeResultInWorkspace(id: string, attempt: number) {
   const task = await getKnowledgeTask(id);
   if (task?.status === "succeeded" && task.attempt === attempt) return;
   const current = await requireTask(id, attempt);
@@ -73,8 +90,12 @@ export async function saveKnowledgeResult(id: string, attempt: number) {
   }));
 }
 
-export async function failKnowledgeTask(id: string, attempt: number, message: string) {
+export async function failKnowledgeTask(id: string, attempt: number, message: string, workspaceId: string | null) {
   "use step";
+  return withDataWorkspace(workspaceId, () => failKnowledgeTaskInWorkspace(id, attempt, message));
+}
+
+async function failKnowledgeTaskInWorkspace(id: string, attempt: number, message: string) {
   await updateKnowledgeTask(id, attempt, (task) => task.status === "succeeded" ? task : ({
     ...task, status: "failed", stage: "任务未完成，已保存进度", error: message, finishedAt: new Date().toISOString(),
   }));
