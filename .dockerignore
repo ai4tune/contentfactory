@@ -1,5 +1,7 @@
 .git
 .next
+.workflow-data
+src/app/.well-known/workflow
 node_modules
 data
 backups

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useKnowledgeTasks } from "../tasks/provider";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import {
   applyKnowledgeOrganization,
@@ -26,8 +26,9 @@ type FeishuItem = Omit<RemoteKnowledgeSource, "updatedAt"> & { text?: string };
 
 const MAX_AI_SOURCES = 30;
 
-export function KnowledgeWorkspace() {
-  const router = useRouter();
+export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrganizationTaskId?: string }) {
+  const { tasks, refresh: refreshTasks } = useKnowledgeTasks();
+  const [organizationTaskId, setOrganizationTaskId] = useState<string | null>(initialOrganizationTaskId ?? null);
   const [localItems, setLocalItems] = useState<LocalKnowledgeItem[]>([]);
   const [remoteSources, setRemoteSources] = useState<RemoteKnowledgeSource[]>([]);
   const [feishuResults, setFeishuResults] = useState<FeishuItem[]>([]);
@@ -37,7 +38,6 @@ export function KnowledgeWorkspace() {
   const [feishuUrl, setFeishuUrl] = useState("");
   const [permission, setPermission] = useState<PermissionState | "none" | "unsupported">("none");
   const [scanReport, setScanReport] = useState<KnowledgeScanReport | null>(null);
-  const [organizationPlan, setOrganizationPlan] = useState<KnowledgeOrganizationPlan | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const localResults = useMemo(() => searchLocalKnowledge(localItems, query), [localItems, query]);
@@ -45,6 +45,11 @@ export function KnowledgeWorkspace() {
   const selectedLocalCount = selectedIds.filter((id) => id.startsWith("local:")).length;
   const recommendedLocalItems = useMemo(() => recommendKnowledgeItems(localItems), [localItems]);
   const scanSummary = scanReport ? summarizeKnowledgeScan(scanReport) : null;
+
+  const organizationTask = organizationTaskId !== null
+    ? tasks.find((task) => task.id === organizationTaskId)
+    : tasks.find((task) => task.kind === "organization" && task.status === "succeeded");
+  const organizationPlan = organizationTask?.status === "succeeded" ? organizationTask.plan ?? null : null;
 
   useEffect(() => {
     let active = true;
@@ -86,7 +91,7 @@ export function KnowledgeWorkspace() {
       const snapshot = await chooseKnowledgeDirectory();
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
-      setOrganizationPlan(null);
+      setOrganizationTaskId("");
       setPermission("granted");
       setMessage(`资料检查完成：找到 ${snapshot.report.readableFiles} 份可直接整理的文字与办公文档。原文件没有被修改。`);
     });
@@ -97,7 +102,7 @@ export function KnowledgeWorkspace() {
       const snapshot = await refreshStoredDirectory();
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
-      setOrganizationPlan(null);
+      setOrganizationTaskId("");
       setMessage(`资料已重新检查，共 ${snapshot.items.length} 份文字与办公文档可以直接整理。`);
     });
   }
@@ -117,7 +122,7 @@ export function KnowledgeWorkspace() {
       await disconnectKnowledgeDirectory();
       setLocalItems([]);
       setScanReport(null);
-      setOrganizationPlan(null);
+      setOrganizationTaskId("");
       setSelectedIds((ids) => ids.filter((id) => !id.startsWith("local:")));
       setPermission("none");
       if (preview?.source === "local") setPreview(null);
@@ -245,15 +250,16 @@ export function KnowledgeWorkspace() {
     if (!localIds.length) return setMessage("请先选择要整理的本地资料。");
     if (localIds.length > MAX_AI_SOURCES) return setMessage(`每次最多整理 ${MAX_AI_SOURCES} 份资料，请先取消一些选择。`);
     await run("organize-plan", async () => {
-      const response = await fetch("/api/knowledge/organize-plan", {
+      const response = await fetch("/api/knowledge/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sources: await resolveSelectedSources(localIds) }),
+        body: JSON.stringify({ kind: "organization", sources: await resolveSelectedSources(localIds) }),
       });
-      const payload = await response.json() as { plan?: KnowledgeOrganizationPlan; error?: string };
-      if (!response.ok || !payload.plan) throw new Error(payload.error ?? "整理方案生成失败。");
-      setOrganizationPlan(payload.plan);
-      setMessage("整理方案已生成。请先核对目录和文件归类，确认后才会创建副本。");
+      const payload = await response.json() as { task?: { id: string }; error?: string };
+      if (!response.ok || !payload.task) throw new Error(payload.error ?? "整理任务提交失败。");
+      setOrganizationTaskId(payload.task.id);
+      await refreshTasks();
+      setMessage("目录整理任务已提交后台。可以离开或关闭浏览器；方案完成后再核对并确认创建副本。");
     });
   }
 
@@ -270,19 +276,21 @@ export function KnowledgeWorkspace() {
     if (selectedIds.length > MAX_AI_SOURCES) return setMessage(`每次最多生成 ${MAX_AI_SOURCES} 份资料的知识档案，请先取消一些选择。`);
     await run("profile", async () => {
       const sources = await resolveSelectedSources();
-      const response = await fetch("/api/knowledge-profile/analyze", {
+      const response = await fetch("/api/knowledge/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sources }),
+        body: JSON.stringify({ kind: "profile", sources }),
       });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "企业知识档案整理失败。");
-      router.push("/knowledge/profile");
+      await refreshTasks();
+      setMessage("建档任务已提交后台，可以离开、刷新或关闭浏览器。完成后会在站内提醒，请打开档案核对确认。");
     });
   }
 
   return <AppShell active="/knowledge">
-    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="已有目录结构可以直接使用，无需重新整理。选择代表性资料 → 生成知识档案 → 人工核对确认，再用于账号定位和创作。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "AI 正在生成档案…" : `生成知识档案（${selectedIds.length}）`}</button></>} />
+    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="已有目录结构可以直接使用，无需重新整理。选择代表性资料 → 生成知识档案 → 人工核对确认，再用于账号定位和创作。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "读取资料并提交中…" : `生成知识档案（${selectedIds.length}）`}</button></>} />
+    <p className="mt-3 text-xs leading-5 text-slate-500">提交成功后可离开页面，后台持续处理并保存进度。所选资料的文字摘要会暂存用于失败重试，完成后清除；原文件不会被修改。</p>
     {message ? <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{message}</p> : null}
 
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -370,7 +378,7 @@ export function KnowledgeWorkspace() {
         <details className="mt-4 rounded-xl border border-slate-200 bg-white/70 p-4">
           <summary className="cursor-pointer text-sm font-semibold text-slate-700">可选：整理文件夹目录</summary>
           <p className="mt-3 text-xs leading-5 text-slate-600">仅在资料散乱、需要分类目录时使用。AI 会读取所选资料并建议目录归类，确认后才创建整理副本，不会移动或删除原文件。这不是生成知识档案的必经步骤；已有结构的知识库可以跳过。</p>
-          <button className={`${secondaryButtonClass} mt-3`} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "AI 正在制定目录…" : `生成目录整理建议（${selectedLocalCount}）`}</button>
+          <button className={`${secondaryButtonClass} mt-3`} disabled={!selectedLocalCount || busy !== null} onClick={createOrganizationPlan} type="button">{busy === "organize-plan" ? "读取资料并提交中…" : `生成目录整理建议（${selectedLocalCount}）`}</button>
         </details>
       </div> : null}
     </section>

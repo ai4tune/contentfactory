@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { normalizeKnowledgeProfileSources } from "@/modules/knowledge-profile/service";
 import { planKnowledgeOrganization } from "@/modules/knowledge/server/organization-service";
+import { knowledgeTaskError } from "@/modules/knowledge/tasks/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ plan: await planKnowledgeOrganization(sources) });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "知识库整理方案生成失败。" },
+      { error: knowledgeTaskError(error) },
       { status: 500 },
     );
   }

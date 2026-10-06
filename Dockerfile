@@ -24,6 +24,7 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV CONTENT_FACTORY_DATA_DIR=/app/data
 ENV CONTENT_FACTORY_BACKUP_DIR=/app/backups
+ENV WORKFLOW_LOCAL_DATA_DIR=/app/data/workflow
 
 RUN groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs \

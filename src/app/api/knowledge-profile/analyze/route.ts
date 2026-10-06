@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { analyzeEnterpriseKnowledge, normalizeKnowledgeProfileSources } from "@/modules/knowledge-profile/service";
 import { saveKnowledgeProfile } from "@/modules/knowledge-profile/repository";
+import { knowledgeTaskError } from "@/modules/knowledge/tasks/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ profile });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "企业知识档案分析失败。" },
+      { error: knowledgeTaskError(error) },
       { status: 500 },
     );
   }
