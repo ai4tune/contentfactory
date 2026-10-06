@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getDataWorkspaceId } from "@/lib/data-workspace";
+import { createCaptureToken } from "@/modules/positioning/capture-access";
+import { supabaseSecretKey } from "@/lib/supabase/config";
 
 export const runtime = "nodejs";
 
@@ -11,8 +14,10 @@ export async function POST() {
     );
   }
 
+  const workspaceId = await getDataWorkspaceId();
   return NextResponse.json(
-    { token },
+    // The old shared capture token was sent to browsers and cannot be a signing secret.
+    { token: workspaceId ? createCaptureToken(workspaceId, supabaseSecretKey()) : token },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

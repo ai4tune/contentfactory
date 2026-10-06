@@ -1,6 +1,6 @@
 import * as cloud from "./db.cloud";
 import * as local from "./db.local";
-import { isSupabasePersistenceConfigured } from "./supabase/config";
+import { isSupabaseAuthConfigured, isSupabasePersistenceConfigured } from "./supabase/config";
 
 export type { TrackedAccountBundle } from "./db.cloud";
 
@@ -8,7 +8,7 @@ type MarketItemInput = Parameters<typeof cloud.saveMarketItemToDb>[0];
 type ProviderCallLogInput = Parameters<typeof cloud.saveProviderCallLog>[0];
 type IdeaInput = Parameters<typeof cloud.saveIdeaToDb>[0];
 
-const cloudEnabled = () => isSupabasePersistenceConfigured();
+const cloudEnabled = () => isSupabaseAuthConfigured() || isSupabasePersistenceConfigured();
 
 export async function listTrackedAccountBundles() {
   return cloudEnabled() ? cloud.listTrackedAccountBundles() : local.listTrackedAccountBundles();

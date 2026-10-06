@@ -8,6 +8,7 @@ import {
 } from "./file-classification";
 
 const DATABASE_NAME = "contentfactory-knowledge";
+let databaseName = DATABASE_NAME;
 const DATABASE_VERSION = 2;
 const HANDLE_STORE = "handles";
 const INDEX_STORE = "local-index";
@@ -48,6 +49,7 @@ export class KnowledgeDirectoryPermissionError extends Error {
 }
 
 async function storedDirectory() {
+  await resolveDatabaseName();
   connectedDirectory ??= await readRecord<ReadableDirectoryHandle>(HANDLE_STORE, ROOT_HANDLE_KEY);
   return connectedDirectory;
 }
@@ -173,6 +175,7 @@ export async function applyKnowledgeOrganization(plan: KnowledgeOrganizationPlan
   if (!root) throw new Error("没有已连接的本地文件夹，请先重新选择。");
   const permission = await root.requestPermission({ mode: "readwrite" });
   if (permission !== "granted") throw new Error("未获得创建整理副本的写入权限。");
+  if (root !== await storedDirectory()) throw new Error("登录账号已切换，请重新连接当前账号的知识库文件夹。");
 
   const folderById = new Map(plan.folders.map((folder) => [folder.id, folder]));
   const destinationRoot = await root.getDirectoryHandle(ORGANIZED_ROOT_NAME, { create: true });
@@ -404,9 +407,21 @@ function stripHandles(records: LocalIndexRecord[]) {
   });
 }
 
-function openDatabase() {
+async function resolveDatabaseName() {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return databaseName;
+  const response = await fetch("/api/auth/session", { cache: "no-store" });
+  if (!response.ok) throw new Error("请先登录后读取本地知识索引。");
+  const { workspaceId } = await response.json() as { workspaceId: string };
+  const next = `${DATABASE_NAME}:${workspaceId}`;
+  if (databaseName !== next) connectedDirectory = undefined;
+  databaseName = next;
+  return next;
+}
+
+async function openDatabase() {
+  const name = await resolveDatabaseName();
   return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    const request = indexedDB.open(name, DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(HANDLE_STORE)) {

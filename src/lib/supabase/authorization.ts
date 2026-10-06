@@ -13,5 +13,5 @@ export async function getWorkspaceMembership() {
     .eq("workspace_id", workspaceId)
     .eq("user_id", user.id)
     .maybeSingle();
-  return data ? { userId: user.id, role: data.role as "owner" | "member" } : null;
+  return data ? { userId: user.id, email: user.email, role: data.role as "owner" | "member" } : null;
 }

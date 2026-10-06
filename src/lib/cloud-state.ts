@@ -1,11 +1,11 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { contentFactoryWorkspaceId } from "@/lib/supabase/config";
+import { getDataWorkspaceId } from "@/lib/data-workspace";
 import type { Json } from "@/lib/supabase/database.types";
 
 type StateRow<T> = { payload: T; version: number };
 
 export async function readCloudState<T>(storeKey: string, fallback: T): Promise<T> {
-  const workspaceId = requiredWorkspaceId();
+  const workspaceId = await requiredWorkspaceId();
   const { data, error } = await createAdminSupabaseClient()
     .from("content_factory_state")
     .select("payload")
@@ -21,11 +21,11 @@ export async function updateCloudState<T>(
   fallback: T,
   update: (current: T) => T | Promise<T>,
 ): Promise<T> {
-  const workspaceId = requiredWorkspaceId();
+  const workspaceId = await requiredWorkspaceId();
   const supabase = createAdminSupabaseClient();
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const current = await readStateRow<T>(storeKey);
+    const current = await readStateRow<T>(workspaceId, storeKey);
     const next = await update(current?.payload ?? fallback);
 
     if (!current) {
@@ -56,8 +56,7 @@ export async function updateCloudState<T>(
   throw new Error(`Cloud state update conflicted too many times (${storeKey}).`);
 }
 
-async function readStateRow<T>(storeKey: string): Promise<StateRow<T> | null> {
-  const workspaceId = requiredWorkspaceId();
+async function readStateRow<T>(workspaceId: string, storeKey: string): Promise<StateRow<T> | null> {
   const { data, error } = await createAdminSupabaseClient()
     .from("content_factory_state")
     .select("payload, version")
@@ -68,8 +67,8 @@ async function readStateRow<T>(storeKey: string): Promise<StateRow<T> | null> {
   return data ? { payload: data.payload as T, version: Number(data.version) } : null;
 }
 
-function requiredWorkspaceId() {
-  const workspaceId = contentFactoryWorkspaceId();
-  if (!workspaceId) throw new Error("CONTENT_FACTORY_WORKSPACE_ID is not configured.");
+async function requiredWorkspaceId() {
+  const workspaceId = await getDataWorkspaceId();
+  if (!workspaceId) throw new Error("账号数据空间未配置。");
   return workspaceId;
 }
