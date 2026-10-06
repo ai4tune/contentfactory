@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import type { MarketHistory } from "@/modules/market/history";
 
 type SavedInspiration = { id: string; title: string; summary: string; statusLabel: string };

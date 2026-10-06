@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import TopicWorkspace from "@/modules/topics/components/topic-workspace";
 import { IdeasAssets } from "@/modules/ideas/assets";

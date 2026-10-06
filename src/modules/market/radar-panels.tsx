@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ComponentType } from "react";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import type { MarketItem } from "./types";
 import type { Hotspot, HotKeyword } from "./providers/redfox-provider";
 import type { TrackedAccountBundle } from "@/lib/db";

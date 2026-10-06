@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { LoadingSpinner } from "@/components/loading-feedback";
 
 export function SetPasswordForm() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export function SetPasswordForm() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setMessage(null);
     if (password.length < 8) {
       setMessage("密码至少需要 8 个字符。");
@@ -32,13 +34,12 @@ export function SetPasswordForm() {
       router.refresh();
     } catch {
       setMessage("链接无效或已过期，请重新发送密码邮件。");
-    } finally {
       setBusy(false);
     }
   }
 
   return (
-    <form className="mt-8 space-y-5" onSubmit={submit}>
+    <form aria-busy={busy} className="mt-8 space-y-5" onSubmit={submit}>
       <label className="block text-sm font-medium text-slate-700">
         新密码
         <input
@@ -75,7 +76,7 @@ export function SetPasswordForm() {
         disabled={busy}
         type="submit"
       >
-        {busy ? "正在保存…" : "保存密码并进入内容工厂"}
+        {busy ? <span role="status" className="inline-flex items-center gap-2"><LoadingSpinner />正在保存并进入，请稍候…</span> : "保存密码并进入内容工厂"}
       </button>
     </form>
   );

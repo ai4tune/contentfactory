@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
+import { flushSync } from "react-dom";
+import Link from "@/components/navigation-link";
 import { useSearchParams } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { LoadingSpinner } from "@/components/loading-feedback";
 
 export function LoginForm() {
   const searchParams = useSearchParams();
@@ -13,10 +15,13 @@ export function LoginForm() {
     searchParams.get("error") === "invalid_link" ? "链接无效或已过期，请重新获取密码邮件。" : null,
   );
   const [busy, setBusy] = useState(false);
+  const [entering, setEntering] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
+    setEntering(false);
     setMessage(null);
     try {
       const { error } = await createBrowserSupabaseClient().auth.signInWithPassword({
@@ -24,18 +29,19 @@ export function LoginForm() {
         password,
       });
       if (error) throw error;
+      // Render the success feedback before starting a full document navigation.
+      flushSync(() => setEntering(true));
       const next = searchParams.get("next");
       // Reload all client state when switching identities, including local folder handles.
       window.location.replace(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
     } catch {
       setMessage("账号或密码不正确，请检查后重试。");
-    } finally {
       setBusy(false);
     }
   }
 
   return (
-    <form className="mt-8 space-y-5" onSubmit={submit}>
+    <form aria-busy={busy} className="mt-8 space-y-5" onSubmit={submit}>
       <label className="block text-sm font-medium text-slate-700">
         登录账号
         <input
@@ -61,13 +67,13 @@ export function LoginForm() {
           value={password}
         />
       </label>
-      {message ? <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p> : null}
+      {message ? <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{message}</p> : null}
       <button
         className="min-h-12 w-full rounded-xl bg-[#173e32] px-4 text-sm font-semibold text-white transition hover:bg-[#0e2d24] disabled:cursor-not-allowed disabled:opacity-50"
         disabled={busy}
         type="submit"
       >
-        {busy ? "正在登录…" : "登录内容工厂"}
+        {busy ? <span role="status" className="inline-flex items-center gap-2"><LoadingSpinner />{entering ? "登录成功，正在进入…" : "正在登录，请稍候…"}</span> : "登录内容工厂"}
       </button>
       <div className="flex items-center justify-between gap-4 text-xs leading-5">
         <span className="text-slate-400">账号由服务方创建</span>

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import type { ReactNode } from "react";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
 import { SessionAccount } from "@/components/session-account";

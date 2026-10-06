@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { useState } from "react";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { channelLabels, contentChannels, type ContentChannel } from "@/modules/content/types";

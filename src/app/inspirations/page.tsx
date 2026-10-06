@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { AppShell, PageHeader, primaryButtonClass } from "@/components/app-shell";
 import { formatInspirationMetrics } from "@/modules/inspirations/normalization";
 import { listInspirationRecords } from "@/modules/inspirations/service";
