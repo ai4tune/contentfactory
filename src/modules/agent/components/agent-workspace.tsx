@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { AppShell, primaryButtonClass } from "@/components/app-shell";
 import { channelLabels, type ContentChannel } from "@/modules/content/types";
 import type { DashboardSummary } from "@/modules/dashboard/server/summary";

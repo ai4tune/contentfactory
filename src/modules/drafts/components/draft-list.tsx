@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { useMemo, useState } from "react";
 import { channelLabels, contentChannels, type ContentChannel } from "@/modules/content/types";
 import type { DraftListItem, DraftReviewStatus } from "../types";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-shell";
 import { getConfigStatus } from "@/lib/config";
 import { ContentCreationWorkspace } from "@/modules/content/components/content-creation-workspace";

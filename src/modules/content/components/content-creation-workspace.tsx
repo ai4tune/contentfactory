@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { useEffect, useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import {

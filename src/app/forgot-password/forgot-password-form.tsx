@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { LoadingSpinner } from "@/components/loading-feedback";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -11,6 +12,7 @@ export function ForgotPasswordForm() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -34,7 +36,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form className="mt-8 space-y-5" onSubmit={submit}>
+    <form aria-busy={busy} className="mt-8 space-y-5" onSubmit={submit}>
       <label className="block text-sm font-medium text-slate-700">
         登录邮箱
         <input
@@ -55,7 +57,7 @@ export function ForgotPasswordForm() {
         disabled={busy}
         type="submit"
       >
-        {busy ? "正在发送…" : "发送重置邮件"}
+        {busy ? <span role="status" className="inline-flex items-center gap-2"><LoadingSpinner />正在发送，请稍候…</span> : "发送重置邮件"}
       </button>
     </form>
   );

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { AppShell, PageHeader, primaryButtonClass } from "@/components/app-shell";
 import { ContentLibrary } from "@/modules/drafts/components/content-library";
 import { listContentLibraryItems } from "@/modules/drafts/server/repository";

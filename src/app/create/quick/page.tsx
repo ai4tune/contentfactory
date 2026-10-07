@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { redirect } from "next/navigation";
 import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-shell";
 import { QuickCreationWorkspace } from "@/modules/content/quick/components/quick-creation-workspace";

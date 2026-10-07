@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { notFound } from "next/navigation";
 import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-shell";
 import { DraftDetail } from "@/modules/drafts/components/draft-detail";
