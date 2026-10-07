@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/components/navigation-link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { channelLabels, contentChannels } from "@/modules/content/types";
@@ -29,6 +30,7 @@ const questions: Array<{ title: string; description: string; fields: Array<{ id:
 ];
 
 export function InterviewWorkspace({ initialState }: { initialState: InterviewState }) {
+  const router = useRouter();
   const [state, setState] = useState(initialState);
   const [answers, setAnswers] = useState(initialState.answers);
   const [step, setStep] = useState(initialState.step);
@@ -41,7 +43,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
   const question = questions[step];
   const complete = Boolean(state.preview?.confirmedAt && showPreview);
 
-  async function submit(action: "save" | "preview" | "confirm", nextStep = step) {
+  async function submit(action: "save" | "preview" | "confirm", nextStep = step, exitAfterSave = false) {
     setBusy(true);
     setMessage(null);
     try {
@@ -64,7 +66,8 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
         setShowPreview(true);
       } else if (action === "save") {
         setShowPreview(false);
-        setMessage("回答已保存，可以稍后回来继续。");
+        if (exitAfterSave) router.push("/");
+        else setMessage("回答已保存，可以稍后回来继续。");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "处理失败，请重试。");
@@ -129,14 +132,14 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
                 <div className="mt-7 flex flex-wrap gap-3">
                   {step > 0 ? <button className={secondaryButtonClass} type="button" onClick={() => setStep(step - 1)}>上一步</button> : null}
                   <button className={primaryButtonClass} type="button" disabled={question.fields.some((field) => !field.optional && !answers[field.id].trim()) || (step === 5 && !answers.primaryChannel)} onClick={() => void submit(step === 5 ? "preview" : "save", Math.min(step + 1, 5))}>{busy ? step === 5 ? "正在整理，回答已保存…" : "正在保存…" : step === 5 ? "帮我整理内容方向" : "保存并继续"}</button>
-                  <button className="px-2 py-2 text-sm text-slate-600 underline underline-offset-4" type="button" onClick={() => void submit("save")}>保存，稍后继续</button>
+                  <button className="px-2 py-2 text-sm text-slate-600 underline underline-offset-4" type="button" onClick={() => void submit("save", step, true)}>保存并退出</button>
                 </div>
               </>
             )}
           </fieldset>
         )}
         {message ? <p className="mt-4 text-sm leading-6 text-emerald-900" role="status">{message}</p> : null}
-        {!complete ? <p className="mt-5 text-xs leading-5 text-slate-500">不用先准备文件，也不用有历史账号。点击保存后，换设备或下次回来都可以继续。</p> : null}
+        {!complete ? <p className="mt-5 text-xs leading-5 text-slate-500">“保存并退出”会保存已填回答并返回首页，下次从当前步骤继续。回答确认后才会成为正式经营资料。</p> : null}
       </div>
     </main>
   );
