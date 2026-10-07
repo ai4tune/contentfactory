@@ -2,9 +2,11 @@ import { channelLabels, type ContentChannel } from "@/modules/content/types";
 import type { ContentDraft } from "../types";
 
 export function renderDraftMarkdown(draft: ContentDraft, channel?: ContentChannel) {
-  const channelDrafts = channel
-    ? draft.channelDrafts.filter((item) => item.channel === channel)
-    : draft.channelDrafts;
+  if (channel) {
+    const current = draft.channelDrafts.find((item) => item.channel === channel);
+    return current?.status === "generated" ? `${current.content}\n` : `生成未完成：${current?.error || "暂无本渠道正文"}\n`;
+  }
+  const channelDrafts = draft.channelDrafts;
 
   return [
     `# ${draft.topic}`,

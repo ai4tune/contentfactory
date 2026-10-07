@@ -11,6 +11,11 @@ type StyleProfileStore = {
 const styleProfileStorePath = dataFilePath("style-profiles.local.json");
 const emptyStore: StyleProfileStore = { confirmedProfile: null, draftProfile: null };
 
+export class StyleVersionError extends Error {
+  readonly status = 409;
+  constructor() { super("风格已在其他页面更新，请刷新后再确认。"); }
+}
+
 export async function getCurrentStyleProfile() {
   const store = await readJsonFile<StyleProfileStore>(styleProfileStorePath, emptyStore);
   return store.draftProfile ?? store.confirmedProfile ?? store.profile ?? null;
@@ -25,12 +30,14 @@ export async function getConfirmedStyleProfile() {
 export async function saveCurrentStyleProfile(
   input: StyleProfileInput,
   status: StyleProfileStatus,
+  expectedVersion?: number,
 ) {
   const updated = await updateJsonFile<StyleProfileStore>(styleProfileStorePath, emptyStore, (store) => {
     const now = new Date().toISOString();
     const confirmedProfile = store.confirmedProfile
       ?? (store.profile?.status === "confirmed" ? store.profile : null);
     const current = store.draftProfile ?? confirmedProfile ?? store.profile;
+    if (expectedVersion !== undefined && (current?.version ?? 0) !== expectedVersion) throw new StyleVersionError();
     const profile: StyleProfile = {
       ...input,
       id: "current-style-profile",

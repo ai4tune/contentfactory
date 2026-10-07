@@ -3,6 +3,7 @@ import type { AccountContext } from "@/modules/positioning/types";
 import { formatStyleContractForPrompt } from "@/modules/style-profile/prompt";
 import type { StyleContract } from "@/modules/style-profile/types";
 import { getChannelSystemPrompt } from "./channel-prompts";
+import { checkContentFacts, ContentFactError } from "./fact-check";
 import type { BriefKnowledgeSource, ChannelDraft, ContentBrief, ContentChannel } from "./types";
 
 type GenerateChannelInput = {
@@ -14,15 +15,20 @@ type GenerateChannelInput = {
 };
 
 export async function generateChannelDraft(input: GenerateChannelInput): Promise<ChannelDraft> {
-  const rawContent = await chatCompletionJson([
+  const messages: Array<{ role: "system" | "user"; content: string }> = [
     { role: "system", content: getChannelSystemPrompt(input.channel) },
     { role: "user", content: buildChannelContext(input) },
-  ]);
-  const parsed = parseJsonObject(rawContent) as { content?: unknown };
-  const content = String(parsed.content ?? "").trim();
-  if (!content) throw new Error("渠道稿件为空，请重试。");
-
-  return { channel: input.channel, content, status: "generated", updatedAt: new Date().toISOString() };
+  ];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const parsed = parseJsonObject(await chatCompletionJson(messages, { timeoutMs: 45_000 })) as { content?: unknown };
+    const content = String(parsed.content ?? "").trim();
+    if (!content) throw new Error("渠道稿件为空，请重试。");
+    const issues = await checkContentFacts(content, input.sources, input.accountContext);
+    if (!issues.length) return { channel: input.channel, content, status: "generated", updatedAt: new Date().toISOString() };
+    if (attempt === 1) throw new ContentFactError(`资料不足，未交付这篇成稿。请补充或删去这些内容：${issues.map((issue) => `${issue.originalText}（${issue.reason}）`).join("；")}。也可以先选择主营业务介绍。`);
+    messages.push({ role: "user", content: `上一稿事实核对未通过：${JSON.stringify(issues)}。请重新输出完整稿件，删除或改成有依据的表达，不能补造替代事实。只使用原始资料；可以收缩主题和篇幅，未知内容留待用户补充。上一稿：\n${content}` });
+  }
+  throw new ContentFactError("事实核对未通过，请补充资料。");
 }
 
 function buildChannelContext(input: GenerateChannelInput) {

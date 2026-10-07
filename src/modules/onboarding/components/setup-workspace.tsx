@@ -145,7 +145,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
         localKnowledgeCount,
       });
       setStatus(next);
-      router.push("/plans");
+      router.push("/setup/first-content");
       router.refresh();
     });
   }
@@ -201,7 +201,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
         <div className="mx-auto max-w-4xl py-10 sm:py-16">
           <span className="inline-flex rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-900">建档已完成</span>
           <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-            {initialData.account?.accountName || "当前企业"}已经可以开始制定内容计划
+            {initialData.account?.accountName || "当前企业"}已经可以开始写第一篇
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
             建档完成不代表资料必须完美。后续可以继续补充企业资料、调整定位和升级写作风格。
@@ -214,7 +214,8 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
           </div>
           {visibleGaps.length ? <GapPanel gaps={visibleGaps} /> : null}
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link className={primaryButtonClass} href="/plans">进入内容计划</Link>
+            <Link className={primaryButtonClass} href="/setup/first-content">选口吻，写第一篇</Link>
+            <Link className={secondaryButtonClass} href="/plans">查看完整内容计划</Link>
             <Link className={secondaryButtonClass} href="/knowledge">补充企业资料</Link>
             <Link className={secondaryButtonClass} href="/brand">调整账号与风格</Link>
             <button className={secondaryButtonClass} disabled={busy !== null} onClick={restart} type="button">

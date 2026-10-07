@@ -44,6 +44,9 @@ const server = http.createServer(async (request, response) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(messages.find((message) => message.role === "system")?.content ?? "");
   const user = String(messages.find((message) => message.role === "user")?.content ?? "");
+  if (system.includes("成稿事实核验员") && user.includes("验收核对不可用")) {
+    return json(response, 502, { error: { message: "simulated grounding failure" } });
+  }
   if (system.includes("独立审核员") && user.includes("验收语义审核不可用")) {
     return json(response, 502, { error: { message: "simulated semantic review failure" } });
   }
@@ -60,7 +63,7 @@ const server = http.createServer(async (request, response) => {
   if (system.includes("企业内容策略规划师") && Number(process.env.MOCK_PLAN_DELAY_MS) > 0) {
     await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_PLAN_DELAY_MS)));
   }
-  const content = JSON.stringify(mockCompletion(system, user));
+  const content = JSON.stringify(mockCompletion(system, user, String(messages.at(-1)?.content ?? user)));
 
   return json(response, 200, {
     id: "acceptance-mock",
@@ -72,7 +75,14 @@ server.listen(port, "127.0.0.1", () => {
   process.stdout.write(`mock-ai-ready:${port}\n`);
 });
 
-function mockCompletion(system, user) {
+function mockCompletion(system, user, latestUser) {
+  if (system.includes("成稿事实核验员")) {
+    const payload = JSON.parse(user);
+    const draft = payload.content;
+    if (draft.includes("验收核对格式错误")) return { verdict: "supported", issues: "invalid" };
+    if (draft.includes("果香") && !payload.sources.some((source) => source.text.includes("已确认提供果香咖啡"))) return { verdict: "unsupported", issues: [{ originalText: "果香", reason: "资料没有提供产品风味" }] };
+    return { verdict: "supported", issues: [] };
+  }
   if (system.includes("经营访谈内容顾问")) {
     const answers = JSON.parse(user);
     return {
@@ -372,6 +382,13 @@ function mockCompletion(system, user) {
   }
 
   if (system.includes("内容策略编辑")) {
+    if (user.includes("[confirmed-account:")) {
+      const text = user.split("\n").find((line) => line.startsWith('{"name":') && line.includes('"business":'));
+      const account = JSON.parse(text);
+      return { targetAudience: "希望了解业务的人（待验证）", contentGoal: account.goal, coreMessage: account.business,
+        keyPoints: [account.business], outline: ["介绍已知业务", "邀请提出问题"], callToAction: "欢迎提问", openQuestions: ["产品细节待补充"],
+        citations: [{ sourceId: readSourceId(user), excerpt: text, purpose: "用户确认的业务信息" }] };
+    }
     const hasStyle = user.includes("风格档案:");
     return {
       targetAudience: "第一次装修、需要选择地板的家庭",
@@ -408,6 +425,7 @@ function mockCompletion(system, user) {
   }
 
   if (system.includes("独立审核员")) {
+    if (user.includes('"id": "starter_')) return { conclusion: "未发现需要修改的问题，发布前请人工确认。", riskLevel: "low", issues: [] };
     return {
       conclusion: `发现一项可自动优化的表达，以及${system.includes("Human Writing 专项检查") ? "三" : "两"}项需要人工确认的问题。`,
       riskLevel: "medium",
@@ -463,6 +481,15 @@ function mockCompletion(system, user) {
     return { content: "小红书笔记\n标题1：选 SPC 地板别只看价格\n标题2：装修小白的四项清单\n前三行钩子：低价不等于省钱。\n正文：空间、基层、安装、售后逐项确认。\n#装修避坑 #SPC地板" };
   }
   if (system.includes("朋友圈文案编辑")) {
+    if (user.includes("验收已有风味")) return { content: "我们提供果香咖啡。" };
+    if (user.includes("验收持续虚构")) return { content: "我们有果香咖啡。" };
+    if (user.includes("验收自动修正")) return { content: latestUser.startsWith("上一稿事实核对") ? "我们提供咖啡饮品。" : "我们有果香咖啡。" };
+    if (user.includes("验收核对不可用")) return { content: "验收核对不可用：我们提供咖啡。" };
+    if (user.includes("验收核对格式错误")) return { content: "验收核对格式错误：我们提供咖啡。" };
+    if (user.includes("confirmed-account:")) {
+      const account = JSON.parse(user.split("【当前账号上下文】\n\n")[1].split("\n\n【")[0]);
+      return { content: `我们叫${account.accountName}，主要做${account.business}。这次先介绍${account.offer}，欢迎提出你想了解的问题。` };
+    }
     return { content: "朋友圈文案\n最近遇到不少朋友只拿单价比较地板。真正影响结果的，还有空间、基层、安装和售后。准备装修的朋友，可以先把这四项条件列出来，我们再一起看。" };
   }
   if (system.includes("短视频脚本编辑")) {
@@ -473,7 +500,7 @@ function mockCompletion(system, user) {
 }
 
 function readSourceId(user) {
-  return user.match(/\[(local:[^\]]+|feishu:[^\]]+|base:[^\]]+|upload:[^\]]+)\]/)?.[1]
+  return user.match(/\[(local:[^\]]+|feishu:[^\]]+|base:[^\]]+|upload:[^\]]+|confirmed-account:[^\]]+|confirmed-knowledge:[^\]]+)\]/)?.[1]
     ?? user.match(/\[([^\]]+)\]/)?.[1]
     ?? "local:acceptance";
 }

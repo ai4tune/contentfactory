@@ -266,7 +266,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal((await appFetch(`${baseUrl}/plans`)).status, 200);
     const homeWithoutPlan = await appFetch(baseUrl);
     assert.equal(homeWithoutPlan.status, 200);
-    assert.match(await homeWithoutPlan.text(), /生成第一份 30 天内容计划/);
+    assert.match(await homeWithoutPlan.text(), /选口吻与选题/);
 
     const restarted = await requestJson("/api/onboarding/status", {
       method: "PATCH",
@@ -1140,7 +1140,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     const markdown = await exportResponse.text();
     assert.equal(exportResponse.status, 200);
     assert.match(exportResponse.headers.get("content-type") ?? "", /text\/markdown/);
-    assert.match(markdown, /朋友圈文案/);
+    assert.equal(markdown, `${edited.body.draft.channelDrafts.find((item) => item.channel === "moments_post").content}\n`);
+    assert.doesNotMatch(markdown, /## 内容简报|## 引用来源/);
     assert.match(markdown, /朋友圈人工修改版本/);
   });
 

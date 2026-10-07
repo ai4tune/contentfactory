@@ -5,6 +5,7 @@ import { useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { channelLabels, contentChannels } from "@/modules/content/types";
 import type { InterviewField, InterviewState } from "../interview";
+import { industries, type IndustryId } from "../first-content/catalog";
 
 const questions: Array<{ title: string; description: string; fields: Array<{ id: InterviewField; label: string; placeholder: string; optional?: boolean }> }> = [
   { title: "先认识一下你的生意", description: "用平时向客人介绍的方式说就好。", fields: [
@@ -97,7 +98,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
             <p className="font-semibold">{state.answers.accountName}</p>
             <p className="mt-3 text-sm leading-6">这次的目标：{state.answers.goal}</p>
             <p className="mt-3 text-sm leading-6">先宣传：{state.answers.offer}</p>
-            <div className="mt-6 flex flex-wrap gap-3"><Link className={primaryButtonClass} href="/plans">选择第一篇的选题</Link><Link className={secondaryButtonClass} href="/knowledge">补充资料</Link><button className={secondaryButtonClass} type="button" onClick={() => { setShowPreview(false); setStep(0); setMessage(null); }}>调整经营信息</button></div>
+            <div className="mt-6 flex flex-wrap gap-3"><Link className={primaryButtonClass} href="/setup/first-content">选口吻，写第一篇</Link><Link className={secondaryButtonClass} href="/knowledge">补充资料</Link><button className={secondaryButtonClass} type="button" onClick={() => { setShowPreview(false); setStep(0); setMessage(null); }}>调整经营信息</button></div>
           </section>
         ) : (
           <fieldset className="mt-7 min-w-0 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7" disabled={busy} aria-busy={busy}>
@@ -122,6 +123,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
             ) : (
               <>
                 <div className="grid gap-6">
+                  {step === 0 ? <div><label className="block text-sm font-semibold" htmlFor="interview-industry">你的业务类型（可以以后调整）</label><select id="interview-industry" className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-base" value={answers.industry ?? "general"} onChange={(event) => setAnswers({ ...answers, industry: event.target.value as IndustryId })}>{industries.map((industry) => <option key={industry.id} value={industry.id}>{industry.name}</option>)}</select></div> : null}
                   {question.fields.map((field) => <div key={field.id}><AnswerInput id={field.id} label={`${field.label}${field.optional ? "（可选）" : ""}`} value={answers[field.id]} placeholder={field.placeholder} maxLength={field.id === "accountName" ? 120 : 2000} onChange={(value) => setAnswers({ ...answers, [field.id]: value })} />{field.optional && field.id !== "boundaries" ? <button className="mt-2 text-sm text-emerald-800 underline underline-offset-4" type="button" onClick={() => setAnswers({ ...answers, [field.id]: "" })}>还不确定，稍后再补</button> : null}</div>)}
                   {step === 1 ? <div className="flex flex-wrap gap-2">{["获得新客户", "让老客知道新品", "增加复购", "收到更多咨询"].map((goal) => <button className="rounded-full border border-slate-200 px-3 py-2 text-sm hover:border-emerald-700" type="button" key={goal} onClick={() => setAnswers({ ...answers, goal })}>{goal}</button>)}</div> : null}
                   {step === 5 ? <div className="grid gap-3 sm:grid-cols-2">{contentChannels.map((channel) => <label key={channel} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 ${answers.primaryChannel === channel ? "border-emerald-800 bg-emerald-50" : "border-slate-200"}`}><input type="radio" name="primaryChannel" checked={answers.primaryChannel === channel} onChange={() => setAnswers({ ...answers, primaryChannel: channel })} /><span className="text-sm">{channelLabels[channel]}</span></label>)}</div> : null}

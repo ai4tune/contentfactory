@@ -29,6 +29,7 @@ export async function getContentProject(projectId: string) {
 }
 
 export async function saveContentProject(input: {
+  id?: string;
   topic: string;
   brief: ContentBrief;
   contentPlanId?: string;
@@ -41,7 +42,7 @@ export async function saveContentProject(input: {
 }) {
   const now = new Date().toISOString();
   const project: ContentProject = {
-    id: `contentProjects_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: input.id ?? `contentProjects_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     topic: input.topic,
     sourceIdeaId: input.brief.ideaContext?.id,
     contentPlanId: input.contentPlanId,
@@ -58,10 +59,10 @@ export async function saveContentProject(input: {
     updatedAt: now,
   };
 
-  await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
-    projects: [...(store.projects ?? []), project],
+  const saved = await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
+    projects: (store.projects ?? []).some((current) => current.id === project.id) ? store.projects : [...(store.projects ?? []), project],
   }));
-  return project;
+  return withStyleSnapshot(saved.projects.find((current) => current.id === project.id)!);
 }
 
 function withStyleSnapshot(project: StoredContentProject): StoredContentProject {
@@ -71,12 +72,17 @@ function withStyleSnapshot(project: StoredContentProject): StoredContentProject 
 export async function replaceChannelDraft(
   projectId: string,
   draft: ChannelDraft,
+  preserveGenerated = false,
 ): Promise<ContentProject | null> {
   let updatedProject: ContentProject | null = null;
 
   await updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
     projects: (store.projects ?? []).map((project) => {
       if (project.id !== projectId) return project;
+      if (preserveGenerated && project.channelDrafts.some((item) => item.channel === draft.channel && item.status === "generated")) {
+        updatedProject = project;
+        return project;
+      }
       const channelDrafts = [...(project.channelDrafts ?? []).filter((item) => item.channel !== draft.channel), draft];
       updatedProject = {
         ...project,
