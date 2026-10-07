@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "内容工厂采集助手",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Capture visible Xiaohongshu and WeChat Official Account information for positioning and content research.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://nrgc.xingren.me/*", "https://www.xiaohongshu.com/*", "https://mp.weixin.qq.com/*"],

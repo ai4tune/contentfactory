@@ -487,7 +487,12 @@ async function callApi(path, body) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 403 && data.error === "Capture authorization is required") {
-      throw new Error("当前浏览器尚未获得采集授权。请登录内容工厂，在账号定位页点击“一键授权此浏览器”");
+      const current = await chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL, accessToken: "" });
+      if (current.accessToken === settings.accessToken && normalizeBaseUrl(current.baseUrl) === baseUrl) {
+        await chrome.storage.local.remove("accessToken");
+        elements.accessToken.value = "";
+      }
+      throw new Error("采集授权已失效，请登录内容工厂，在账号定位页点击“一键授权此浏览器”或“重新授权此浏览器”。当前采集预览仍保留。");
     }
     throw new Error(data.error || `内容工厂返回 ${response.status}`);
   }

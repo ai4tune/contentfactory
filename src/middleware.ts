@@ -81,7 +81,7 @@ function isPublicPath(pathname: string) {
     || pathname === "/access-denied"
     || pathname === "/api/health"
     || pathname === "/api/auth/signout"
-    || (pathname.startsWith("/api/capture/") && pathname !== "/api/capture/authorize")
+    || (pathname.startsWith("/api/capture/") && pathname !== "/api/capture/authorize" && pathname !== "/api/capture/status")
     || pathname === "/api/topics/search-plan";
 }
 

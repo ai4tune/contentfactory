@@ -130,6 +130,17 @@ test("login identity controls every cloud store, regardless of shared invitation
 test("capture tokens are account-specific and reject the legacy global token and forged identity", async () => {
   const token = (await (await request(alice, "/api/capture/authorize", {})).json()).token;
   assert.ok(token.startsWith(`cf1.${aliceWorkspace}.`));
+  const validStatus = await request(alice, "/api/capture/status", { token });
+  assert.equal(validStatus.status, 200);
+  assert.equal(validStatus.headers.get("cache-control"), "no-store");
+  assert.equal((await validStatus.json()).authorized, true);
+  assert.equal((await (await request(bob, "/api/capture/status", { token })).json()).authorized, false, "website must reject authorization for another login account");
+  assert.equal((await request(null, "/api/capture/status", { token })).status, 401);
+  const expiredPayload = `cf1.${aliceWorkspace}.1`;
+  const expired = `${expiredPayload}.${createHmac("sha256", "sb_secret_synthetic").update(expiredPayload).digest("base64url")}`;
+  for (const invalid of ["synthetic-capture-signing-key", expired, token.replace(aliceWorkspace, bobWorkspace)]) {
+    assert.equal((await (await request(alice, "/api/capture/status", { token: invalid })).json()).authorized, false);
+  }
   assert.notEqual(token, (await (await request(bob, "/api/capture/authorize", {})).json()).token);
   const payload = { action: "confirm", draft: draft("闲中记采集定位") };
   const captured = await request(null, "/api/capture/account", payload, "POST", { Authorization: `Bearer ${token}` });
@@ -147,6 +158,7 @@ test("capture tokens are account-specific and reject the legacy global token and
   const otherToken = `${otherPayload}.${createHmac("sha256", "sb_secret_synthetic").update(otherPayload).digest("base64url")}`;
   assert.equal((await request(null, "/api/capture/account", payload, "POST", { Authorization: `Bearer ${otherToken}` })).status, 403, "a valid token for another deployment cannot choose its workspace here");
   rows.content_factory_workspace_members = rows.content_factory_workspace_members.filter((row) => !(row.workspace_id === shared && row.user_id === alice));
+  assert.equal((await request(alice, "/api/capture/status", { token })).status, 403);
   assert.equal((await request(null, "/api/capture/account", payload, "POST", { Authorization: `Bearer ${token}` })).status, 403);
   rows.content_factory_workspace_members.push({ workspace_id: shared, user_id: alice, role: "member" });
 });
