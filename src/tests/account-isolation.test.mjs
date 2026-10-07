@@ -28,6 +28,7 @@ const rows = {
   content_factory_state: [{ workspace_id: shared, store_key: "json:contentfactory.local.json", version: 1, payload: { accountContext: { accountName: "混合旧定位" } } }],
 };
 let app, service, directory, logs = "";
+let readOnlyGuard = false, blockedMutations = 0;
 
 function jwt(id) {
   return [Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url"), Buffer.from(JSON.stringify({ sub: id, exp: expiresAt })).toString("base64url"), "synthetic-signature"].join(".");
@@ -62,6 +63,10 @@ before(async () => {
       const result = organization ? { summary: "独立整理", assignments: [{ sourceId: "private-source", folderId: "brand", reason: "资料" }] }
         : { name: "私有档案", businessSummary: "私人业务", targetCustomers: [], offers: [], strengths: [], businessGoals: [], preferredTopics: [], forbiddenClaims: [], gaps: [], facts: [{ category: "业务", statement: "账号资料", confidence: "confirmed", sourceIds: ["private-source"] }] };
       return respond(response, 200, { choices: [{ message: { content: JSON.stringify(result) } }] });
+    }
+    if (readOnlyGuard && request.method !== "GET") {
+      blockedMutations++;
+      return respond(response, 500, { message: "Existing customer data is read-only during upgrade acceptance" });
     }
     const table = url.pathname.replace("/rest/v1/", "");
     if (!rows[table]) return respond(response, 404, { message: "Unknown table" });
@@ -234,4 +239,43 @@ test("background jobs retain the submitting account after the browser switches i
   assert.ok(rows.content_factory_state.find((row) => row.workspace_id === aliceWorkspace && row.store_key === "json:enterprise-knowledge-profiles.local.json"));
   assert.equal(rows.content_factory_state.some((row) => row.workspace_id === bobWorkspace && row.store_key === "json:enterprise-knowledge-profiles.local.json"), false);
   assert.equal(rows.content_factory_state.some((row) => row.workspace_id === shared && row.store_key === "json:knowledge-tasks.local.json"), false);
+});
+
+
+test("existing v1 customer spaces load through the upgrade without any write or payload change", async () => {
+  for (const id of [alice, bob]) {
+    for (let index = 0; index < 40; index++) {
+      const tasks = (await (await request(id, "/api/knowledge/tasks")).json()).tasks;
+      if (tasks.every((task) => ["succeeded", "failed"].includes(task.status))) break;
+      if (index === 39) throw new Error("Background test jobs did not settle");
+      await delay(100);
+    }
+  }
+  const originalProfiles = new Map();
+  for (const workspace of [aliceWorkspace, bobWorkspace]) {
+    const row = rows.content_factory_state.find((item) => item.workspace_id === workspace && item.store_key === "json:style-profiles.local.json");
+    for (const profile of [row.payload.confirmedProfile, row.payload.draftProfile]) if (profile) {
+      profile.starterTemplate.version = 1;
+      profile.customerOwnedField = "preserve unknown legacy fields";
+    }
+    originalProfiles.set(workspace, structuredClone(row.payload));
+    rows.content_factory_state.push({ workspace_id: workspace, store_key: "json:future-customer-data.local.json", version: 19, payload: { keep: ["private", "untouched"], updatedAt: "2026-10-01T10:00:00Z" } });
+  }
+  const before = structuredClone(rows);
+  readOnlyGuard = true;
+  try {
+    for (const [id, workspace] of [[alice, aliceWorkspace], [bob, bobWorkspace]]) {
+      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup/first-content", "/setup/interview"]) {
+        const response = await request(id, url);
+        assert.equal(response.status, 200, url + " " + await response.clone().text());
+        if (url === "/api/onboarding/first-content") {
+          const snapshot = await response.json();
+          assert.deepEqual(snapshot.confirmedProfile, originalProfiles.get(workspace).confirmedProfile);
+          assert.deepEqual(snapshot.draftProfile, originalProfiles.get(workspace).draftProfile ?? null);
+        }
+      }
+    }
+    assert.equal(blockedMutations, 0, "opening upgraded pages must not attempt cloud mutations");
+    assert.deepEqual(rows, before, "all payloads, versions, membership rows and timestamps must remain exactly unchanged");
+  } finally { readOnlyGuard = false; }
 });

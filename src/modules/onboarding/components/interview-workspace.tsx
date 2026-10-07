@@ -5,21 +5,20 @@ import { useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { channelLabels, contentChannels } from "@/modules/content/types";
 import type { InterviewField, InterviewState } from "../interview";
-import { industries, type IndustryId } from "../first-content/catalog";
 
 const questions: Array<{ title: string; description: string; fields: Array<{ id: InterviewField; label: string; placeholder: string; optional?: boolean }> }> = [
   { title: "先认识一下你的生意", description: "用平时向客人介绍的方式说就好。", fields: [
-    { id: "accountName", label: "店铺、企业或个人品牌叫什么？", placeholder: "例如：贝尔咖啡" },
-    { id: "business", label: "你主要做什么生意？", placeholder: "例如：一家独立咖啡店，提供咖啡和晚间饮品" },
+    { id: "accountName", label: "店铺、企业或个人品牌叫什么？", placeholder: "填写你对外使用的名称" },
+    { id: "business", label: "你主要做什么生意？", placeholder: "用一句话说明你提供什么产品、服务或内容" },
   ] },
   { title: "这次最想让内容帮你解决什么？", description: "先选一个近期目标，不用一次想清楚所有事情。", fields: [
-    { id: "goal", label: "最近最想改善什么？", placeholder: "例如：增加工作日客流，或让更多老客知道新品" },
+    { id: "goal", label: "最近最想改善什么？", placeholder: "例如：收到更多咨询，或让已有客户了解新产品" },
   ] },
   { title: "先宣传哪一件事？", description: "可以是一款产品、一项服务，也可以是最近想让客人知道的事情。", fields: [
     { id: "offer", label: "这周最想宣传什么？", placeholder: "写一个具体产品或服务；有已确认的价格和活动可以一起写" },
   ] },
   { title: "客人为什么来找你？", description: "说说你见过的客人和真实细节。不清楚也没关系。", fields: [
-    { id: "audience", label: "客人一般在什么情况下来？", placeholder: "例如：附近上班的人午休来坐坐；不知道也可以留空", optional: true },
+    { id: "audience", label: "客人一般在什么情况下来？", placeholder: "描述客户的真实需求或使用场景；不知道也可以留空", optional: true },
     { id: "differentiator", label: "有什么真实特点值得让客人知道？", placeholder: "例如：一项具体服务、产品特点或你做生意的习惯", optional: true },
   ] },
   { title: "你希望怎么跟客人说话？", description: "不用定义写作风格，把你的偏好告诉我们就行。", fields: [
@@ -123,7 +122,6 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
             ) : (
               <>
                 <div className="grid gap-6">
-                  {step === 0 ? <div><label className="block text-sm font-semibold" htmlFor="interview-industry">你的业务类型（可以以后调整）</label><select id="interview-industry" className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-base" value={answers.industry ?? "general"} onChange={(event) => setAnswers({ ...answers, industry: event.target.value as IndustryId })}>{industries.map((industry) => <option key={industry.id} value={industry.id}>{industry.name}</option>)}</select></div> : null}
                   {question.fields.map((field) => <div key={field.id}><AnswerInput id={field.id} label={`${field.label}${field.optional ? "（可选）" : ""}`} value={answers[field.id]} placeholder={field.placeholder} maxLength={field.id === "accountName" ? 120 : 2000} onChange={(value) => setAnswers({ ...answers, [field.id]: value })} />{field.optional && field.id !== "boundaries" ? <button className="mt-2 text-sm text-emerald-800 underline underline-offset-4" type="button" onClick={() => setAnswers({ ...answers, [field.id]: "" })}>还不确定，稍后再补</button> : null}</div>)}
                   {step === 1 ? <div className="flex flex-wrap gap-2">{["获得新客户", "让老客知道新品", "增加复购", "收到更多咨询"].map((goal) => <button className="rounded-full border border-slate-200 px-3 py-2 text-sm hover:border-emerald-700" type="button" key={goal} onClick={() => setAnswers({ ...answers, goal })}>{goal}</button>)}</div> : null}
                   {step === 5 ? <div className="grid gap-3 sm:grid-cols-2">{contentChannels.map((channel) => <label key={channel} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 ${answers.primaryChannel === channel ? "border-emerald-800 bg-emerald-50" : "border-slate-200"}`}><input type="radio" name="primaryChannel" checked={answers.primaryChannel === channel} onChange={() => setAnswers({ ...answers, primaryChannel: channel })} /><span className="text-sm">{channelLabels[channel]}</span></label>)}</div> : null}

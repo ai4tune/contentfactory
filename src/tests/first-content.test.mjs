@@ -36,7 +36,7 @@ after(async () => {
 test("starter API requires login and confirmed business, validates choices", async () => {
   assert.equal((await fetch(`${base}/api/onboarding/first-content`)).status, 401);
   assert.equal((await call("/api/onboarding/first-content")).status, 409);
-  const account = { source: "manual", input: {}, accountName: "首篇咖啡店", business: "提供咖啡饮品", offer: "咖啡饮品", conversionGoal: "介绍已知业务", accountPosition: "介绍本店咖啡", targetAudience: ["附近顾客（待验证）"], platforms: ["朋友圈"], contentPillars: ["业务介绍"], brandVoice: ["自然"], preferredPhrases: [], bannedPhrases: [], contentDirections: [], recommendedTopics: [], analysisEvidence: [], informationGaps: ["风味、价格、作者经历未提供"] };
+  const account = { source: "manual", input: {}, accountName: "晨光设计工作室", business: "提供品牌视觉设计服务", offer: "品牌视觉设计", conversionGoal: "介绍已知业务", accountPosition: "介绍品牌视觉设计", targetAudience: ["需要设计服务的客户（待验证）"], platforms: ["朋友圈"], contentPillars: ["业务介绍"], brandVoice: ["自然"], preferredPhrases: [], bannedPhrases: [], contentDirections: [], recommendedTopics: [], analysisEvidence: [], informationGaps: ["风味、价格、作者经历未提供"] };
   assert.equal((await call("/api/positioning/current", { action: "confirm", draft: account }, "PATCH")).status, 200);
   await call("/api/onboarding/status", { action: "complete", primaryChannel: "moments_post" }, "PATCH");
   for (const body of [
@@ -49,15 +49,19 @@ test("starter API requires login and confirmed business, validates choices", asy
 });
 
 test("three examples share actual facts; draft and stale requests cannot replace confirmed style", async () => {
-  const snapshot = (await call("/api/onboarding/first-content?industry=coffee")).body;
+  const snapshot = (await call("/api/onboarding/first-content")).body;
   assert.equal(snapshot.options.length, 3); assert.equal(snapshot.topics.length, 3);
-  for (const option of snapshot.options) { assert.match(option.sample, /首篇咖啡店|提供咖啡饮品/); assert.doesNotMatch(option.sample, /果香|坚果|昨天|朋友问|最低价/); }
-  style = (await call("/api/onboarding/first-content", { action: "preview_style", industry: "coffee", voice: "chat", adjustments: "更口语一点，少用感叹号", version: 0 })).body.profile;
-  assert.equal(style.status, "draft"); assert.equal(style.starterTemplate.version, 1);
+  for (const url of ["/setup/first-content", "/setup/interview"]) {
+    const html = await (await fetch(base + url, { headers: { authorization } })).text();
+    assert.doesNotMatch(html, /<select|贝尔咖啡|一家独立咖啡店|木板 \/ 地板装修/);
+  }
+  for (const option of snapshot.options) { assert.match(option.sample, /晨光设计工作室|提供品牌视觉设计服务/); assert.doesNotMatch(option.sample, /咖啡|地板|果香|坚果|昨天|朋友问|最低价/); }
+  style = (await call("/api/onboarding/first-content", { action: "preview_style", voice: "chat", adjustments: "更口语一点，少用感叹号", version: 0 })).body.profile;
+  assert.equal(style.status, "draft"); assert.equal(style.starterTemplate.version, 2);
   assert.equal((await call("/api/onboarding/first-content")).body.confirmedProfile, null);
   assert.equal((await call("/api/onboarding/first-content", { action: "preview_style", industry: "flooring", voice: "professional", version: 0 })).status, 409);
   style = (await call("/api/onboarding/first-content", { action: "confirm_style", version: style.version })).body.profile;
-  assert.equal(style.status, "confirmed"); assert.equal(style.starterTemplate.industry, "coffee");
+  assert.equal(style.status, "confirmed"); assert.equal(style.starterTemplate.industry, "general");
   assert.ok(style.rules.some((rule) => rule.instruction.includes("少用感叹号")));
   const custom = { ...style, preferredPhrases: ["先说已知信息"], bannedPhrases: ["最低价"], channelOverrides: { moments_post: ["不用感叹号"] }, rules: [...style.rules, { id: "customer-rule", category: "language", priority: "hard", instruction: "保留客户自己的表达习惯", evidence: style.rules[0].evidence }] };
   style = (await call("/api/style-profile/current", { action: "confirm", profile: custom }, "PATCH")).body.profile;
@@ -73,10 +77,10 @@ test("first topic reaches ideas, a reviewed draft and body-only export without a
   const generated = await call("/api/onboarding/first-content", { action: "generate", topicId: "intro", version: style.version });
   assert.equal(generated.status, 200, JSON.stringify(generated.body)); project = generated.body.project;
   assert.equal(project.channelDrafts[0].status, "generated"); assert.ok(project.channelDrafts[0].review);
-  assert.match(project.channelDrafts[0].content, /首篇咖啡店/); assert.ok(project.sourceIdeaId.startsWith("starter_"));
+  assert.match(project.channelDrafts[0].content, /晨光设计工作室/); assert.ok(project.sourceIdeaId.startsWith("starter_"));
   assert.ok((await call("/api/ideas")).body.data.some((idea) => idea.id === project.sourceIdeaId && idea.status === "used"));
   assert.deepEqual((await call("/api/content-plans")).body.plans, []);
-  const changed = "人工确认正文：我们提供咖啡饮品。";
+  const changed = "人工确认正文：我们提供品牌视觉设计服务。";
   await call(`/api/content-drafts/${project.id}`, { channel: "moments_post", content: changed }, "PATCH");
   const retry = await call("/api/onboarding/first-content", { action: "generate", topicId: "intro", version: style.version });
   assert.equal(retry.body.project.id, project.id); assert.equal(retry.body.project.channelDrafts[0].content, changed);
