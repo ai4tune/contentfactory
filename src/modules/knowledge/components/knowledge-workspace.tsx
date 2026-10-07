@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "@/components/navigation-link";
 import { useKnowledgeTasks } from "../tasks/provider";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
@@ -19,8 +19,10 @@ import {
   supportsDirectoryPicker,
 } from "../local-index";
 import { recommendKnowledgeItems } from "../file-classification";
+import { MAX_PDF_INDEX_PAGES } from "../document-text";
+import type { LocalKnowledgeScanOptions } from "../local-index";
 import type { KnowledgeOrganizationPlan } from "../organization";
-import type { KnowledgePreview, KnowledgeScanReport, LocalKnowledgeItem, RemoteKnowledgeSource } from "../types";
+import type { KnowledgePreview, KnowledgeScanProgress, KnowledgeScanReport, LocalKnowledgeItem, RemoteKnowledgeSource } from "../types";
 
 type FeishuItem = Omit<RemoteKnowledgeSource, "updatedAt"> & { text?: string };
 
@@ -38,6 +40,8 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
   const [feishuUrl, setFeishuUrl] = useState("");
   const [permission, setPermission] = useState<PermissionState | "none" | "unsupported">("none");
   const [scanReport, setScanReport] = useState<KnowledgeScanReport | null>(null);
+  const [scanProgress, setScanProgress] = useState<KnowledgeScanProgress | null>(null);
+  const scanController = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const localResults = useMemo(() => searchLocalKnowledge(localItems, query), [localItems, query]);
@@ -68,27 +72,33 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
     }
     void restore();
     void loadRemoteSources().then((sources) => active && setRemoteSources(sources));
-    return () => { active = false; };
+    return () => { active = false; scanController.current?.abort(); };
   }, []);
 
-  async function run(key: string, task: () => Promise<void>) {
+  async function run(key: string, task: (options?: LocalKnowledgeScanOptions) => Promise<void>) {
+    const controller = ["choose", "refresh", "grant"].includes(key) ? new AbortController() : null;
+    if (controller) {
+      scanController.current = controller;
+      setScanProgress({ phase: "connecting", checkedFiles: 0, indexedFiles: 0, skippedFiles: 0 });
+    }
     setBusy(key);
     setMessage(null);
     try {
-      await task();
+      await task(controller ? { signal: controller.signal, onProgress: setScanProgress } : undefined);
     } catch (error) {
       if (error instanceof KnowledgeDirectoryPermissionError) setPermission(error.permission);
-      setMessage(error instanceof DOMException && error.name === "AbortError"
+      setMessage(controller?.signal.aborted ? "已停止本地索引，原有文件夹连接和索引保持不变。可以选一个较小的文件夹重试。" : error instanceof DOMException && error.name === "AbortError"
         ? "没有选择文件夹，原有连接保持不变。"
         : error instanceof Error ? error.message : "操作失败，请重试。");
     } finally {
+      if (controller) { setScanProgress(null); scanController.current = null; }
       setBusy(null);
     }
   }
 
   async function chooseDirectory() {
-    await run("choose", async () => {
-      const snapshot = await chooseKnowledgeDirectory();
+    await run("choose", async (options) => {
+      const snapshot = await chooseKnowledgeDirectory(options);
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
       setOrganizationTaskId("");
@@ -98,8 +108,8 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
   }
 
   async function refreshDirectory() {
-    await run("refresh", async () => {
-      const snapshot = await refreshStoredDirectory();
+    await run("refresh", async (options) => {
+      const snapshot = await refreshStoredDirectory(options);
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
       setOrganizationTaskId("");
@@ -108,8 +118,8 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
   }
 
   async function grantPermission() {
-    await run("grant", async () => {
-      const snapshot = await requestStoredDirectoryPermission();
+    await run("grant", async (options) => {
+      const snapshot = await requestStoredDirectoryPermission(options);
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
       setPermission("granted");
@@ -313,6 +323,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
               {permission === "granted" ? "已连接" : permission === "prompt" || permission === "denied" ? "等待授权" : "未连接"}
             </span>
           </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">支持 MD、TXT、PDF、Word（DOCX）；PPT、图片和视频暂不读取。PDF 索引检查前 {MAX_PDF_INDEX_PAGES} 页，选中资料用于 AI 建档时再读取正文。</p>
           {permission === "unsupported" ? (
             <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">请使用桌面版 Chrome 或 Edge。</p>
           ) : (
@@ -325,6 +336,13 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
               {localItems.length ? <button className="min-h-9 px-2 text-xs font-semibold text-slate-500 hover:text-slate-800" disabled={busy !== null} onClick={disconnectDirectory}>移除</button> : null}
             </div>
           )}
+          {scanProgress ? <div className="mt-3 rounded-lg border border-emerald-100 bg-white px-3 py-3 text-xs leading-5" role="status" aria-live="polite">
+            <p className="flex items-center gap-2 font-semibold text-emerald-900"><span className="size-3 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-800" aria-hidden="true" />{scanProgress.phase === "connecting" ? "正在核对登录状态并准备索引…" : scanProgress.phase === "saving" ? "正在保存本地索引…" : "正在检查本地资料…"}</p>
+            <p className="mt-1 text-slate-600">已发现 {scanProgress.checkedFiles} 个文件 · 已索引 {scanProgress.indexedFiles} 份 · 已跳过 {scanProgress.skippedFiles} 份</p>
+            {scanProgress.currentPath ? <p className="mt-1 break-all text-slate-600">{scanProgress.phase === "reading" ? "正在读取：" : "正在检查："}{scanProgress.currentPath}</p> : null}
+            <p className="mt-2 text-slate-500">本地索引请保持页面打开。单个文件读取超过 15 秒会跳过并列出原因；AI 建档提交成功后可离开页面。</p>
+            {scanProgress.phase !== "saving" ? <button className="mt-2 font-semibold text-emerald-800 underline" type="button" onClick={() => scanController.current?.abort()}>停止索引</button> : null}
+          </div> : null}
         </section>
 
         <section className="rounded-xl bg-slate-50 p-3">
@@ -364,12 +382,13 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
             <div className="flex items-start gap-3"><input aria-label="读取文字与办公文档" checked readOnly type="checkbox" className="mt-0.5 size-4 accent-emerald-800" /><div><p className="text-sm font-semibold text-slate-900">文字与办公文档</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.readable} 份可直接整理：Markdown、TXT、PDF、Word</p></div></div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white/70 p-4">
-            <div className="flex items-start gap-3"><input aria-label="读取图片与扫描件" disabled type="checkbox" className="mt-0.5 size-4" /><div><p className="text-sm font-semibold text-slate-800">图片与扫描件</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.imagesAndScans} 份暂不读取；图片 OCR 将在下一步单独开启</p></div></div>
+            <div className="flex items-start gap-3"><input aria-label="读取图片与扫描件" disabled type="checkbox" className="mt-0.5 size-4" /><div><p className="text-sm font-semibold text-slate-800">图片与无文字摘要的 PDF</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.imagesAndScans} 份暂不读取；扫描件需先转换成文字，PDF 前 {MAX_PDF_INDEX_PAGES} 页没有文字时也会归入此处</p></div></div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white/70 p-4">
-            <p className="text-sm font-semibold text-slate-800">已自动忽略</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.ignored} 份其他文件已忽略；常见程序、日志和缓存目录也会自动跳过</p>
+            <p className="text-sm font-semibold text-slate-800">已自动忽略</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.ignored} 份其他文件或无法读取的资料已跳过；常见程序、日志和缓存目录也会自动跳过</p>
           </div>
         </div>
+        {scanReport.failedFiles?.length ? <details className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><summary className="cursor-pointer font-semibold">{scanReport.failedFiles.length} 份资料未能读取，查看原因</summary><ul className="mt-2 space-y-2">{scanReport.failedFiles.map((file) => <li className="break-all" key={file.path}>{file.path}：{file.reason}</li>)}</ul><p className="mt-2">检查文件已下载到电脑、可正常打开后，点击“刷新”重试。</p></details> : null}
         <p className="mt-4 text-xs leading-5 text-slate-600">系统会根据文件名、所在目录和更新时间，先推荐最多 30 份资料作为第一批。{scanReport.emptyFiles ? `另有 ${scanReport.emptyFiles} 份空白文字文件，不会提供有效内容。` : ""}</p>
         <div className="mt-4 flex flex-wrap gap-3">
           <button className={primaryButtonClass} disabled={!recommendedLocalItems.length || busy !== null} onClick={selectRecommendedSources} type="button">{`按系统建议选择（${recommendedLocalItems.length}）`}</button>

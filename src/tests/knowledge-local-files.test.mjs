@@ -54,6 +54,19 @@ test("PDF and Word documents expose text without uploading the original file", a
   assert.match(await extractDocxText(docx), /Hello Word/);
 });
 
+test("PDF indexing stops after 20 pages while selected-document reads include later pages", async () => {
+  const pages = Array.from({ length: 21 }, (_, index) => index === 20 ? "Later business material" : "");
+  const indexed = await extractPdfText(arrayBuffer(minimalPdf(pages)), { indexOnly: true });
+  assert.equal(indexed, "");
+  assert.match(await extractPdfText(arrayBuffer(minimalPdf(pages))), /Later business material/);
+});
+
+test("an aborted PDF read rejects instead of starting another document", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(extractPdfText(arrayBuffer(minimalPdf("Hello")), { signal: controller.signal }), (error) => error.name === "AbortError");
+});
+
 function knowledgeItem(overrides) {
   return {
     id: "local:item.md",
@@ -71,14 +84,18 @@ function knowledgeItem(overrides) {
 }
 
 function minimalPdf(text) {
-  const content = `BT /F1 24 Tf 100 700 Td (${text}) Tj ET`;
+  const pages = Array.isArray(text) ? text : [text];
+  const fontId = 3 + pages.length * 2;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`,
   ];
+  pages.forEach((value, index) => {
+    const content = `BT /F1 24 Tf 100 700 Td (${value}) Tj ET`;
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${4 + index * 2} 0 R >>`);
+    objects.push(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
+  });
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
   let body = "%PDF-1.4\n";
   const offsets = [];
   objects.forEach((object, index) => {

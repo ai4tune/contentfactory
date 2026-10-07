@@ -24,7 +24,16 @@ export type KnowledgeScanReport = {
   imageFiles?: number;
   ignoredFiles?: number;
   needsOcrFiles?: number;
+  failedFiles?: { path: string; reason: string }[];
   scannedAt: string;
+};
+
+export type KnowledgeScanProgress = {
+  phase: "connecting" | "scanning" | "reading" | "saving";
+  checkedFiles: number;
+  indexedFiles: number;
+  skippedFiles: number;
+  currentPath?: string;
 };
 
 export type KnowledgePreview = {
