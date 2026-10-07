@@ -5,13 +5,13 @@ import { useState } from "react";
 import { AppShell, PageHeader, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import type { EnterpriseKnowledgeProfile, EnterpriseKnowledgeProfileInput } from "../types";
 
-type ProfileState = {
+export type ProfileState = {
   draft: EnterpriseKnowledgeProfile | null;
   confirmed: EnterpriseKnowledgeProfile | null;
   history: EnterpriseKnowledgeProfile[];
 };
 
-export function KnowledgeProfileWorkspace({ initialState }: { initialState: ProfileState }) {
+export function KnowledgeProfileWorkspace({ initialState, bare = false, onConfirmed }: { initialState: ProfileState; bare?: boolean; onConfirmed?: (profile: EnterpriseKnowledgeProfile) => void }) {
   const [state, setState] = useState(initialState);
   const [draft, setDraft] = useState<EnterpriseKnowledgeProfileInput | null>(
     initialState.draft ? toInput(initialState.draft) : null,
@@ -39,6 +39,7 @@ export function KnowledgeProfileWorkspace({ initialState }: { initialState: Prof
           confirmed: payload.profile,
           history: previous ? [{ ...previous, status: "archived" }, ...state.history] : state.history,
         });
+        onConfirmed?.(payload.profile);
         setDraft(null);
         setEditing(false);
         setMessage(`企业知识档案 v${payload.profile.version} 已确认，后续选题与创作会记录这个版本。`);
@@ -53,8 +54,21 @@ export function KnowledgeProfileWorkspace({ initialState }: { initialState: Prof
     }
   }
 
+  async function refresh() {
+    setBusy("refresh"); setMessage(null);
+    try {
+      const response = await fetch("/api/knowledge-profile/current", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "读取档案失败。");
+      setState(payload); setDraft(payload.draft ? toInput(payload.draft) : null); setEditing(Boolean(payload.draft));
+      if (payload.confirmed) onConfirmed?.(payload.confirmed);
+      setMessage(payload.draft ? "已读取待确认的整理结果，请核对事实与来源。" : "还没有新的待确认结果；后台任务可在站内提醒中查看。");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "读取档案失败。"); }
+    finally { setBusy(null); }
+  }
+
   const display = state.confirmed;
-  return <AppShell active="/knowledge">
+  const content = <>
     <PageHeader
       eyebrow="ENTERPRISE KNOWLEDGE PROFILE"
       title="企业知识档案"
@@ -62,16 +76,18 @@ export function KnowledgeProfileWorkspace({ initialState }: { initialState: Prof
       actions={<Link className={secondaryButtonClass} href="/knowledge">返回知识库</Link>}
     />
 
+    {bare ? <button className={`${secondaryButtonClass} mt-4`} type="button" disabled={Boolean(busy) || editing} onClick={() => void refresh()}>读取最新整理结果</button> : null}
     {message ? <p className={`mt-5 rounded-2xl px-4 py-3 text-sm ${/失败|缺少|请/.test(message) ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-800"}`}>{message}</p> : null}
 
-    {display && !editing ? <section className="mt-7 rounded-3xl bg-[#173e32] p-6 text-white shadow-sm sm:p-7"><div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div><span className="rounded-full bg-[#dfb967] px-3 py-1 text-xs font-semibold text-[#173e32]">生效中 · v{display.version}</span><h2 className="mt-5 text-xl font-semibold">{display.name}</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-white/75">{display.businessSummary}</p><p className="mt-4 text-xs text-white/50">{display.sources.length} 个来源 · {display.facts.filter((fact) => fact.confidence === "confirmed").length} 条已确认事实 · {display.gaps.length} 个待补缺口</p></div><div className="flex flex-wrap gap-2"><Link className="h-10 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#173e32]" href="/positioning">带入账号定位 →</Link><button className="h-10 rounded-xl border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" onClick={() => { setDraft(toInput(display)); setEditing(true); }} type="button">基于当前版本编辑</button></div></div></section> : null}
+    {display && !editing ? <section className="mt-7 rounded-3xl bg-[#173e32] p-6 text-white shadow-sm sm:p-7"><div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div><span className="rounded-full bg-[#dfb967] px-3 py-1 text-xs font-semibold text-[#173e32]">生效中 · v{display.version}</span><h2 className="mt-5 text-xl font-semibold">{display.name}</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-white/75">{display.businessSummary}</p><p className="mt-4 text-xs text-white/50">{display.sources.length} 个来源 · {display.facts.filter((fact) => fact.confidence === "confirmed").length} 条已确认事实 · {display.gaps.length} 个待补缺口</p></div><div className="flex flex-wrap gap-2"><Link className="h-10 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#173e32]" href={bare ? "/brand?step=positioning" : "/positioning"}>带入账号定位 →</Link><button className="h-10 rounded-xl border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" onClick={() => { setDraft(toInput(display)); setEditing(true); }} type="button">基于当前版本编辑</button></div></div></section> : null}
 
     {!draft && !display ? <section className="mt-7 rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center"><h2 className="text-lg font-semibold">还没有企业知识档案</h2><p className="mt-2 text-sm text-slate-500">回到知识库选择资料，AI 会先生成一份可编辑草稿。</p><Link className={`${primaryButtonClass} mt-5`} href="/knowledge">选择资料并整理</Link></section> : null}
 
     {draft && editing ? <ProfileEditor draft={draft} setDraft={setDraft} busy={busy} onSave={() => persist("save")} onConfirm={() => persist("confirm")} onCancel={() => { setDraft(null); setEditing(false); }} hasConfirmed={Boolean(state.confirmed)} /> : null}
 
     {state.history.length ? <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><h2 className="text-base font-semibold">历史版本</h2><div className="mt-4 divide-y divide-slate-100">{state.history.map((profile) => <div className="flex items-center justify-between py-3 text-sm" key={profile.id}><span>v{profile.version} · {profile.name}</span><span className="text-xs text-slate-400">{new Date(profile.updatedAt).toLocaleString("zh-CN")}</span></div>)}</div></section> : null}
-  </AppShell>;
+  </>;
+  return bare ? content : <AppShell active="/knowledge">{content}</AppShell>;
 }
 
 function ProfileEditor({ draft, setDraft, busy, onSave, onConfirm, onCancel, hasConfirmed }: { draft: EnterpriseKnowledgeProfileInput; setDraft: (value: EnterpriseKnowledgeProfileInput) => void; busy: string | null; onSave: () => void; onConfirm: () => void; onCancel: () => void; hasConfirmed: boolean }) {

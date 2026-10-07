@@ -85,7 +85,7 @@ export function KnowledgeTasksProvider({ children }: { children: React.ReactNode
         <p className="mt-2 text-xs leading-5 text-emerald-800">可以离开页面、刷新或关闭浏览器。完成后在站内提醒；换设备登录同一客户空间可查看结果。</p>
         {connectionLost ? <p className="mt-2 text-xs text-amber-800">暂时无法更新进度，恢复连接后会重新查询。</p> : null}
       </> : task.status === "succeeded" ? <>
-        <Link className="mt-3 inline-block text-sm font-semibold text-emerald-800 underline" href={task.kind === "profile" ? "/knowledge/profile" : `/knowledge?task=${task.id}`}>查看并确认结果</Link>
+        <Link className="mt-3 inline-block text-sm font-semibold text-emerald-800 underline" href={task.kind === "profile" ? (pathname === "/brand" ? "/brand?step=materials" : "/knowledge/profile") : `/knowledge?task=${task.id}`}>查看并确认结果</Link>
         {task.kind === "organization" ? <p className="mt-2 text-xs text-slate-500">创建整理副本需回到原电脑，恢复文件夹权限后确认。</p> : null}
       </> : <>
         <p className="mt-2 text-xs leading-5 text-amber-800">{task.error}</p>

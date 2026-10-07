@@ -3,17 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "@/components/navigation-link";
-import { AppShell, primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
+import { AppShell, primaryButtonClass } from "@/components/app-shell";
 import { channelLabels } from "@/modules/content/types";
 import type { StyleProfile } from "@/modules/style-profile/types";
 import type { FirstContentSnapshot } from "./service";
-import { starterGuidance, type VoiceId } from "./catalog";
+import { starterGuidance } from "./catalog";
+import { StarterStylePicker } from "@/modules/style-profile/components/starter-style-picker";
 
 export function FirstContentWorkspace({ initialData }: { initialData: FirstContentSnapshot }) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
-  const [voice, setVoice] = useState<VoiceId>(initialData.draftProfile?.starterTemplate?.voice ?? initialData.confirmedProfile?.starterTemplate?.voice ?? "chat");
-  const [adjustments, setAdjustments] = useState(() => (initialData.draftProfile ?? initialData.confirmedProfile)?.rules.filter((rule) => rule.id === "starter-rule-extra").map((rule) => rule.instruction).join("\n") ?? "");
   const [draft, setDraft] = useState(initialData.draftProfile);
   const [ready, setReady] = useState(Boolean(initialData.confirmedProfile) && !initialData.draftProfile);
   const [busy, setBusy] = useState<string | null>(null);
@@ -24,14 +23,6 @@ export function FirstContentWorkspace({ initialData }: { initialData: FirstConte
     try { await work(); } catch (error) {
       setMessage(error instanceof Error ? error.message : "操作未完成，请重试。");
     } finally { setBusy(null); }
-  }
-
-  async function preview() {
-    await run("preview", async () => {
-      const payload = await post({ action: "preview_style", voice, adjustments, version: data.profileVersion }) as { profile: StyleProfile };
-      setDraft(payload.profile); setReady(false);
-      setData({ ...data, profileVersion: payload.profile.version });
-    });
   }
 
   async function confirm() {
@@ -66,16 +57,8 @@ export function FirstContentWorkspace({ initialData }: { initialData: FirstConte
             已确认：{data.confirmedProfile.name} v{data.confirmedProfile.version}。重新选例稿和保存预览不会改变当前口吻。
             {!ready ? <button className="mt-2 block font-semibold underline underline-offset-4" type="button" onClick={() => { setReady(true); setDraft(null); }}>这篇沿用已确认口吻</button> : null}
           </div> : null}
-          <div className="mt-5 grid gap-3 lg:grid-cols-3">
-            {data.options.map((option) => <label key={option.id} className={`min-w-0 cursor-pointer rounded-xl border p-4 ${voice === option.id ? "border-emerald-800 bg-emerald-50/50" : "border-slate-200"}`}>
-              <span className="flex items-center gap-2 font-semibold"><input type="radio" name="starter-voice" value={option.id} checked={voice === option.id} onChange={() => { setVoice(option.id); setReady(false); setDraft(null); }} />{option.name}</span>
-              <span className="mt-3 block whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{option.sample}</span>
-            </label>)}
-          </div>
-          <label className="mt-5 block text-sm font-semibold" htmlFor="starter-adjustments">再补一句你的偏好（可选）</label>
-          <textarea id="starter-adjustments" className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-base" rows={2} maxLength={500} value={adjustments} placeholder="例如：更口语一点，少用感叹号，不要每次都加行动引导" onChange={(event) => { setAdjustments(event.target.value); setReady(false); setDraft(null); }} />
-          <p className="mt-2 text-xs leading-5 text-slate-500">补充要求会用于后续成稿，例稿展示基础口吻。产品事实和个人经历请在品牌资料中补充。</p>
-          <button className={`${secondaryButtonClass} mt-4`} type="button" onClick={() => void preview()}>{busy === "preview" ? "正在保存…" : "保存口吻预览"}</button>
+          <nav className="mt-4 flex flex-wrap gap-4 text-sm text-emerald-900"><Link href="/brand?step=style">已有风格？手动录入或分析自己的文章</Link><Link href="/brand">核对品牌资料、历史参考与定位</Link></nav>
+          <StarterStylePicker key={data.profileVersion} options={data.options} version={data.profileVersion} current={draft ?? data.confirmedProfile} confirmed={data.confirmedProfile} onSaved={(saved) => { setDraft(saved); setReady(false); setData({ ...data, profileVersion: saved.version }); }} />
           {draft ? <div className="mt-5 rounded-xl border border-emerald-200 p-4">
             <p className="font-semibold">核对口吻：{draft.name}</p>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{draft.examples[0]?.excerpt}</p>

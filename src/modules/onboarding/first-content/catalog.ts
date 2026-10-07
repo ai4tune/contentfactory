@@ -10,12 +10,12 @@ export const starterGuidance = {
   rule: "先介绍已确认的业务与产品，明确适用条件；没有资料的卖点、价格、效果和经历留待补充。",
 };
 export const voices = [
-  { id: "chat", name: "亲切聊天", tone: "亲切、口语、简洁", rule: "用日常短句介绍已知信息，少用术语，结尾自然邀请提问。" },
-  { id: "lifestyle", name: "生活方式", tone: "自然、舒缓、克制", rule: "段落留出停顿，围绕本次产品或服务展开，不为营造氛围编造现场。" },
+  { id: "chat", name: "温柔朋友式", tone: "温和、亲切、口语", rule: "像向熟悉的朋友解释，短句清楚，回应读者的疑问，不催促、不强行煽情。" },
+  { id: "lifestyle", name: "轻松愉快", tone: "轻松、自然、有活力", rule: "用自然短句和轻快的段落推进，少堆形容词，不为营造气氛编造现场或经历。" },
   { id: "professional", name: "专业介绍", tone: "清晰、具体、可信", rule: "先交代业务和本次介绍对象，再给出咨询入口；解释条件，避免绝对承诺。" },
 ] as const;
 export type VoiceId = typeof voices[number]["id"];
-export const starterVersion = 2;
+export const starterVersion = 3;
 
 export function isIndustry(value: unknown): value is IndustryId { return legacyIndustryIds.some((id) => id === value); }
 export function isVoice(value: unknown): value is VoiceId { return voices.some((item) => item.id === value); }
@@ -25,7 +25,7 @@ export function buildStarterStyle(account: AccountContext, industryId: IndustryI
   const sourceId = `starter:${industryId}:v${starterVersion}:${voice.id}`;
   const examples: Record<VoiceId, string> = {
     chat: `先认识一下${account.accountName}。${account.business}。这次想和大家介绍${account.offer}，想了解什么，可以留言问我们。`,
-    lifestyle: `${account.accountName}。\n\n${account.business}。这次，先把${account.offer}介绍清楚。\n\n有想了解的问题，欢迎聊聊。`,
+    lifestyle: `来认识一下${account.accountName}吧。\n\n我们${account.business}，这次聊聊${account.offer}。\n\n你想先了解哪一点？欢迎留言。`,
     professional: `业务介绍：${account.accountName}\n主营业务：${account.business}\n本次介绍：${account.offer}\n如需了解具体信息，欢迎提出问题，我们再逐项说明。`,
   };
   const excerpt = examples[voiceId];
@@ -44,6 +44,39 @@ export function buildStarterStyle(account: AccountContext, industryId: IndustryI
     ],
     starterTemplate: { industry: industryId, voice: voiceId, version: starterVersion },
   };
+}
+
+export function mergeStarterStyle(next: StyleProfileInput, current: StyleProfileInput | null): StyleProfileInput {
+  if (!current) return next;
+  // 只替换未经用户改动的模板基础规则；用户改写、硬规则与补充偏好均保留。
+  const personalRules = current.rules.filter((rule) => {
+    if (rule.id === "starter-rule-extra") return !next.rules.some((item) => item.id === rule.id);
+    const baseRule = rule.id === "starter-rule-0" || rule.id === "starter-rule-1";
+    return !baseRule || rule.priority === "hard" || !rule.evidence.some((item) => item.excerpt === rule.instruction);
+  });
+  const personalIds = new Set(personalRules.map((rule) => rule.id));
+  return {
+    ...current, ...next,
+    persona: current.persona, readerRelationship: current.readerRelationship, values: current.values,
+    rules: [...personalRules, ...next.rules.filter((rule) => !personalIds.has(rule.id)).map((rule) => {
+      const previous = current.rules.find((item) => item.id === rule.id);
+      return rule.id === "starter-rule-extra" && previous ? { ...rule, priority: previous.priority } : rule;
+    })],
+    examples: [...next.examples, ...current.examples.filter((example) => example.id !== "starter-example")],
+    sources: [...new Map([...current.sources, ...next.sources].map((source) => [source.id, source])).values()],
+    preferredPhrases: [...new Set([...current.preferredPhrases, ...next.preferredPhrases])],
+    bannedPhrases: [...new Set([...current.bannedPhrases, ...next.bannedPhrases])],
+    channelOverrides: current.channelOverrides,
+  };
+}
+
+export function styleDifferences(current: StyleProfileInput | null, next: StyleProfileInput) {
+  const fields = [
+    { label: "语气", before: current?.tone ?? [], after: next.tone },
+    { label: "表达规则", before: current?.rules.map((rule) => rule.instruction) ?? [], after: next.rules.map((rule) => rule.instruction) },
+    { label: "示例", before: current?.examples.map((example) => example.excerpt) ?? [], after: next.examples.map((example) => example.excerpt) },
+  ];
+  return fields.filter((field) => JSON.stringify(field.before) !== JSON.stringify(field.after));
 }
 
 export function starterTopics(account: AccountContext) {

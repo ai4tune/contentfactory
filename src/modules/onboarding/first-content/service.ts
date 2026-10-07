@@ -17,7 +17,7 @@ import { compileStyleContract } from "@/modules/style-profile/compiler";
 import { getInterviewState } from "../interview-repository";
 import { InterviewError } from "../interview";
 import { getStoredOnboardingStatus } from "../repository";
-import { buildStarterStyle, isIndustry, isVoice, starterTopics, voices, type IndustryId } from "./catalog";
+import { buildStarterStyle, isIndustry, isVoice, mergeStarterStyle, starterTopics, styleDifferences, voices, type IndustryId } from "./catalog";
 
 async function requiredAccount() {
   const account = await getActiveAccountContext();
@@ -49,23 +49,19 @@ export async function getFirstContentSnapshot(selectedIndustry?: IndustryId) {
 }
 export type FirstContentSnapshot = Awaited<ReturnType<typeof getFirstContentSnapshot>>;
 
-export async function previewStarterStyle(input: { industry: unknown; voice: unknown; adjustments: unknown; version: number }) {
+export async function compareStarterStyle(input: { industry: unknown; voice: unknown; adjustments: unknown; version: number }) {
   const industry = input.industry ?? "general";
   if (!isIndustry(industry) || !isVoice(input.voice)) throw new InterviewError("请选择有效的口吻配置。");
   if (typeof input.adjustments !== "string" || input.adjustments.length > 500) throw new InterviewError("口吻补充请控制在 500 字以内。");
   const profile = buildStarterStyle(await requiredAccount(), industry, input.voice, input.adjustments);
-  const confirmed = await getConfirmedStyleProfile();
-  if (confirmed) {
-    profile.persona = confirmed.persona;
-    profile.readerRelationship = confirmed.readerRelationship;
-    profile.rules = [...confirmed.rules.filter((rule) => !rule.id.startsWith("starter-rule-")), ...profile.rules];
-    profile.examples = [...profile.examples, ...confirmed.examples.filter((example) => example.id !== "starter-example")];
-    profile.sources = [...new Map([...confirmed.sources, ...profile.sources].map((source) => [source.id, source])).values()];
-    profile.preferredPhrases = [...new Set([...confirmed.preferredPhrases, ...profile.preferredPhrases])];
-    profile.bannedPhrases = [...new Set([...confirmed.bannedPhrases, ...profile.bannedPhrases])];
-    profile.channelOverrides = confirmed.channelOverrides;
-    profile.values = confirmed.values;
-  }
+  const [current, confirmed] = await Promise.all([getCurrentStyleProfile(), getConfirmedStyleProfile()]);
+  if ((current?.version ?? 0) !== input.version) throw new InterviewError("风格已更新，请刷新后查看差异。", 409);
+  const candidate = mergeStarterStyle(profile, current ?? confirmed);
+  return { profile: candidate, differences: styleDifferences(confirmed, candidate) };
+}
+
+export async function previewStarterStyle(input: { industry: unknown; voice: unknown; adjustments: unknown; version: number }) {
+  const { profile } = await compareStarterStyle(input);
   return saveCurrentStyleProfile(profile, "draft", input.version);
 }
 

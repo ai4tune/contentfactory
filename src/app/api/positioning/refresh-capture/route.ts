@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getLatestAccountCapture } from "@/lib/store";
-import { captureToPositioningRequest } from "@/modules/positioning/capture";
+import { captureWithCurrentBusiness } from "@/modules/positioning/capture";
+import { getCurrentAccountContext } from "@/modules/positioning/repository";
 import { analyzeAccountContext } from "@/modules/positioning/service";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const capture = await getLatestAccountCapture();
     if (!capture) {
@@ -15,8 +16,9 @@ export async function POST() {
       );
     }
 
+    const body = await request.json().catch(() => ({})) as { current?: unknown };
     const draft = await analyzeAccountContext(
-      captureToPositioningRequest(capture),
+      captureWithCurrentBusiness(capture, await getCurrentAccountContext(), body.current),
       "capture",
     );
     return NextResponse.json({ capture, draft });

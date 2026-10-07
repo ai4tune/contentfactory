@@ -23,6 +23,9 @@ import {
   type StyleSourceRole,
 } from "../types";
 import type { StyleFeedbackRecord } from "../feedback";
+import type { AccountCapture } from "@/modules/positioning/capture";
+import { manualStyleProfile } from "../manual";
+import { StarterStylePicker, type StarterOption } from "./starter-style-picker";
 
 type SelectableSource = Omit<BriefKnowledgeSource, "text"> & { text?: string };
 type SelectedSource = BriefKnowledgeSource & { role: StyleSourceRole };
@@ -46,10 +49,18 @@ export function StyleProfileWorkspace({
   accountName,
   initialProfile,
   initialConfirmedProfile,
+  initialCapture = null,
+  starterOptions = [],
+  bare = false,
+  onConfirmed,
 }: {
   accountName: string;
   initialProfile: StyleProfile | null;
   initialConfirmedProfile: StyleProfile | null;
+  initialCapture?: AccountCapture | null;
+  starterOptions?: StarterOption[];
+  bare?: boolean;
+  onConfirmed?: (profile: StyleProfile) => void;
 }) {
   const [profile, setProfile] = useState(initialProfile);
   const [confirmedProfile, setConfirmedProfile] = useState(initialConfirmedProfile);
@@ -61,6 +72,10 @@ export function StyleProfileWorkspace({
   const [remoteItems, setRemoteItems] = useState<RemoteKnowledgeSource[]>([]);
   const [selected, setSelected] = useState<SelectedSource[]>([]);
   const [feedback, setFeedback] = useState<StyleFeedbackRecord[]>([]);
+  const [mode, setMode] = useState<"manual" | "analysis" | "template">(initialProfile ? "analysis" : "template");
+  const [manualDescription, setManualDescription] = useState("");
+  const [manualSample, setManualSample] = useState("");
+  const [pastedArticle, setPastedArticle] = useState("");
   const [query, setQuery] = useState("");
   const [feishuUrl, setFeishuUrl] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -90,8 +105,13 @@ export function StyleProfileWorkspace({
     const remote = remoteItems
       .filter((item) => !terms || `${item.title} ${item.url ?? ""}`.toLocaleLowerCase().includes(terms))
       .map(remoteToSource);
-    return [...local, ...remote].slice(0, 60);
-  }, [localItems, query, remoteItems]);
+    const captured = (initialCapture?.contents ?? []).flatMap<SelectableSource>((item, index) => item.description?.trim() ? [{
+      id: `own-capture:${initialCapture!.capturedAt}:${index}`, title: item.title,
+      source: "upload" as const, url: item.url,
+      text: item.description,
+    }] : []).filter((item) => !terms || item.title.toLocaleLowerCase().includes(terms));
+    return [...captured, ...local, ...remote].slice(0, 60);
+  }, [initialCapture, localItems, query, remoteItems]);
 
   async function selectSource(source: SelectableSource) {
     if (selected.some((item) => item.id === source.id)) return;
@@ -183,7 +203,7 @@ export function StyleProfileWorkspace({
       const response = await fetch("/api/style-profile/current", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, profile: draft }),
+        body: JSON.stringify({ action, profile: draft, version: profile?.version ?? 0 }),
       });
       const payload = await response.json() as { profile?: StyleProfile; error?: string; issues?: string[] };
       if (!response.ok || !payload.profile) {
@@ -192,6 +212,7 @@ export function StyleProfileWorkspace({
       setProfile(payload.profile);
       if (action === "confirm") {
         setConfirmedProfile(payload.profile);
+        onConfirmed?.(payload.profile);
         setEditing(false);
         setDraft(null);
         setMessage("风格档案已确认，后续创作将使用这个版本。");
@@ -215,8 +236,8 @@ export function StyleProfileWorkspace({
 
   const displayProfile = profile?.status === "confirmed" ? profile : confirmedProfile;
 
-  return (
-    <AppShell active="/style-profile">
+  const content = (
+    <>
       <PageHeader
         eyebrow="WRITING STYLE"
         title="写作风格"
@@ -231,12 +252,24 @@ export function StyleProfileWorkspace({
         />
       ) : null}
 
-      <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+      <div className="mt-6 flex flex-wrap gap-3" aria-label="选择风格设置方式">
+        {([{ id: "manual", name: "我来描述风格" }, { id: "analysis", name: "从我的文章提炼" }, { id: "template", name: "选一个口吻模板" }] as const).map((item) => <button type="button" key={item.id} className={mode === item.id ? primaryButtonClass : secondaryButtonClass} aria-pressed={mode === item.id} disabled={Boolean(busy)} onClick={() => setMode(item.id)}>{item.name}</button>)}
+      </div>
+      {mode === "manual" ? <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="font-semibold">直接写下你想怎么表达</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">可以只说几个偏好，不需要懂写作术语。先生成可编辑预览，确认前原风格继续生效。</p>
+        <TextArea label="我的风格要求" value={manualDescription} onChange={setManualDescription} rows={3} />
+        <TextArea label="喜欢的表达示例（可选，只学习表达）" value={manualSample} onChange={setManualSample} rows={4} />
+        <button className={`${primaryButtonClass} mt-4`} disabled={Boolean(busy) || !manualDescription.trim() || manualDescription.length > 1000 || manualSample.length > 3000} type="button" onClick={() => { setDraft(manualStyleProfile(accountName, manualDescription, manualSample, profile ?? confirmedProfile)); setEditing(true); setMessage("自定义风格已生成预览，核对后再保存或确认。"); }}>预览我的风格</button>
+        <p className="mt-2 text-xs text-slate-500">要求最多 1000 字，示例最多 3000 字。产品资料和经历请在品牌资料中核对。</p>
+      </section> : null}
+      {mode === "template" ? starterOptions.length ? <StarterStylePicker key={profile?.version ?? 0} options={starterOptions} current={profile} confirmed={confirmedProfile} onSaved={(saved) => { setProfile(saved); setDraft(toInput(saved)); setEditing(true); }} /> : <p className="mt-5 text-sm leading-6 text-amber-900">先确认经营定位，再用自己的业务信息展示口吻示例。也可以先录入风格或分析自己的文章。</p> : null}
+      <section hidden={mode !== "analysis"} className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs font-semibold tracking-[0.14em] text-emerald-700">01 SOURCE</p>
             <h2 className="mt-2 text-lg font-semibold">选择风格依据</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">建议选择 5 至 10 份资料，至少包含认可成稿或风格指南。GitHub 知识库可先克隆到本地，再通过知识库文件夹读取。</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">选择自己的代表文章或风格指南；已有历史采集正文也可以逐篇选择。外部参考只借鉴表达方法，不能当作你的身份或经历。</p>
           </div>
           <span className="w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">已选 {selected.length} 份</span>
         </div>
@@ -262,14 +295,17 @@ export function StyleProfileWorkspace({
 
         {selected.length ? <div className="mt-5 grid gap-3 lg:grid-cols-2">{selected.map((source) => <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4" key={source.id}><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{source.title}</p><p className="mt-1 text-xs text-slate-400">{source.path || source.url || sourceLabel(source.source)}</p></div><button className="text-xs font-semibold text-slate-400 hover:text-rose-600" onClick={() => setSelected((items) => items.filter((item) => item.id !== source.id))} type="button">移除</button></div><select className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" value={source.role} onChange={(event) => setSelected((items) => items.map((item) => item.id === source.id ? { ...item, role: event.target.value as StyleSourceRole } : item))}>{styleSourceRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></div>)}</div> : null}
 
+        <label className="mt-5 block text-sm font-semibold">粘贴自己的文章或风格指南<textarea className="mt-2 w-full rounded-xl border border-slate-200 p-3 text-base" rows={5} maxLength={16000} value={pastedArticle} onChange={(event) => setPastedArticle(event.target.value)} /></label>
+        <button className={`${secondaryButtonClass} mt-3`} type="button" disabled={Boolean(busy) || !pastedArticle.trim()} onClick={() => { setSelected((items) => [...items, { id: `manual-article:${crypto.randomUUID()}`, title: "用户粘贴的代表文章", source: "upload", text: pastedArticle.trim(), role: "approved_sample" }]); setPastedArticle(""); }}>加入本次分析</button>
         <button className={`${primaryButtonClass} mt-5 w-full`} disabled={Boolean(busy) || !selected.length} onClick={analyze} type="button">{busy === "analyze" ? "AI 正在分析原文依据" : profile ? "基于所选资料重新分析" : "生成写作风格档案"}</button>
       </section>
 
       {draft && editing ? <ProfileEditor draft={draft} onChange={setDraft} onCancel={() => { setDraft(null); setEditing(false); }} onSave={() => persist("save")} onConfirm={() => persist("confirm")} busy={busy} hasConfirmed={Boolean(confirmedProfile)} /> : null}
 
       {message ? <p className={`mt-5 rounded-2xl px-4 py-3 text-sm ${/失败|不足|没有|请先|错误|超时/.test(message) ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-800"}`}>{message}</p> : null}
-    </AppShell>
+    </>
   );
+  return bare ? content : <AppShell active="/style-profile">{content}</AppShell>;
 }
 
 function ConfirmedProfile({ profile, onEdit }: { profile: StyleProfile; onEdit: () => void }) {

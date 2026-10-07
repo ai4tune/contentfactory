@@ -5,20 +5,21 @@ import {
   getConfirmedStyleProfile,
   getCurrentStyleProfile,
 } from "@/modules/style-profile/repository";
-import { getConfirmedKnowledgeProfile } from "@/modules/knowledge-profile/repository";
+import { getKnowledgeProfileState } from "@/modules/knowledge-profile/repository";
 
 export const dynamic = "force-dynamic";
 
-export default async function BrandPage() {
+export default async function BrandPage({ searchParams }: { searchParams: Promise<{ step?: string }> }) {
+  const { step } = await searchParams;
   const [context, capture, profile, confirmedProfile, knowledgeProfile] = await Promise.all([
     getCurrentAccountContext(),
     getLatestAccountCapture(),
     getCurrentStyleProfile(),
     getConfirmedStyleProfile(),
-    getConfirmedKnowledgeProfile(),
+    getKnowledgeProfileState(),
   ]);
 
-  const stateKey = `${context?.updatedAt ?? "no-context"}:${capture?.capturedAt ?? "no-capture"}:${profile?.updatedAt ?? "no-profile"}:${knowledgeProfile?.updatedAt ?? "no-knowledge"}`;
+  const stateKey = `${context?.updatedAt ?? "no-context"}:${capture?.capturedAt ?? "no-capture"}:${profile?.updatedAt ?? "no-profile"}:${knowledgeProfile.confirmed?.updatedAt ?? "no-knowledge"}`;
 
   return (
     <BrandClient
@@ -27,7 +28,8 @@ export default async function BrandPage() {
       initialCapture={capture}
       initialProfile={profile}
       initialConfirmedProfile={confirmedProfile}
-      initialKnowledgeProfile={knowledgeProfile}
+      initialKnowledgeState={knowledgeProfile}
+      initialStep={step}
     />
   );
 }
