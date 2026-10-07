@@ -1,5 +1,5 @@
 import type { PositioningRequest } from "@/lib/ai";
-import type { AccountContextDraft } from "./types";
+import type { AccountContext, AccountContextDraft } from "./types";
 
 export type CapturedAccountContent = {
   noteId?: string;
@@ -134,6 +134,25 @@ export function captureToPositioningRequest(capture: AccountCapture): Positionin
       contentLines.join("\n") || "未识别到内容列表",
     ].join("\n"),
   };
+}
+
+export function captureWithCurrentBusiness(capture: AccountCapture, current: AccountContext | null, supplied?: unknown): PositioningRequest {
+  const historical = captureToPositioningRequest(capture);
+  const base: PositioningRequest = current?.status === "confirmed" ? {
+    accountName: current.accountName, business: current.business,
+    audience: current.targetAudience.join("、"), offer: current.offer,
+    differentiator: current.preferredPhrases.join("、"), platforms: current.platforms.join("、"),
+    goal: current.conversionGoal, currentContent: "",
+  } : historical;
+  const record = supplied && typeof supplied === "object" ? supplied as Record<string, unknown> : {};
+  for (const field of ["accountName", "business", "audience", "offer", "differentiator", "platforms", "goal", "currentContent"] as const) {
+    if (typeof record[field] === "string") base[field] = record[field].trim().slice(0, field === "currentContent" ? 16000 : 2000);
+  }
+  return { ...base, currentContent: [
+    "当前填写的经营目标、业务、产品和人群优先。以下历史信息仅供参考，旧经营状态不代表今天；冲突和缺口必须留待用户确认。",
+    base.currentContent, historical.currentContent,
+    ...capture.contents.filter((item) => item.description).slice(0, 10).map((item) => `历史正文参考：${item.title}\n${item.description!.slice(0, 800)}`),
+  ].filter(Boolean).join("\n\n").slice(0, 16000) };
 }
 
 export function normalizeCapturedDraft(value: unknown): AccountContextDraft | null {

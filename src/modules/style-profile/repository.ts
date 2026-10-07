@@ -39,7 +39,7 @@ export async function saveCurrentStyleProfile(
     const current = store.draftProfile ?? confirmedProfile ?? store.profile;
     if (expectedVersion !== undefined && (current?.version ?? 0) !== expectedVersion) throw new StyleVersionError();
     const profile: StyleProfile = {
-      ...input,
+      ...current, ...input,
       id: "current-style-profile",
       accountId: "current-account",
       status,
@@ -49,8 +49,8 @@ export async function saveCurrentStyleProfile(
       confirmedAt: status === "confirmed" ? now : undefined,
     };
     return status === "confirmed"
-      ? { confirmedProfile: profile, draftProfile: null }
-      : { confirmedProfile, draftProfile: profile };
+      ? { ...store, confirmedProfile: profile, draftProfile: null }
+      : { ...store, confirmedProfile, draftProfile: profile };
   });
 
   return status === "confirmed" ? updated.confirmedProfile! : updated.draftProfile!;

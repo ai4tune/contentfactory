@@ -265,13 +265,18 @@ test("existing v1 customer spaces load through the upgrade without any write or 
   readOnlyGuard = true;
   try {
     for (const [id, workspace] of [[alice, aliceWorkspace], [bob, bobWorkspace]]) {
-      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup/first-content", "/setup/interview"]) {
+      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
         const response = await request(id, url);
         assert.equal(response.status, 200, url + " " + await response.clone().text());
         if (url === "/api/onboarding/first-content") {
           const snapshot = await response.json();
           assert.deepEqual(snapshot.confirmedProfile, originalProfiles.get(workspace).confirmedProfile);
           assert.deepEqual(snapshot.draftProfile, originalProfiles.get(workspace).draftProfile ?? null);
+          const comparison = await request(id, "/api/onboarding/first-content", { action: "compare_style", voice: "chat", adjustments: "", version: snapshot.profileVersion });
+          assert.equal(comparison.status, 200);
+          const candidate = (await comparison.json()).profile;
+          assert.ok(JSON.stringify(candidate).includes(id === alice ? "Alice-private-preference" : "Bob-private-preference"));
+          assert.deepEqual(candidate.customerOwnedField, "preserve unknown legacy fields");
         }
       }
     }

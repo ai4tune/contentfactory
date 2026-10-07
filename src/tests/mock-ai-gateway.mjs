@@ -184,6 +184,13 @@ function mockCompletion(system, user, latestUser) {
   }
 
   if (system.includes("写作风格分析师")) {
+    if (user.includes("本地流程演示")) {
+      const sourceId = user.match(/\[([^\]]+)\][^\n]*\n角色:/)?.[1];
+      const excerpt = "先把问题说清楚，再给出可执行的建议。";
+      return { name: "本地流程演示 · 文章风格", persona: "以品牌介绍者的视角清楚表达", readerRelationship: "向读者说明真实信息", values: ["真实", "清楚"], tone: ["自然", "清晰"], preferredPhrases: [], bannedPhrases: [], channelOverrides: {},
+        rules: [{ id: "demo-rule", category: "narrative", priority: "soft", instruction: "先说明问题，再提供具体建议。", evidence: [{ sourceId, excerpt }] }],
+        examples: [{ id: "demo-example", sourceId, title: "用户选择的原文", excerpt, purpose: "只学习表达方式" }] };
+    }
     return {
       name: "验收账号默认风格",
       persona: "做过真实项目、能把技术讲明白的建材与 AI 实践者",

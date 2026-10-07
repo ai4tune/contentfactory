@@ -2,7 +2,7 @@ import { withDataWorkspace } from "@/lib/data-workspace";
 import { NextResponse } from "next/server";
 import { checkCaptureAccess } from "@/modules/positioning/capture-access";
 import {
-  captureToPositioningRequest,
+  captureWithCurrentBusiness,
   normalizeAccountCapture,
   normalizeCapturedDraft,
 } from "@/modules/positioning/capture";
@@ -11,6 +11,7 @@ import {
   confirmCapturedAccountContext,
 } from "@/modules/positioning/service";
 import { saveAccountCapture } from "@/lib/store";
+import { getCurrentAccountContext } from "@/modules/positioning/repository";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
           );
         }
         await saveAccountCapture(capture);
-        const draft = await analyzeAccountContext(captureToPositioningRequest(capture), "capture");
+        const draft = await analyzeAccountContext(captureWithCurrentBusiness(capture, await getCurrentAccountContext()), "capture");
         return NextResponse.json({ capture, draft }, { headers: access.corsHeaders });
       }
 

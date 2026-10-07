@@ -28,7 +28,7 @@ type FeishuItem = Omit<RemoteKnowledgeSource, "updatedAt"> & { text?: string };
 
 const MAX_AI_SOURCES = 30;
 
-export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrganizationTaskId?: string }) {
+export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: { initialOrganizationTaskId?: string; bare?: boolean }) {
   const { tasks, refresh: refreshTasks } = useKnowledgeTasks();
   const [organizationTaskId, setOrganizationTaskId] = useState<string | null>(initialOrganizationTaskId ?? null);
   const [localItems, setLocalItems] = useState<LocalKnowledgeItem[]>([]);
@@ -298,8 +298,8 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
     });
   }
 
-  return <AppShell active="/knowledge">
-    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="已有目录结构可以直接使用，无需重新整理。选择代表性资料 → 生成知识档案 → 人工核对确认，再用于账号定位和创作。" actions={<><Link className={secondaryButtonClass} href="/knowledge/profile">查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "读取资料并提交中…" : `生成知识档案（${selectedIds.length}）`}</button></>} />
+  const content = <>
+    <PageHeader eyebrow="CUSTOMER-OWNED KNOWLEDGE" title="知识库" description="已有目录结构可以直接使用，无需重新整理。选择代表性资料 → 生成知识档案 → 人工核对确认，再用于账号定位和创作。" actions={<><Link className={secondaryButtonClass} href={bare ? "/brand?step=materials" : "/knowledge/profile"}>查看企业知识档案</Link><button className={primaryButtonClass} disabled={!selectedIds.length || busy !== null} onClick={buildKnowledgeProfile} type="button">{busy === "profile" ? "读取资料并提交中…" : `生成知识档案（${selectedIds.length}）`}</button></>} />
     <p className="mt-3 text-xs leading-5 text-slate-500">提交成功后可离开页面，后台持续处理并保存进度。所选资料的文字摘要会暂存用于失败重试，完成后清除；原文件不会被修改。</p>
     {message ? <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{message}</p> : null}
 
@@ -460,7 +460,8 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId }: { initialOrgan
         )}
       </section>
     </div>
-  </AppShell>;
+  </>;
+  return bare ? content : <AppShell active="/knowledge">{content}</AppShell>;
 }
 
 function LocalRow({ item, busy, selected, onPreview, onToggle }: { item: LocalKnowledgeItem; busy: string | null; selected: boolean; onPreview: () => void; onToggle: () => void }) {

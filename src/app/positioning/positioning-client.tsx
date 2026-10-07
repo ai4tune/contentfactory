@@ -25,12 +25,14 @@ export function PositioningClient({
   initialCapture,
   initialKnowledgeProfile,
   bare = false,
+  onConfirmed,
 }: {
   initialContext: AccountContext | null;
   initialCapture: AccountCapture | null;
   initialKnowledgeProfile: EnterpriseKnowledgeProfile | null;
   /** 为 true 时只渲染业务内容，不包裹 AppShell（用于嵌入其他页面） */
   bare?: boolean;
+  onConfirmed?: (context: AccountContext) => void;
 }) {
   const router = useRouter();
   const [context, setContext] = useState(initialContext);
@@ -75,10 +77,11 @@ export function PositioningClient({
       const payload = (await response.json()) as { context?: AccountContext; error?: string };
       if (!response.ok || !payload.context) throw new Error(payload.error ?? "定位保存失败");
       setContext(payload.context);
+      onConfirmed?.(payload.context);
       setDraft(null);
       setEditing(false);
       setEditSource(null);
-      router.refresh();
+      if (!bare) router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "定位保存失败");
     } finally {
@@ -110,7 +113,9 @@ export function PositioningClient({
     setBusy("analyze");
     setError(null);
     try {
-      const response = await fetch("/api/positioning/refresh-capture", { method: "POST" });
+      const response = await fetch("/api/positioning/refresh-capture", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ current: form }),
+      });
       const payload = (await response.json()) as {
         draft?: AccountContextDraft;
         error?: string;
@@ -134,6 +139,7 @@ export function PositioningClient({
     if (!context) return;
     setDraft(draftFromContext(context));
     setEditSource("manual");
+    setForm(formFromContext(context, initialKnowledgeProfile));
     setEditing(true);
     setError(null);
   }
@@ -181,7 +187,7 @@ export function PositioningClient({
     : "快速建立当前账号";
   const pageDescription = draft
     ? editSource === "manual"
-      ? "直接修改会立即更新后续创作使用的账号上下文，不会重新调用 AI。"
+      ? "修改后需要点击保存才会生效，不会重新调用 AI。"
       : "AI 结果还没有生效。核对并修改后，确认才会覆盖当前定位。"
     : "只填写关键业务信息即可；也可以先跳过，账号定位不会阻止创作。";
 
@@ -191,6 +197,8 @@ export function PositioningClient({
       {!draft ? <CaptureExtensionCard capture={initialCapture} refreshing={busy === "analyze"} onRefresh={refreshCapture} /> : null}
       {context?.status === "skipped" && !draft ? <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">你上次选择了暂时跳过。现在可以补充定位，也可以继续直接创作。</div> : null}
       {!draft && !context && initialKnowledgeProfile ? <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">已从确认的企业知识档案 v{initialKnowledgeProfile.version} 带入业务、客户、产品和优势。你只需要核对和补充，AI 分析时也会引用该档案中的已确认事实。</div> : null}
+      {initialKnowledgeProfile ? <details className="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-sm"><summary className="cursor-pointer font-semibold">查看本次已确认的品牌依据 v{initialKnowledgeProfile.version}</summary><p className="mt-3 leading-6">{initialKnowledgeProfile.businessSummary}</p><ul className="mt-2 list-disc pl-5">{initialKnowledgeProfile.sources.map((source) => <li key={source.id}>{source.title}</li>)}</ul><p className="mt-2 text-amber-900">待补充：{initialKnowledgeProfile.gaps.join("、") || "暂无"}</p></details> : null}
+      {!draft && initialKnowledgeProfile ? <button className={`${secondaryButtonClass} mt-4`} disabled={Boolean(busy)} type="button" onClick={() => { setForm(formFromContext(null, initialKnowledgeProfile)); setError(null); }}>将已确认品牌资料带入本次表单</button> : null}
       {draft ? <DraftEditor draft={draft} onChange={setDraft} /> : <PositioningForm form={form} onChange={setForm} />}
       {draft ? <AnalysisDetails analysisEvidence={draft.analysisEvidence} informationGaps={draft.informationGaps} editing /> : null}
       {error ? <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
@@ -399,7 +407,7 @@ function CaptureExtensionCard({
             <a className={secondaryButtonClass} href="/downloads/contentfactory-capture-v0.9.1.zip" download>下载采集插件 ZIP</a>
             <button className={extensionAuthorized ? secondaryButtonClass : primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : extensionAuthorized ? "重新授权此浏览器" : "一键授权此浏览器"}</button>
             <button className={secondaryButtonClass} type="button" onClick={() => { setExtensionVersion(null); setExtensionAuthorized(false); setAuthorizationStatus("idle"); setAuthorizationError(null); setProbeAttempt((value) => value + 1); }}>重新检测插件</button>
-            <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在重新分析…" : "基于最新采集重新定位"}</button>
+            <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在重新分析…" : "结合当前目标分析历史采集"}</button>
             {confirmed && onManage ? <button className={secondaryButtonClass} type="button" onClick={onManage}>收起设置</button> : null}
           </div>
           {!extensionVersion ? <p className="mt-4 rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-xs leading-5 text-amber-900">首次使用：下载并解压 ZIP，打开 <code>chrome://extensions</code>，开启开发者模式，点击“加载已解压的扩展程序”并选择解压后的文件夹。安装或更新后回到本页，点击“一键授权此浏览器”。</p> : null}

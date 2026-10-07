@@ -4,6 +4,7 @@ This repository contains the runnable Content Factory V1 baseline for real-use a
 
 ## Source of truth
 
+- Mandatory development rules: [AGENTS.md](AGENTS.md) — preserve all existing customer private data and access to historical records; stop after local changes and checks until the user validates locally and explicitly authorizes the relevant commit, push, merge or release.
 - Product requirements: `docs/prd/Content-Factory-MVP-PRD-v0.1.md`
 - Paid-pilot service blueprint: `docs/sbd/Content-Factory-Paid-Pilot-SBD-v1.0.md`
 - Technical specification: `docs/specs/AI-Growth-OS-Spec-v1.0.md`

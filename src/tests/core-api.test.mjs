@@ -1340,6 +1340,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(rejected.response.status, 403);
 
+    const beforeCapture = (await requestJson("/api/positioning/current")).body.context;
     const captured = await requestJson("/api/capture/account", {
       method: "POST",
       headers: { Authorization: "Bearer acceptance-capture-token", Origin: "chrome-extension://acceptance-extension" },
@@ -1399,7 +1400,9 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       body: {},
     });
     assert.equal(searchPlan.response.status, 200);
-    assert.equal(searchPlan.body.plan.accountName, "崔总建材账号");
+    assert.equal(captured.body.draft.input.accountName, beforeCapture.accountName);
+    assert.equal(refreshed.body.draft.input.goal, beforeCapture.conversionGoal);
+    assert.equal(searchPlan.body.plan.accountName, beforeCapture.accountName);
     assert.ok(searchPlan.body.plan.keywords.length >= 4);
     assert.ok(searchPlan.body.plan.keywords.some((item) => item.query.includes("AI 企业落地")));
   });

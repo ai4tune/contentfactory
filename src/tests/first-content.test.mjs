@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -57,7 +57,7 @@ test("three examples share actual facts; draft and stale requests cannot replace
   }
   for (const option of snapshot.options) { assert.match(option.sample, /晨光设计工作室|提供品牌视觉设计服务/); assert.doesNotMatch(option.sample, /咖啡|地板|果香|坚果|昨天|朋友问|最低价/); }
   style = (await call("/api/onboarding/first-content", { action: "preview_style", voice: "chat", adjustments: "更口语一点，少用感叹号", version: 0 })).body.profile;
-  assert.equal(style.status, "draft"); assert.equal(style.starterTemplate.version, 2);
+  assert.equal(style.status, "draft"); assert.equal(style.starterTemplate.version, 3);
   assert.equal((await call("/api/onboarding/first-content")).body.confirmedProfile, null);
   assert.equal((await call("/api/onboarding/first-content", { action: "preview_style", industry: "flooring", voice: "professional", version: 0 })).status, 409);
   style = (await call("/api/onboarding/first-content", { action: "confirm_style", version: style.version })).body.profile;
@@ -106,6 +106,80 @@ test("unsupported drafts are corrected once; persistent or unavailable checks ne
     assert.equal(draft.status, expected);
     if (expected === "generated") assert.equal(draft.content, marker === "验收已有风味" ? "我们提供果香咖啡。" : "我们提供咖啡饮品。");
     else { assert.equal(draft.content, ""); assert.match(draft.error, /资料不足|事实核对|核对暂时/); }
+  }
+});
+
+test("template comparison is read-only; explicit upgrade preserves personal rules and unknown legacy fields", async () => {
+  const file = path.join(directory, "style-profiles.local.json");
+  const store = JSON.parse(await readFile(file, "utf8"));
+  store.confirmedProfile.starterTemplate.version = 1;
+  store.confirmedProfile.customerOwnedField = { keep: "customer data" };
+  store.futureStoreField = { keep: "future data" };
+  store.confirmedProfile.rules.find((rule) => rule.id === "starter-rule-extra").priority = "hard";
+  const edited = store.confirmedProfile.rules.find((rule) => rule.id === "starter-rule-0");
+  edited.instruction = "我自己改过的模板规则，不要催促读者";
+  await writeFile(file, JSON.stringify(store));
+  const original = await readFile(file, "utf8");
+  const before = (await call("/api/onboarding/first-content")).body;
+  const comparison = await call("/api/onboarding/first-content", { action: "compare_style", voice: "lifestyle", adjustments: "句子简短", version: before.profileVersion });
+  assert.equal(comparison.status, 200);
+  assert.ok(comparison.body.differences.some((item) => item.label === "语气"));
+  assert.equal(await readFile(file, "utf8"), original);
+  assert.deepEqual((await call("/api/onboarding/first-content")).body.confirmedProfile, before.confirmedProfile);
+  assert.ok(comparison.body.profile.rules.some((rule) => rule.instruction === edited.instruction));
+  assert.ok(comparison.body.profile.rules.some((rule) => rule.id === "starter-rule-extra" && rule.instruction === "句子简短" && rule.priority === "hard"));
+  const preview = await call("/api/onboarding/first-content", { action: "preview_style", voice: "lifestyle", adjustments: "", version: before.profileVersion });
+  assert.equal(preview.status, 200);
+  assert.deepEqual((await call("/api/onboarding/first-content")).body.confirmedProfile, before.confirmedProfile);
+  assert.deepEqual(preview.body.profile.customerOwnedField, store.confirmedProfile.customerOwnedField);
+  const confirmed = await call("/api/onboarding/first-content", { action: "confirm_style", version: preview.body.profile.version });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.profile.starterTemplate.version, 3);
+  assert.ok(confirmed.body.profile.bannedPhrases.includes("最低价"));
+  assert.deepEqual(confirmed.body.profile.channelOverrides.moments_post, ["不用感叹号"]);
+  assert.deepEqual(JSON.parse(await readFile(file, "utf8")).futureStoreField, store.futureStoreField);
+  for (const action of ["compare_style", "preview_style"]) assert.equal((await call("/api/onboarding/first-content", { action, voice: "chat", version: before.profileVersion })).status, 409);
+  assert.equal((await call("/api/style-profile/current", { action: "confirm", profile: confirmed.body.profile, version: before.profileVersion }, "PATCH")).status, 409);
+});
+
+test("style analysis is a preview and keeps customer prohibitions and channel preferences", async () => {
+  const file = path.join(directory, "style-profiles.local.json");
+  const original = await readFile(file, "utf8");
+  const sources = [
+    { id: "local:style guide.md", title: "我的风格指南", source: "upload", role: "style_guide", text: "不要大量使用一句一段的短句结构。\n禁用表达：深度赋能。" },
+    { id: "local:approved sample.md", title: "自己的历史文章", source: "upload", role: "approved_sample", text: "我之前一直以为工具选对就够了，后来真正到企业里跑了一遍，才发现问题往往不在工具。\n这只是我跑完真实项目后的阶段性判断。" },
+  ];
+  const result = await call("/api/style-profile/analyze", { sources });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.ok(result.body.profile.bannedPhrases.includes("最低价"));
+  assert.deepEqual(result.body.profile.channelOverrides.moments_post, ["不用感叹号"]);
+  assert.ok(result.body.profile.examples.some((item) => sources.some((source) => source.text.includes(item.excerpt))));
+  assert.equal(await readFile(file, "utf8"), original);
+});
+
+test("history analysis keeps today's business and goal, and never confirms positioning implicitly", async () => {
+  const current = (await call("/api/positioning/current")).body.context;
+  const file = path.join(directory, "contentfactory.local.json");
+  const store = JSON.parse(await readFile(file, "utf8"));
+  store.accountCaptures = [{ accountName: "以前的账号名称", platform: "公众号", sourceUrl: "https://example.com/old-account", bio: "以前的业务", pageType: "account", capturedAt: "2026-01-01T00:00:00Z", contents: [{ title: "以前的话题", description: "历史正文只供参考", metrics: {} }], accountMetrics: {}, operationalMetrics: {} }];
+  await writeFile(file, JSON.stringify(store));
+  const original = await readFile(file, "utf8");
+  const refreshed = await call("/api/positioning/refresh-capture", { current: { ...current, audience: "今天的目标客户", goal: "今天希望介绍新服务", currentContent: "用户补充资料" } });
+  assert.equal(refreshed.status, 200, JSON.stringify(refreshed.body));
+  assert.equal(refreshed.body.draft.input.accountName, current.accountName);
+  assert.equal(refreshed.body.draft.input.business, current.business);
+  assert.equal(refreshed.body.draft.input.goal, "今天希望介绍新服务");
+  assert.equal(refreshed.body.draft.input.audience, "今天的目标客户");
+  assert.match(refreshed.body.draft.input.currentContent, /历史正文只供参考/);
+  assert.match(refreshed.body.draft.input.currentContent, /用户补充资料/);
+  assert.deepEqual((await call("/api/positioning/current")).body.context, current);
+  assert.equal(await readFile(file, "utf8"), original);
+  for (const url of ["/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile"]) {
+    const response = await fetch(base + url, { headers: { authorization } });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    if (url === "/brand") assert.match(html, /品牌资料与历史/);
+    if (url === "/brand?step=style") assert.match(html, /我来描述风格/);
   }
 });
 
