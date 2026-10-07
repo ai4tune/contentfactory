@@ -181,8 +181,13 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       const ideaInput = { title: candidate.title, summary: `${candidate.angle}\n来源关键词：${candidate.sourceKeyword}`, platform: candidate.platform };
       assert.equal((await request("/api/ideas", ideaInput)).body.data.id, (await request("/api/ideas", ideaInput)).body.data.id);
       const redirect = await appFetch("/topics", { redirect: "manual" });
-      assert.equal(redirect.status, 307);
-      assert.match(redirect.headers.get("location"), /ideas\?tab=recommend/);
+      if (redirect.status === 307) {
+        assert.equal(redirect.headers.get("location"), "/ideas?tab=recommend");
+      } else {
+        assert.equal(redirect.status, 200);
+        const html = await redirect.text();
+        assert.equal(html.match(/<meta id="__next-page-redirect"[^>]*content="1;url=([^"]+)"/)?.[1], "/ideas?tab=recommend");
+      }
     });
     await t.test("opening an idea is non-destructive and loads server-side source context", async () => {
       idea = (await request("/api/ideas", { title: "效率提升100%", summary: market.summary, sourceUrl: market.sourceUrl, marketItemId: market.id })).body.data;

@@ -994,6 +994,21 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       new Set(["fact", "style", "platform"]),
     );
     assert.equal(result.body.review.issues.some((issue) => issue.autoFixable), true);
+    const factIssue = result.body.review.issues.find((issue) => issue.category === "fact");
+    assert.equal(factIssue.requiresConfirmation, true);
+    assert.equal(factIssue.autoFixable, false);
+    assert.equal(factIssue.severity, "medium");
+    assert.match(result.body.review.conclusion, /人工核实/);
+    const unsafeFix = await requestJson(
+      `/api/content/projects/${project.id}/channels/wechat_article/review/issues/${factIssue.id}/apply`,
+      { method: "POST", body: {} },
+    );
+    assert.equal(unsafeFix.response.status, 409);
+    const unchanged = await requestJson(`/api/content-drafts/${project.id}`);
+    assert.equal(
+      unchanged.body.draft.channelDrafts.find((item) => item.channel === "wechat_article").content,
+      project.channelDrafts.find((item) => item.channel === "wechat_article").content,
+    );
     assert.equal(
       result.body.review.issues.some((issue) => issue.origin === "deterministic" && issue.originalText === "深度赋能"),
       true,
@@ -1081,6 +1096,26 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(feedback.body.feedback.some((item) => item.action === "issue_applied"), true);
     assert.equal(feedback.body.feedback.some((item) => item.action === "issue_ignored"), true);
     assert.equal(feedback.body.feedback.some((item) => item.action === "human_edit"), true);
+  });
+
+  await context.test("unavailable semantic review does not report low risk or completed fact checking", async () => {
+    const original = project.channelDrafts.find((item) => item.channel === "wechat_article").content;
+    const edited = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article`, {
+      method: "PATCH", body: { content: "验收语义审核不可用：这段文字没有命中禁用表达。" },
+    });
+    assert.equal(edited.response.status, 200);
+    const reviewed = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article/review`, {
+      method: "POST", body: {},
+    });
+    assert.equal(reviewed.response.status, 200);
+    assert.equal(reviewed.body.review.riskLevel, "medium");
+    assert.match(reviewed.body.review.conclusion, /事实审核未完成/);
+    assert.equal(reviewed.body.review.issues.length, 0);
+    const restored = await requestJson(`/api/content/projects/${project.id}/channels/wechat_article`, {
+      method: "PATCH", body: { content: original },
+    });
+    assert.equal(restored.response.status, 200);
+    project = restored.body.project;
   });
 
   await context.test("draft history survives reload, versions edits, and exports Markdown", async () => {

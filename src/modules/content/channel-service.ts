@@ -31,7 +31,7 @@ function buildChannelContext(input: GenerateChannelInput) {
     .join("\n\n");
 
   return [
-    "【统一内容简报】",
+    "【统一内容简报：用于组织表达，AI 中间产物，不作为独立事实证据】",
     JSON.stringify(input.brief, null, 2),
     "【当前账号上下文】",
     input.accountContext ? JSON.stringify(input.accountContext, null, 2) : "未确认，不要虚构品牌事实。",

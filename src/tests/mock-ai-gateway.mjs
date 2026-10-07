@@ -44,6 +44,9 @@ const server = http.createServer(async (request, response) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(messages.find((message) => message.role === "system")?.content ?? "");
   const user = String(messages.find((message) => message.role === "user")?.content ?? "");
+  if (system.includes("独立审核员") && user.includes("验收语义审核不可用")) {
+    return json(response, 502, { error: { message: "simulated semantic review failure" } });
+  }
   if (system.includes("经营访谈内容顾问") && user.includes("验收访谈失败")) {
     return json(response, 502, { error: { message: "simulated interview failure" } });
   }
@@ -421,13 +424,13 @@ function mockCompletion(system, user) {
         },
         {
           category: "fact",
-          severity: "medium",
+          severity: "low",
           title: "效果结论需要确认",
           description: "完整决策效果需要结合客户实际资料确认。",
           originalText: "用四项清单完成装修决策。",
           suggestedText: "用四项清单辅助装修决策。",
-          autoFixable: false,
-          requiresConfirmation: true,
+          autoFixable: true,
+          requiresConfirmation: false,
         },
         {
           category: "platform",
