@@ -7,7 +7,7 @@ import { AppShell, primaryButtonClass, secondaryButtonClass } from "@/components
 import { channelLabels } from "@/modules/content/types";
 import type { StyleProfile } from "@/modules/style-profile/types";
 import type { FirstContentSnapshot } from "./service";
-import { industries, type IndustryId, type VoiceId } from "./catalog";
+import { starterGuidance, type VoiceId } from "./catalog";
 
 export function FirstContentWorkspace({ initialData }: { initialData: FirstContentSnapshot }) {
   const router = useRouter();
@@ -18,7 +18,6 @@ export function FirstContentWorkspace({ initialData }: { initialData: FirstConte
   const [ready, setReady] = useState(Boolean(initialData.confirmedProfile) && !initialData.draftProfile);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const industry = industries.find((item) => item.id === data.industry)!;
 
   async function run(key: string, work: () => Promise<void>) {
     setBusy(key); setMessage(null);
@@ -27,18 +26,9 @@ export function FirstContentWorkspace({ initialData }: { initialData: FirstConte
     } finally { setBusy(null); }
   }
 
-  async function changeIndustry(value: IndustryId) {
-    await run("industry", async () => {
-      const response = await fetch(`/api/onboarding/first-content?industry=${value}`, { cache: "no-store" });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error);
-      setData(payload); setDraft(null); setReady(false);
-    });
-  }
-
   async function preview() {
     await run("preview", async () => {
-      const payload = await post({ action: "preview_style", industry: data.industry, voice, adjustments, version: data.profileVersion }) as { profile: StyleProfile };
+      const payload = await post({ action: "preview_style", voice, adjustments, version: data.profileVersion }) as { profile: StyleProfile };
       setDraft(payload.profile); setReady(false);
       setData({ ...data, profileVersion: payload.profile.version });
     });
@@ -68,13 +58,10 @@ export function FirstContentWorkspace({ initialData }: { initialData: FirstConte
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">下面三个示例使用同一组已确认信息。选择你喜欢的表达，之后可以继续补充品牌资料和代表文章。</p>
       </header>
       <fieldset className="mt-7 min-w-0" disabled={busy !== null}>
-        <legend className="sr-only">选择行业、口吻和第一篇选题</legend>
+        <legend className="sr-only">选择口吻和第一篇选题</legend>
         <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7">
-          <label className="text-sm font-semibold" htmlFor="starter-industry">我的业务类型</label>
-          <select id="starter-industry" className="ml-0 mt-2 block w-full rounded-xl border border-slate-300 p-3 text-base sm:max-w-sm" value={data.industry} onChange={(event) => void changeIndustry(event.target.value as IndustryId)}>
-            {industries.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
-          </select>
-          <p className="mt-3 text-sm leading-6 text-slate-500">初始方向：{industry.directions.join("、")}。后续可补：{industry.needed}。</p>
+          <p className="text-sm font-semibold">你的业务：{data.business}</p>
+          <p className="mt-3 text-sm leading-6 text-slate-500">可以先写：{starterGuidance.directions.join("、")}。后续可补：{starterGuidance.needed}。</p>
           {data.confirmedProfile ? <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-950">
             已确认：{data.confirmedProfile.name} v{data.confirmedProfile.version}。重新选例稿和保存预览不会改变当前口吻。
             {!ready ? <button className="mt-2 block font-semibold underline underline-offset-4" type="button" onClick={() => { setReady(true); setDraft(null); }}>这篇沿用已确认口吻</button> : null}
@@ -86,7 +73,7 @@ export function FirstContentWorkspace({ initialData }: { initialData: FirstConte
             </label>)}
           </div>
           <label className="mt-5 block text-sm font-semibold" htmlFor="starter-adjustments">再补一句你的偏好（可选）</label>
-          <textarea id="starter-adjustments" className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-base" rows={2} maxLength={500} value={adjustments} placeholder="例如：更口语一点，少用感叹号，不要每次都邀请到店" onChange={(event) => { setAdjustments(event.target.value); setReady(false); setDraft(null); }} />
+          <textarea id="starter-adjustments" className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-base" rows={2} maxLength={500} value={adjustments} placeholder="例如：更口语一点，少用感叹号，不要每次都加行动引导" onChange={(event) => { setAdjustments(event.target.value); setReady(false); setDraft(null); }} />
           <p className="mt-2 text-xs leading-5 text-slate-500">补充要求会用于后续成稿，例稿展示基础口吻。产品事实和个人经历请在品牌资料中补充。</p>
           <button className={`${secondaryButtonClass} mt-4`} type="button" onClick={() => void preview()}>{busy === "preview" ? "正在保存…" : "保存口吻预览"}</button>
           {draft ? <div className="mt-5 rounded-xl border border-emerald-200 p-4">

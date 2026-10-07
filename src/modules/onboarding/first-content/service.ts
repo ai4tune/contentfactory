@@ -50,9 +50,10 @@ export async function getFirstContentSnapshot(selectedIndustry?: IndustryId) {
 export type FirstContentSnapshot = Awaited<ReturnType<typeof getFirstContentSnapshot>>;
 
 export async function previewStarterStyle(input: { industry: unknown; voice: unknown; adjustments: unknown; version: number }) {
-  if (!isIndustry(input.industry) || !isVoice(input.voice)) throw new InterviewError("请选择行业和一种口吻。");
+  const industry = input.industry ?? "general";
+  if (!isIndustry(industry) || !isVoice(input.voice)) throw new InterviewError("请选择有效的口吻配置。");
   if (typeof input.adjustments !== "string" || input.adjustments.length > 500) throw new InterviewError("口吻补充请控制在 500 字以内。");
-  const profile = buildStarterStyle(await requiredAccount(), input.industry, input.voice, input.adjustments);
+  const profile = buildStarterStyle(await requiredAccount(), industry, input.voice, input.adjustments);
   const confirmed = await getConfirmedStyleProfile();
   if (confirmed) {
     profile.persona = confirmed.persona;
