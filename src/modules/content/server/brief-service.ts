@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { normalizeBriefList } from "./normalize-brief-list";
 import { normalizeInspirationPlan, outlineFromInspirationPlan } from "./request";
+import { writingCraftRules, writingEvidenceRules } from "../writing-rules";
 
 type RawBrief = Omit<ContentBrief, "citations"> & {
   citations?: Array<{ sourceId?: string; excerpt?: string; purpose?: string }>;
@@ -41,6 +42,9 @@ export async function createContentBrief(
       role: "system",
       content: [
         "你是内容策略编辑。只输出 JSON，字段必须包含 targetAudience, contentGoal, coreMessage, keyPoints, outline, callToAction, citations, openQuestions。",
+        writingEvidenceRules,
+        writingCraftRules,
+        "先判断材料是否足以支撑选题。所需产品细节、作者经历、历史引文等缺失时加入 openQuestions，并把 coreMessage、keyPoints、outline 收缩到已有依据，不能在提纲先补造事实再交给成稿使用。",
         "citations 每项包含 sourceId, excerpt, purpose；excerpt 必须逐字摘自对应知识资料，不得虚构。没有知识资料时 citations 返回空数组，把未知事实放进 openQuestions。",
         "如果提供爆款参考，只学习它的受众洞察、开头钩子、内容结构、节奏和互动设计。不得照抄原文句子，不得继承原文中的数据、案例、产品事实或承诺。",
         "如果提供爆款参考，还必须输出 inspirationPlan: {items, boundaries}。items 要逐项覆盖参考 hook、每个 structure 段落和 pacing；每项包含 kind(hook|section|pacing)、sourceIndex、sourceElement、decision(adopt|adapt|discard)、plannedUse、rationale。discard 时 plannedUse 为空，并明确舍弃理由。",

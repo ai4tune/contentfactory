@@ -10,7 +10,8 @@ export function formatStyleContractForPrompt(
   const channelRules = channel ? contract.channelOverrides[channel] ?? [] : [];
   return [
     `风格档案: ${contract.profileName} v${contract.profileVersion}`,
-    `创作者身份: ${contract.persona}`,
+    "已确认用户风格优先于通用表达模板；以下规则与样例约束表达，不能提供作者或企业的事实。",
+    `叙述视角（不作为身份或经历证据）: ${contract.persona}`,
     `与读者关系: ${contract.readerRelationship}`,
     `价值观: ${contract.values.join("；")}`,
     `语气: ${contract.tone.join("；")}`,

@@ -1,7 +1,9 @@
 import { channelLabels, type ContentChannel } from "./types";
+import { writingCraftRules, writingEvidenceRules } from "./writing-rules";
 
 const sharedRules = [
-  "只能使用内容简报和知识证据中可确认的事实。",
+  writingEvidenceRules,
+  writingCraftRules,
   "没有资料支持的内容必须明确标记为推断或待确认。",
   "继承账号定位和品牌语气，不得虚构案例、数据或用户证言。",
   "如果简报包含爆款参考，只复用受众洞察、钩子机制、结构和节奏；不得照抄原文句子，不得继承原文数据、案例、产品事实或承诺。",
@@ -12,8 +14,9 @@ const sharedRules = [
 const channelInstructions: Record<ContentChannel, string> = {
   wechat_article: [
     "写一篇可深度阅读的公众号文章。",
-    "结构必须包含：3 个备选标题、摘要、引入、带小标题的完整论述、证据或案例、结论和行动引导。",
+    "默认提供 3 个备选标题、摘要、引入和完整论述；小标题、证据或案例、结尾和行动引导按材料、内容目标及已确认用户风格组织，不机械套模板。",
     "优先完整论证和阅读逻辑，不要写成社交媒体短帖。",
+    "历史人文题材须交代史实的时间与语境，区分史实、解释和当代判断；不虚构史料、人物对白或动机。关键年代、引文和因果判断缺乏可靠资料时保留待核验，不声称已交叉核实；古今类比说明适用边界。",
   ].join("\n"),
   xiaohongshu_note: [
     "写一篇高信息密度的小红书笔记。",
@@ -22,7 +25,7 @@ const channelInstructions: Record<ContentChannel, string> = {
   ].join("\n"),
   moments_post: [
     "写一条适合熟人信任关系的朋友圈文案。",
-    "结构必须包含：个人化开场、1 个真实观察或小故事、简洁观点和自然的互动或咨询入口。",
+    "用自然开场、简洁观点和适当的互动或咨询入口组织正文；资料提供真实观察或小故事时才使用，没有时直接介绍已知信息。",
     "保持口语化和克制，不写成长文，不使用硬销式口号。",
   ].join("\n"),
   short_video_script: [

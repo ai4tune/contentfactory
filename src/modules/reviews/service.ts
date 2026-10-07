@@ -2,6 +2,7 @@ import { chatCompletionJson, parseJsonObject } from "@/lib/ai";
 import { channelLabels, type ChannelDraft, type ContentProject } from "@/modules/content/types";
 import { formatStyleContractForPrompt } from "@/modules/style-profile/prompt";
 import { auditDeterministicHumanWriting, auditDeterministicStyle } from "./deterministic-audit";
+import { writingEvidenceRules } from "@/modules/content/writing-rules";
 import {
   isReviewIssueCategory,
   isReviewRiskLevel,
@@ -31,7 +32,10 @@ export async function reviewChannelDraft(input: ReviewChannelInput): Promise<Cha
           `必须检查三类问题：fact（事实）、style（账号风格）、platform（平台风险）${humanWritingQa ? "，并执行 human_writing（Human Writing 专项检查）" : ""}。只列真实存在的问题，不要凑数。`,
           `输出结构：{\"conclusion\":\"\",\"riskLevel\":\"low|medium|high|blocked\",\"issues\":[{\"category\":\"fact|style|platform${humanWritingQa ? "|human_writing" : ""}\",\"severity\":\"low|medium|high|blocked\",\"title\":\"\",\"description\":\"\",\"originalText\":\"\",\"suggestedText\":\"\",\"autoFixable\":true,\"requiresConfirmation\":false}]}。`,
           "originalText 必须逐字摘自待审稿件并能精确定位。只有不改变事实含义且可安全替换时 autoFixable 才能为 true。",
-          "缺乏知识证据的事实不得自行补全：标记 requiresConfirmation=true、autoFixable=false。",
+          "事实类问题统一需要人工核实，标记 requiresConfirmation=true、autoFixable=false；不得在修改建议中补造新的事实。",
+          writingEvidenceRules,
+          "先逐项检查产品细节和第一人称经历是否有独立知识依据；不能因为它们已经出现在 AI 简报或符合聊天口吻就放行。例如只有‘提供咖啡饮品’时，不能证明‘店里这几款带果香’或‘最近有朋友问我’。",
+          "对无来源的作者经历、产品事实、历史引文与人物动机列 fact 问题，severity 至少 medium、requiresConfirmation=true、autoFixable=false；不能输出可正常发布。用户自己的已确认表达习惯不因通用模板偏好判错。",
           "当简报包含爆款参考时，额外检查是否照抄原文表达（归为 style）或错误继承原文事实、数据和案例（归为 fact）。",
           "确定性禁用词检查由系统单独执行。你只补充需要语义判断的问题，不重复列出明显禁用词。",
           ...(humanWritingQa ? [
@@ -57,9 +61,9 @@ export async function reviewChannelDraft(input: ReviewChannelInput): Promise<Cha
   } catch {
     return {
       conclusion: deterministicIssues.length
-        ? `已完成规则检查，发现 ${deterministicIssues.length} 项。AI 语义复核暂时不可用。`
-        : "规则检查未发现问题，AI 语义复核暂时不可用。",
-      riskLevel: highestRisk(deterministicIssues.map((issue) => issue.severity)),
+        ? `已完成规则检查，发现 ${deterministicIssues.length} 项。AI 语义复核暂时不可用，事实审核未完成，请人工核对。`
+        : "规则检查未发现问题，AI 语义复核暂时不可用，事实审核未完成，请人工核对。",
+      riskLevel: highestRisk(["medium", ...deterministicIssues.map((issue) => issue.severity)]),
       issues: deterministicIssues,
       humanWritingQa,
       reviewedContent: input.draft.content,
@@ -81,7 +85,7 @@ function buildReviewContext({ project, draft }: ReviewChannelInput) {
     `审核渠道：${channelLabels[draft.channel]}`,
     "【账号定位】",
     project.accountSnapshot ? JSON.stringify(project.accountSnapshot, null, 2) : "未确认，不得虚构账号事实或风格。",
-    "【统一内容简报】",
+    "【统一内容简报：AI 中间产物，不作为独立事实证据】",
     JSON.stringify(project.brief, null, 2),
     "【已确认写作风格】",
     formatStyleContractForPrompt(project.styleSnapshot, draft.channel),
@@ -100,7 +104,9 @@ function normalizeReview(value: unknown, content: string, humanWritingQa: boolea
   const requestedRisk = isReviewRiskLevel(record.riskLevel) ? record.riskLevel : "low";
 
   return {
-    conclusion: limitedString(record.conclusion, 600) || (issues.length ? "发现需要处理的审核问题。" : "未发现需要修改的问题。"),
+    conclusion: issues.some((issue) => issue.category === "fact")
+      ? "发现需要人工核实的事实问题，请核实或修改后再发布。"
+      : limitedString(record.conclusion, 600) || (issues.length ? "发现需要处理的审核问题。" : "未发现需要修改的问题。"),
     riskLevel: highestRisk([requestedRisk, ...issues.map((issue) => issue.severity)]),
     issues,
     humanWritingQa: false,
@@ -121,7 +127,7 @@ function normalizeIssue(value: unknown, content: string, index: number, humanWri
 
   const originalText = limitedString(record.originalText, 800);
   const suggestedText = limitedString(record.suggestedText, 1_500);
-  const requiresConfirmation = record.requiresConfirmation === true;
+  const requiresConfirmation = record.category === "fact" || record.requiresConfirmation === true;
   const autoFixable = record.autoFixable === true
     && !requiresConfirmation
     && Boolean(originalText)
@@ -131,7 +137,10 @@ function normalizeIssue(value: unknown, content: string, index: number, humanWri
   return [{
     id: `reviewIssues_${Date.now()}_${index}`,
     category: record.category,
-    severity: isReviewRiskLevel(record.severity) ? record.severity : "medium",
+    severity: highestRisk([
+      record.category === "fact" ? "medium" : "low",
+      isReviewRiskLevel(record.severity) ? record.severity : "medium",
+    ]),
     title,
     description,
     originalText,
