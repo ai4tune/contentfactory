@@ -9,6 +9,7 @@ import {
   type StyleRule,
   type StyleSourceReference,
 } from "./types";
+import { isIndustry, isVoice } from "@/modules/onboarding/first-content/catalog";
 
 const sourceTypeSet = new Set(styleSourceTypes);
 const sourceRoleSet = new Set(styleSourceRoles);
@@ -23,6 +24,7 @@ export function normalizeStyleProfileInput(value: unknown): StyleProfileInput | 
   if (!name || !persona || !readerRelationship) return null;
 
   return {
+    starterTemplate: normalizeStarterTemplate(record.starterTemplate),
     name,
     persona,
     readerRelationship,
@@ -35,6 +37,13 @@ export function normalizeStyleProfileInput(value: unknown): StyleProfileInput | 
     examples: normalizeExamples(record.examples),
     sources: normalizeSources(record.sources),
   };
+}
+
+function normalizeStarterTemplate(value: unknown): StyleProfileInput["starterTemplate"] {
+  if (!value || typeof value !== "object") return undefined;
+  const item = value as Record<string, unknown>;
+  if (!isIndustry(item.industry) || !isVoice(item.voice) || !Number.isInteger(item.version) || Number(item.version) < 1) return undefined;
+  return { industry: item.industry, voice: item.voice, version: Number(item.version) };
 }
 
 export function validateStyleProfileForConfirmation(profile: StyleProfileInput) {

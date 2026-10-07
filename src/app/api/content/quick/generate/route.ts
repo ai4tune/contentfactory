@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseQuickCreationRequest, QuickRequestError } from "@/modules/content/quick/request";
 import { generateQuickContent } from "@/modules/content/quick/service";
+import { ContentFactError } from "@/modules/content/fact-check";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "快速创作失败。" },
-      { status: error instanceof QuickRequestError ? error.status : 500 },
+      { status: error instanceof QuickRequestError || error instanceof ContentFactError ? error.status : 500 },
     );
   }
 }

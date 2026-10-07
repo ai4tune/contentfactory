@@ -26,7 +26,7 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
     if (req.url === "/v1/chat/completions") {
       prompts.push(body.messages);
       const system = body.messages[0].content;
-      const content = system.includes("爆款拆解助手") ? {
+      const content = system.includes("成稿事实核验员") ? { verdict: "supported", issues: [] } : system.includes("爆款拆解助手") ? {
         summary: "可复用分析", hook: "问题开头", structure: ["提出问题", "分析原因", "行动建议"],
         targetAudience: "企业", painPoint: "表达", pacing: "先问题后建议", evidence: [], callToAction: "讨论",
         reusablePatterns: ["解释原因"], keywords: ["AI"], adaptationIdeas: ["换企业案例"], topicCandidates: ["实践"], riskNotes: [],
@@ -221,7 +221,9 @@ test("V2 search → idea → brief → project uses isolated data and mock provi
       const generated = await request("/api/content/generate", { projectId: project.id, channels, sources: [source] });
       assert.equal(generated.status, 200);
       assert.equal(generated.body.project.channelDrafts.filter((draft) => draft.status === "generated").length, 4);
-      assert.ok(prompts.slice(-4).every((messages) => JSON.stringify(messages).includes("市场摘录标记")));
+      const generationPrompts = prompts.filter((messages) => !messages[0].content.includes("成稿事实核验员")).slice(-4);
+      assert.equal(generationPrompts.length, 4);
+      assert.ok(generationPrompts.every((messages) => JSON.stringify(messages).includes("市场摘录标记")));
     });
     await t.test("inspiration identity persists and repeated market capture preserves its body", async () => {
       const analyzed = await request("/api/inspirations/analyze", { platform: "douyin", title: market.title, sourceUrl: market.sourceUrl, content: "已经整理的原始正文，不应该被空数据覆盖。" });

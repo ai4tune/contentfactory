@@ -143,6 +143,27 @@ test("interview answers survive in the owner's cloud space without leaking to an
   assert.equal(rows.content_factory_state.find((row) => row.workspace_id === aliceWorkspace && row.store_key === "json:onboarding-interview.local.json").payload.answers.business, restored.answers.business);
 });
 
+test("industry starter drafts and confirmed preferences remain private to each login", async () => {
+  const a = (await (await request(alice, "/api/onboarding/first-content")).json());
+  const b = (await (await request(bob, "/api/onboarding/first-content")).json());
+  let coffee = await request(alice, "/api/onboarding/first-content", { action: "preview_style", industry: "coffee", voice: "chat", adjustments: "Alice-private-preference", version: a.profileVersion });
+  let flooring = await request(bob, "/api/onboarding/first-content", { action: "preview_style", industry: "flooring", voice: "professional", adjustments: "Bob-private-preference", version: b.profileVersion });
+  assert.equal(coffee.status, 200, await coffee.clone().text()); assert.equal(flooring.status, 200, await flooring.clone().text());
+  coffee = (await coffee.json()).profile; flooring = (await flooring.json()).profile;
+  assert.equal((await (await request(alice, "/api/onboarding/first-content")).json()).confirmedProfile, null);
+  coffee = (await (await request(alice, "/api/onboarding/first-content", { action: "confirm_style", version: coffee.version })).json()).profile;
+  flooring = (await (await request(bob, "/api/onboarding/first-content", { action: "confirm_style", version: flooring.version })).json()).profile;
+  assert.equal(coffee.starterTemplate.industry, "coffee"); assert.equal(flooring.starterTemplate.industry, "flooring");
+  const own = await (await request(alice, "/api/onboarding/first-content", undefined, "GET", { "x-workspace-id": bobWorkspace })).json();
+  const other = await (await request(bob, "/api/onboarding/first-content")).json();
+  assert.match(JSON.stringify(own), /Alice-private-preference/); assert.doesNotMatch(JSON.stringify(own), /Bob-private-preference/);
+  assert.match(JSON.stringify(other), /Bob-private-preference/); assert.doesNotMatch(JSON.stringify(other), /Alice-private-preference/);
+  const changed = await request(alice, "/api/onboarding/first-content", { action: "preview_style", industry: "flooring", voice: "lifestyle", adjustments: "", version: own.profileVersion });
+  assert.equal(changed.status, 200);
+  assert.equal((await (await request(alice, "/api/onboarding/first-content")).json()).confirmedProfile.starterTemplate.industry, "coffee");
+  assert.equal((await (await request(bob, "/api/onboarding/first-content")).json()).confirmedProfile.version, flooring.version);
+});
+
 test("capture tokens are account-specific and reject the legacy global token and forged identity", async () => {
   const token = (await (await request(alice, "/api/capture/authorize", {})).json()).token;
   assert.ok(token.startsWith(`cf1.${aliceWorkspace}.`));

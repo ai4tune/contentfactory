@@ -26,10 +26,12 @@ export function deriveAgentGuidance(plan: ContentPlan | null): AgentGuidance {
   };
 
   if (!plan) {
+    const firstContent: AgentAction = { id: "primary", title: "选一篇开始写", description: "沿用已有口吻，或比较三个例稿，再从有依据的选题开始。", actionLabel: "选口吻与选题", href: "/setup/first-content" };
     return {
-      observation: "我检查了当前企业状态。账号资料已经可用，但还没有一份正在执行的内容计划。",
-      primary,
-      alternatives: uniqueAlternatives(primary, [
+      observation: "经营信息已经确认，可以先完成一篇内容，再按需要制定完整计划。",
+      primary: firstContent,
+      alternatives: uniqueAlternatives(firstContent, [
+        { id: "plan", title: "完整内容计划", description: "需要安排一段时间的内容时再制定计划。", actionLabel: "查看计划", href: "/plans" },
         brandAction(),
         libraryAction(),
       ]),

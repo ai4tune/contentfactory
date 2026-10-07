@@ -1,9 +1,10 @@
 import { isContentChannel, type ContentChannel } from "@/modules/content/types";
 import type { AccountContextDraft } from "@/modules/positioning/types";
+import { isIndustry, type IndustryId } from "./first-content/catalog";
 
 export const interviewFields = ["accountName", "business", "goal", "offer", "audience", "differentiator", "boundaries", "tone"] as const;
 export type InterviewField = (typeof interviewFields)[number];
-export type InterviewAnswers = Record<InterviewField, string> & { primaryChannel?: ContentChannel };
+export type InterviewAnswers = Record<InterviewField, string> & { primaryChannel?: ContentChannel; industry?: IndustryId };
 export type InterviewPreview = { id: string; account: AccountContextDraft; confirmationStartedAt?: string; confirmedAt?: string };
 export type InterviewState = { revision: number; step: number; answers: InterviewAnswers; preview: InterviewPreview | null };
 
@@ -18,6 +19,10 @@ export class InterviewError extends Error {
 export function parseInterviewAnswers(value: unknown, requireMinimum = false): InterviewAnswers {
   const record = asRecord(value);
   const answers: InterviewAnswers = { ...emptyInterviewAnswers };
+  if (record.industry !== undefined) {
+    if (!isIndustry(record.industry)) throw new InterviewError("请选择支持的行业，或选择其他业务。");
+    answers.industry = record.industry;
+  }
   for (const field of interviewFields) {
     const value = record[field] ?? "";
     const limit = field === "accountName" ? 120 : 2000;

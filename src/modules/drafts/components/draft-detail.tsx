@@ -148,8 +148,8 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
                 <button className={primaryButtonClass} disabled={busy || hasUnsavedChanges} onClick={() => generateImages()} type="button">{busyAction === "images" ? "正在生成配图…" : "生成小红书配图"}</button>
               ) : null}
               <button className={secondaryButtonClass} disabled={!content} onClick={copy} type="button">复制</button>
-              {channelDraft?.status === "generated" ? <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export?channel=${activeChannel}`}>下载本渠道</a> : null}
-              <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export`}>下载全部</a>
+              {channelDraft?.status === "generated" ? <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export?channel=${activeChannel}`}>下载本渠道正文</a> : null}
+              <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export`}>下载项目资料（含简报）</a>
             </div>
           </div>
 

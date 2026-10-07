@@ -48,6 +48,7 @@ export type StyleExample = {
 };
 
 export type StyleProfileInput = {
+  starterTemplate?: { industry: "coffee" | "flooring" | "general"; voice: "chat" | "lifestyle" | "professional"; version: number };
   name: string;
   persona: string;
   readerRelationship: string;
