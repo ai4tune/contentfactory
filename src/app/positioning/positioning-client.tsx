@@ -219,6 +219,7 @@ function CaptureExtensionCard({
 }) {
   const [extensionVersion, setExtensionVersion] = useState<string | null>(null);
   const [extensionAuthorized, setExtensionAuthorized] = useState(false);
+  const [extensionCheckSupported, setExtensionCheckSupported] = useState(false);
   const [authorizationStatus, setAuthorizationStatus] = useState<"idle" | "authorizing" | "success" | "error">("idle");
   const [authorizationError, setAuthorizationError] = useState<string | null>(null);
   const authorizationRequestId = useRef("");
@@ -235,8 +236,13 @@ function CaptureExtensionCard({
         && event.data?.type === "ready"
       ) {
         setExtensionVersion(String(event.data.version || "已连接"));
-        setExtensionAuthorized(event.data.authorized === true);
-        if (event.data.authorized === true) setAuthorizationStatus("success");
+        if (authorizationRequestId.current) return;
+        const checked = event.data.authorizationChecked === true;
+        const authorized = checked && event.data.authorized === true;
+        setExtensionCheckSupported(checked);
+        setExtensionAuthorized(authorized);
+        setAuthorizationStatus(authorized ? "success" : "idle");
+        setAuthorizationError(checked ? event.data.authorizationError ?? null : "当前插件不能核验授权是否有效，请下载并重新加载 v0.9.1，再重新授权。");
       }
       if (
         event.source === window
@@ -245,13 +251,16 @@ function CaptureExtensionCard({
         && event.data.requestId === authorizationRequestId.current
       ) {
         authorizationRequestId.current = "";
-        if (event.data.authorized === true) {
+        const checked = event.data.authorizationChecked === true;
+        setExtensionCheckSupported(checked);
+        if (checked && event.data.authorized === true) {
           setExtensionAuthorized(true);
           setAuthorizationStatus("success");
           setAuthorizationError(null);
         } else {
+          setExtensionAuthorized(false);
           setAuthorizationStatus("error");
-          setAuthorizationError("插件没有保存授权，请重新加载最新版插件后再试。");
+          setAuthorizationError(event.data.authorizationError ?? "请下载并重新加载最新版插件，再重新授权。");
         }
       }
     }
@@ -278,10 +287,11 @@ function CaptureExtensionCard({
   async function authorizeExtension() {
     if (!extensionVersion) {
       setAuthorizationStatus("error");
-      setAuthorizationError("未检测到采集插件。请先下载并加载 v0.9.0，然后点击“重新检测插件”。");
+      setAuthorizationError("未检测到采集插件。请先下载并加载 v0.9.1，然后点击“重新检测插件”。");
       return;
     }
     setAuthorizationStatus("authorizing");
+    setExtensionAuthorized(false);
     setAuthorizationError(null);
     try {
       const response = await fetch("/api/capture/authorize", { method: "POST" });
@@ -301,7 +311,7 @@ function CaptureExtensionCard({
         authorizationRequestId.current = "";
         setAuthorizationStatus("error");
         setAuthorizationError("当前插件版本不支持一键授权，请重新下载并加载最新版插件。");
-      }, 5_000);
+      }, 12_000);
     } catch (caught) {
       setAuthorizationStatus("error");
       setAuthorizationError(caught instanceof Error ? caught.message : "获取采集授权失败");
@@ -346,8 +356,8 @@ function CaptureExtensionCard({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="truncate text-sm font-semibold text-slate-900">{capture?.accountName || "当前平台账号"}</h2>
-              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${extensionVersion ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
-                {extensionVersion ? `${extensionAuthorized ? "插件已授权" : "插件待授权"} · v${extensionVersion}` : "插件状态待确认"}
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${extensionAuthorized ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
+                {extensionVersion ? `${extensionAuthorized ? "插件已授权" : extensionCheckSupported ? "插件待授权" : "插件需更新"} · v${extensionVersion}` : "插件状态待确认"}
               </span>
               {capture ? <span className="text-xs text-slate-400">最近采集 {formatDateTime(capture.capturedAt)}</span> : null}
             </div>
@@ -357,7 +367,7 @@ function CaptureExtensionCard({
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            {!extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
+            <button className={extensionAuthorized ? secondaryButtonClass : primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : extensionAuthorized ? "重新授权此浏览器" : "一键授权此浏览器"}</button>
             <a className={secondaryButtonClass} href={capture?.platform === "公众号" ? "https://mp.weixin.qq.com/" : "https://www.xiaohongshu.com/explore"} target="_blank" rel="noreferrer">更新账号数据</a>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在分析…" : "AI 重新分析"}</button>
             <button className={secondaryButtonClass} type="button" onClick={onManage}>更换账号 / 插件设置</button>
@@ -378,16 +388,16 @@ function CaptureExtensionCard({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs font-semibold tracking-[0.18em] text-emerald-800">{platform.eyebrow}</p>
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${extensionVersion ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
-              {extensionVersion ? `${extensionAuthorized ? "插件已授权" : "插件待授权"} · v${extensionVersion}` : "未检测到插件"}
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${extensionAuthorized ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
+              {extensionVersion ? `${extensionAuthorized ? "插件已授权" : extensionCheckSupported ? "插件待授权" : "插件需更新"} · v${extensionVersion}` : "未检测到插件"}
             </span>
           </div>
           <h2 className="mt-4 text-xl font-semibold text-slate-950">{platform.title}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{platform.description}新数据不会自动覆盖当前定位，仍需要你确认 AI 分析结果。</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <a className={primaryButtonClass} href={platform.openUrl} target="_blank" rel="noreferrer">{platform.openLabel}</a>
-            <a className={secondaryButtonClass} href="/downloads/contentfactory-capture-v0.9.0.zip" download>下载采集插件 ZIP</a>
-            {!extensionAuthorized ? <button className={primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : "一键授权此浏览器"}</button> : null}
+            <a className={secondaryButtonClass} href="/downloads/contentfactory-capture-v0.9.1.zip" download>下载采集插件 ZIP</a>
+            <button className={extensionAuthorized ? secondaryButtonClass : primaryButtonClass} type="button" disabled={authorizationStatus === "authorizing"} onClick={authorizeExtension}>{authorizationStatus === "authorizing" ? "正在授权…" : extensionAuthorized ? "重新授权此浏览器" : "一键授权此浏览器"}</button>
             <button className={secondaryButtonClass} type="button" onClick={() => { setExtensionVersion(null); setExtensionAuthorized(false); setAuthorizationStatus("idle"); setAuthorizationError(null); setProbeAttempt((value) => value + 1); }}>重新检测插件</button>
             <button className={secondaryButtonClass} type="button" disabled={refreshing || !capture} onClick={onRefresh}>{refreshing ? "AI 正在重新分析…" : "基于最新采集重新定位"}</button>
             {confirmed && onManage ? <button className={secondaryButtonClass} type="button" onClick={onManage}>收起设置</button> : null}
