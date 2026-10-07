@@ -44,6 +44,9 @@ const server = http.createServer(async (request, response) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(messages.find((message) => message.role === "system")?.content ?? "");
   const user = String(messages.find((message) => message.role === "user")?.content ?? "");
+  if (system.includes("经营访谈内容顾问") && user.includes("验收访谈失败")) {
+    return json(response, 502, { error: { message: "simulated interview failure" } });
+  }
   if (system.includes("企业内容策略规划师")) {
     const batchSize = Number(system.match(/items 本批必须恰好 (\d+) 个/)?.[1]);
     if (!batchSize || batchSize > 10) return json(response, 504, { error: "simulated gateway timeout for oversized plan" });
@@ -67,6 +70,16 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user) {
+  if (system.includes("经营访谈内容顾问")) {
+    const answers = JSON.parse(user);
+    return {
+      accountPosition: `围绕${answers.goal}介绍${answers.offer}`,
+      targetAudience: [answers.audience || "附近顾客（待验证）"],
+      contentPillars: ["产品介绍", "到店场景", "日常经营"],
+      contentAngles: ["从本次目标出发"], recommendedTopics: ["先认识这家店", "本周主推产品", "什么情况下适合来"],
+      questionsToConfirm: answers.audience ? [] : ["哪些顾客真的会因为内容到店？"],
+    };
+  }
   if (system.includes("企业知识库整理助手")) {
     const sources = JSON.parse(user.split("\n").slice(1).join("\n"));
     return {

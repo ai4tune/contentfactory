@@ -227,8 +227,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(initial.body.status.completedSteps.includes("style"), false);
 
     const homeBeforeCompletion = await appFetch(baseUrl, { redirect: "manual" });
-    assert.equal(homeBeforeCompletion.status, 307);
-    assert.match(homeBeforeCompletion.headers.get("location"), /\/setup$/);
+    await assertPageRedirect(homeBeforeCompletion, "/setup");
 
     const blocked = await requestJson("/api/onboarding/status", {
       method: "PATCH",
@@ -619,8 +618,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       `${baseUrl}/create/quick?planId=${encodeURIComponent(contentPlan.id)}&planItemId=${encodeURIComponent(quickItem.id)}`,
       { redirect: "manual" },
     );
-    assert.equal(completedQuickPage.status, 307);
-    assert.equal(completedQuickPage.headers.get("location"), `/drafts/${encodeURIComponent(quickProject.id)}`);
+    await assertPageRedirect(completedQuickPage, `/drafts/${encodeURIComponent(quickProject.id)}`);
   });
 
   await context.test("topic suggestions use the selected knowledge source", async () => {
@@ -1469,6 +1467,16 @@ async function requestJson(route, options = {}) {
     throw new Error(`Expected JSON from ${route}, received ${response.status}: ${responseText.slice(0, 500)}\n${serverOutput}`);
   }
   return { response, body };
+}
+
+async function assertPageRedirect(response, destination) {
+  if (response.status === 307) {
+    assert.equal(response.headers.get("location"), destination);
+  } else {
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.equal(html.match(/<meta id="__next-page-redirect"[^>]*content="1;url=([^"]+)"/)?.[1], destination);
+  }
 }
 
 function appFetch(url, init = {}) {

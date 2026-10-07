@@ -120,6 +120,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
       const next = await patchStatus({ action: "start", localKnowledgeCount });
       setStatus(next);
       setActiveStep(firstIncomplete(next));
+      router.push("/setup/interview");
     });
   }
 
@@ -167,21 +168,21 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
         <div className="mx-auto max-w-3xl py-12 sm:py-20">
           <p className="text-sm font-semibold text-emerald-800">首次企业建档</p>
           <h1 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-            先把企业资料和内容方向确认清楚
+            聊聊你的生意，开始写第一篇
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
-            系统会复用你已经连接的知识库、账号定位和写作风格。缺什么补什么，不需要重新填写一遍。
+            告诉我们最近想宣传什么、希望内容帮你解决什么。系统会整理成经营信息，不用先准备知识库，也不用有历史账号。
           </p>
           <div className="mt-9 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
             <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
-                <h2 className="text-base font-semibold text-slate-900">预计需要 10 到 20 分钟</h2>
+                <h2 className="text-base font-semibold text-slate-900">先回答几个问题，资料可以后补</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   资料不完整也可以开始。系统会明确标出缺口，不会替你编造企业事实。
                 </p>
               </div>
               <button className={primaryButtonClass} disabled={busy !== null} onClick={start} type="button">
-                {busy === "start" ? "正在准备" : "开始建档"}
+                {busy === "start" ? "正在准备" : "聊聊我的生意"}
               </button>
             </div>
           </div>
@@ -235,6 +236,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
           <p className="mt-3 text-sm leading-6 text-slate-600">
             已完成 {completionCount}/5 项。系统只记录建档进度，企业资料仍保存在原来的账号、知识库和风格模块中。
           </p>
+          <Link className={`${primaryButtonClass} mt-5`} href="/setup/interview">继续聊经营，整理内容方向</Link>
         </header>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[290px_minmax(0,1fr)]">
