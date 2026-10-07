@@ -127,6 +127,22 @@ test("login identity controls every cloud store, regardless of shared invitation
   assert.equal(rows.content_factory_state.find((row) => row.workspace_id === shared).payload.accountContext.accountName, "混合旧定位");
 });
 
+test("interview answers survive in the owner's cloud space without leaking to another login", async () => {
+  assert.equal((await request(null, "/api/onboarding/interview")).status, 401);
+  const initial = (await (await request(alice, "/api/onboarding/interview")).json()).interview;
+  const saved = await request(alice, "/api/onboarding/interview", {
+    action: "save", revision: initial.revision, step: 1,
+    answers: { ...initial.answers, accountName: "闲中记访谈", business: "账号私有的经营回答" },
+  });
+  assert.equal(saved.status, 200, await saved.clone().text());
+  const restored = (await (await request(alice, "/api/onboarding/interview")).json()).interview;
+  assert.equal(restored.answers.business, "账号私有的经营回答");
+  const other = (await (await request(bob, "/api/onboarding/interview")).json()).interview;
+  assert.equal(other.revision, 0);
+  assert.notEqual(other.answers.business, restored.answers.business);
+  assert.equal(rows.content_factory_state.find((row) => row.workspace_id === aliceWorkspace && row.store_key === "json:onboarding-interview.local.json").payload.answers.business, restored.answers.business);
+});
+
 test("capture tokens are account-specific and reject the legacy global token and forged identity", async () => {
   const token = (await (await request(alice, "/api/capture/authorize", {})).json()).token;
   assert.ok(token.startsWith(`cf1.${aliceWorkspace}.`));

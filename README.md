@@ -99,7 +99,7 @@ Compose 使用独立的 `contentfactory-data` 和 `contentfactory-backups` 持�
 
 ## V1 creation flow
 
-首次使用会进入企业建档：系统复用已经连接的知识库、账号定位和写作风格，只要求补齐企业业务、账号定位和主渠道。建档完成后可以生成第一份 30 天内容计划，并从本周优先选题进入快速创作：确认 AI 匹配的知识依据后，系统生成一篇主渠道稿、自动审核，再交给用户人工确认。多渠道生成、爆款改写和精细控制保留在高级创作工作台。
+首次使用从“聊聊我的生意”进入六步经营访谈：系统预填已有确认信息，收集近期目标、主推产品或服务、顾客场景、表达偏好和主渠道。顾客不确定、没有历史账号或文件也可以开始。AI 内容方向先预览和修改，用户确认后才更新账号与企业知识档案，并把原始回答保存成可引用资料；已有知识保留。建档完成后可以生成第一份 30 天内容计划，并从本周优先选题进入快速创作：确认 AI 匹配的知识依据后，系统生成一篇主渠道稿、自动审核，再交给用户人工确认。多渠道生成、爆款改写和精细控制保留在高级创作工作台。访谈验收与尚待开发的首次口吻/选题体验见 [`docs/acceptance/Guided-Business-Onboarding-2026-10-07.md`](docs/acceptance/Guided-Business-Onboarding-2026-10-07.md)。
 
 1. Confirm the current account positioning.
 2. Generate and confirm a 30-day content plan, or enter the advanced creation workspace directly.
@@ -145,6 +145,7 @@ data/content-projects.local.json
 data/content-plans.local.json
 data/weekly-reviews.local.json
 data/knowledge-sources.local.json
+data/onboarding-interview.local.json
 ```
 
 Local knowledge uses a separate privacy boundary:
