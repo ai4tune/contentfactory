@@ -1,4 +1,4 @@
-import type { KnowledgeScanReport, LocalKnowledgeExtension, LocalKnowledgeItem } from "./types";
+import type { KnowledgeScanProgress, KnowledgeScanReport, LocalKnowledgeExtension, LocalKnowledgeItem } from "./types";
 import type { KnowledgeOrganizationPlan } from "./organization";
 import { extractLocalDocumentText } from "./document-text";
 import {
@@ -18,6 +18,12 @@ const SCAN_REPORT_KEY = "scan-report";
 const MAX_INDEX_BYTES = 128_000;
 const MAX_SEARCH_CHARACTERS = 12_000;
 const ORGANIZED_ROOT_NAME = "内容工厂-已整理";
+const SCAN_READ_TIMEOUT_MS = 15_000;
+
+export type LocalKnowledgeScanOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: KnowledgeScanProgress) => void;
+};
 
 type LocalIndexRecord = LocalKnowledgeItem & {
   handle: FileSystemFileHandle;
@@ -58,7 +64,7 @@ export function supportsDirectoryPicker() {
   return typeof window !== "undefined" && "showDirectoryPicker" in window;
 }
 
-export async function chooseKnowledgeDirectory() {
+export async function chooseKnowledgeDirectory(options: LocalKnowledgeScanOptions = {}) {
   const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
 
   if (!picker) {
@@ -66,9 +72,7 @@ export async function chooseKnowledgeDirectory() {
   }
 
   const handle = await picker({ mode: "read" });
-  await writeRecord(HANDLE_STORE, handle, ROOT_HANDLE_KEY);
-  connectedDirectory = handle;
-  return refreshLocalIndex(handle);
+  return refreshLocalIndex(handle, options);
 }
 
 export async function loadLocalKnowledge() {
@@ -87,19 +91,10 @@ export async function reconnectKnowledgeDirectory() {
   }
 
   const permission = await handle.queryPermission({ mode: "read" });
-  if (permission !== "granted") {
-    return {
-      permission,
-      items: await loadLocalKnowledge(),
-      report: await loadKnowledgeScanReport(),
-    };
-  }
-
-  const snapshot = await refreshLocalIndex(handle);
-  return { permission, ...snapshot };
+  return { permission, items: await loadLocalKnowledge(), report: await loadKnowledgeScanReport() };
 }
 
-export async function requestStoredDirectoryPermission() {
+export async function requestStoredDirectoryPermission(options: LocalKnowledgeScanOptions = {}) {
   // Use the restored handle directly so the request stays in the user's click.
   const handle = connectedDirectory ?? await storedDirectory();
 
@@ -120,10 +115,10 @@ export async function requestStoredDirectoryPermission() {
     throw new KnowledgeDirectoryPermissionError(permission);
   }
 
-  return refreshLocalIndex(handle);
+  return refreshLocalIndex(handle, options);
 }
 
-export async function refreshStoredDirectory() {
+export async function refreshStoredDirectory(options: LocalKnowledgeScanOptions = {}) {
   const handle = await storedDirectory();
 
   if (!handle) {
@@ -135,7 +130,7 @@ export async function refreshStoredDirectory() {
     throw new KnowledgeDirectoryPermissionError(permission);
   }
 
-  return refreshLocalIndex(handle);
+  return refreshLocalIndex(handle, options);
 }
 
 export async function readLocalKnowledgeItem(id: string) {
@@ -247,20 +242,29 @@ export function searchLocalKnowledge(items: LocalKnowledgeItem[], query: string)
     .map((result) => result.item);
 }
 
-async function refreshLocalIndex(root: IterableDirectoryHandle) {
-  const { records, report } = await collectFiles(root);
+async function refreshLocalIndex(root: ReadableDirectoryHandle, options: LocalKnowledgeScanOptions) {
+  options.onProgress?.({ phase: "connecting", checkedFiles: 0, indexedFiles: 0, skippedFiles: 0 });
+  // Check identity before scanning; a failed or cancelled scan keeps the previous folder and index together.
   const database = await openDatabase();
-  const transaction = database.transaction([INDEX_STORE, META_STORE], "readwrite");
-  const store = transaction.objectStore(INDEX_STORE);
-  store.clear();
-  records.forEach((record) => store.put(record));
-  transaction.objectStore(META_STORE).put(report, SCAN_REPORT_KEY);
-  await transactionDone(transaction);
-  database.close();
-  return { items: stripHandles(records), report };
+  try {
+    const { records, report } = await collectFiles(root, options);
+    options.signal?.throwIfAborted();
+    options.onProgress?.({ phase: "saving", checkedFiles: report.totalFiles, indexedFiles: records.length, skippedFiles: report.skippedFiles });
+    const transaction = database.transaction([HANDLE_STORE, INDEX_STORE, META_STORE], "readwrite");
+    const store = transaction.objectStore(INDEX_STORE);
+    store.clear();
+    records.forEach((record) => store.put(record));
+    transaction.objectStore(META_STORE).put(report, SCAN_REPORT_KEY);
+    transaction.objectStore(HANDLE_STORE).put(root, ROOT_HANDLE_KEY);
+    await transactionDone(transaction);
+    connectedDirectory = root;
+    return { items: stripHandles(records), report };
+  } finally {
+    database.close();
+  }
 }
 
-async function collectFiles(root: IterableDirectoryHandle) {
+async function collectFiles(root: IterableDirectoryHandle, options: LocalKnowledgeScanOptions) {
   const records: LocalIndexRecord[] = [];
   let totalFiles = 0;
   let emptyFiles = 0;
@@ -269,15 +273,36 @@ async function collectFiles(root: IterableDirectoryHandle) {
   let imageFiles = 0;
   let ignoredFiles = 0;
   let needsOcrFiles = 0;
+  let skippedFiles = 0;
   const skippedByExtension: Record<string, number> = {};
+  const failedFiles: { path: string; reason: string }[] = [];
+  const signal = options.signal ?? new AbortController().signal;
+
+  function progress(phase: KnowledgeScanProgress["phase"], currentPath?: string) {
+    options.onProgress?.({ phase, currentPath, checkedFiles: totalFiles, indexedFiles: records.length, skippedFiles });
+  }
 
   function incrementSkipped(extension: string) {
+    skippedFiles += 1;
     const key = extension || "无扩展名";
     skippedByExtension[key] = (skippedByExtension[key] ?? 0) + 1;
   }
 
   async function visit(directory: IterableDirectoryHandle, parentPath: string) {
-    for await (const [name, handle] of directory.entries()) {
+    progress("scanning", parentPath || root.name);
+    const iterator = directory.entries();
+    while (true) {
+      signal.throwIfAborted();
+      let entry: IteratorResult<[string, FileSystemFileHandle | IterableDirectoryHandle]>;
+      try {
+        entry = await waitForScan(iterator.next(), AbortSignal.any([signal, AbortSignal.timeout(SCAN_READ_TIMEOUT_MS)]));
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof DOMException && error.name === "NotAllowedError") throw new KnowledgeDirectoryPermissionError();
+        throw new Error(`无法读取目录“${parentPath || root.name}”。请检查文件是否已下载到电脑、文件夹是否可访问，或改选较小的文件夹重试。`);
+      }
+      if (entry.done) break;
+      const [name, handle] = entry.value;
       const path = parentPath ? `${parentPath}/${name}` : name;
 
       if (handle.kind === "directory") {
@@ -287,6 +312,8 @@ async function collectFiles(root: IterableDirectoryHandle) {
       }
 
       totalFiles += 1;
+      if (totalFiles % 25 === 0) await waitForScan(new Promise<void>((resolve) => setTimeout(resolve, 0)), signal);
+      progress("scanning", path);
       const extension = knowledgeFileExtension(name);
       const category = classifyKnowledgeFile(extension);
       if (category === "image") {
@@ -301,15 +328,21 @@ async function collectFiles(root: IterableDirectoryHandle) {
       }
 
       const readableExtension = extension as LocalKnowledgeExtension;
-      const file = await handle.getFile();
+      const fileSignal = AbortSignal.any([signal, AbortSignal.timeout(SCAN_READ_TIMEOUT_MS)]);
+      let file: File;
       let text = "";
       try {
+        progress("reading", path);
+        file = await waitForScan(handle.getFile(), fileSignal);
         text = category === "text"
-          ? await file.slice(0, MAX_INDEX_BYTES).text()
-          : await extractLocalDocumentText(file, readableExtension);
-      } catch {
+          ? await waitForScan(file.slice(0, MAX_INDEX_BYTES).text(), fileSignal)
+          : await waitForScan(extractLocalDocumentText(file, readableExtension, { indexOnly: true, signal: fileSignal }), fileSignal);
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof DOMException && error.name === "NotAllowedError") throw new KnowledgeDirectoryPermissionError();
         ignoredFiles += 1;
         incrementSkipped(extension);
+        failedFiles.push({ path, reason: fileSignal.aborted ? "读取超过 15 秒，已跳过；请检查文件是否已下载到电脑后重试。" : error instanceof Error ? error.message : "无法读取此文件。" });
         continue;
       }
       const normalized = text.replace(/\s+/g, " ").trim();
@@ -359,9 +392,20 @@ async function collectFiles(root: IterableDirectoryHandle) {
       imageFiles,
       ignoredFiles,
       needsOcrFiles,
+      failedFiles,
       scannedAt: new Date().toISOString(),
     } satisfies KnowledgeScanReport,
   };
+}
+
+function waitForScan<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) void pending.catch(() => {});
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => { signal.removeEventListener("abort", abort); reject(signal.reason); };
+    signal.addEventListener("abort", abort, { once: true });
+    pending.then((value) => { signal.removeEventListener("abort", abort); resolve(value); }, (error) => { signal.removeEventListener("abort", abort); reject(error); });
+  });
 }
 
 async function writeTextFile(directory: FileSystemDirectoryHandle, name: string, content: string) {
@@ -409,7 +453,12 @@ function stripHandles(records: LocalIndexRecord[]) {
 
 async function resolveDatabaseName() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return databaseName;
-  const response = await fetch("/api/auth/session", { cache: "no-store" });
+  let response: Response;
+  try {
+    response = await fetch("/api/auth/session", { cache: "no-store", signal: AbortSignal.timeout(SCAN_READ_TIMEOUT_MS) });
+  } catch {
+    throw new Error("登录状态校验超时或网络不可用，请检查网络后重新选择文件夹。尚未读取本地资料。");
+  }
   if (!response.ok) throw new Error("请先登录后读取本地知识索引。");
   const { workspaceId } = await response.json() as { workspaceId: string };
   const next = `${DATABASE_NAME}:${workspaceId}`;
@@ -422,6 +471,11 @@ async function openDatabase() {
   const name = await resolveDatabaseName();
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(name, DATABASE_VERSION);
+    let blocked = false;
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error("本地索引被另一个内容工厂页面占用，请关闭其他标签页后重试。"));
+    };
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(HANDLE_STORE)) {
@@ -434,17 +488,9 @@ async function openDatabase() {
         database.createObjectStore(META_STORE);
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => blocked ? request.result.close() : resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("无法打开本地知识索引。"));
   });
-}
-
-async function writeRecord(storeName: string, value: unknown, key: IDBValidKey) {
-  const database = await openDatabase();
-  const transaction = database.transaction(storeName, "readwrite");
-  transaction.objectStore(storeName).put(value, key);
-  await transactionDone(transaction);
-  database.close();
 }
 
 async function readRecord<T>(storeName: string, key: IDBValidKey) {
