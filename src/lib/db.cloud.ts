@@ -89,18 +89,28 @@ export async function saveMarketItemToDb(item: MarketItemInput) {
 }
 
 export async function upsertMarketItemToDb(item: MarketItemInput) {
-  let savedId = item.id;
+  return (await upsertMarketItemsToDb([item]))[0];
+}
+
+export async function upsertMarketItemsToDb(input: MarketItemInput[]) {
+  if (!input.length) return [];
+  let savedIds: string[] = [];
   await updateCloudState(marketKey, { items: [] as Record<string, unknown>[] }, (state) => {
-    const existing = state.items.find((row) => (
-      item.platformContentId
-        ? row.platform === item.platform && row.platform_content_id === item.platformContentId
-        : row.id === item.id
-    )) ?? state.items.find((row) => row.id === item.id);
-    savedId = typeof existing?.id === "string" ? existing.id : item.id;
-    const row = existing ? mergeMarketItem(existing, item, savedId) : marketItemRow(item);
-    return { items: [row, ...state.items.filter((candidate) => candidate.id !== savedId)] };
+    let items = state.items;
+    savedIds = input.map((item) => {
+      const existing = items.find((row) => (
+        item.platformContentId
+          ? row.platform === item.platform && row.platform_content_id === item.platformContentId
+          : row.id === item.id
+      )) ?? items.find((row) => row.id === item.id);
+      const savedId = typeof existing?.id === "string" ? existing.id : item.id;
+      const row = existing ? mergeMarketItem(existing, item, savedId) : marketItemRow(item);
+      items = [row, ...items.filter((candidate) => candidate.id !== savedId)];
+      return savedId;
+    });
+    return { ...state, items };
   });
-  return savedId;
+  return savedIds;
 }
 
 export async function getMarketItemFromDb(id: string) {
