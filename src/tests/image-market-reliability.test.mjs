@@ -127,6 +127,45 @@ test("20 search results save completely without exhausting cloud conflict retrie
   assert.equal(fixture.writes, 1);
 });
 
+test("filtered search keeps provider order and saves all 20 cloud results in one update", async () => {
+  const fixture = await marketFixture();
+  const filters = await load("../modules/market/search-filters.ts", {});
+  const normalization = await load("../modules/market/normalization.ts", {});
+  const ranking = await load("../modules/market/ranking.ts", { "./normalization": normalization });
+  const input = items("filtered");
+  let savedHistory;
+  const route = await load("../app/api/market/search/route.ts", {
+    "next/server": { NextResponse: { json: (data, options) => Response.json(data, options) } },
+    "@/modules/market/ranking": ranking, "@/modules/market/search-filters": filters,
+    "@/modules/market/history": { saveMarketHistory: async (kind, query, result) => {
+      savedHistory = { kind, query, items: result }; return { id: "isolated-history" };
+    } },
+    "@/modules/market/server": { ...fixture.market, marketProvider: () => ({ searchWorks: async query => {
+      assert.equal(query.sort, "最新"); assert.equal(query.timeRange, "一周内");
+      assert.equal(query.page, 2); return input;
+    } }) },
+  });
+  const previousKey = process.env.REDFOX_API_KEY;
+  process.env.REDFOX_API_KEY = "synthetic";
+  try {
+    const query = { platform: "xiaohongshu", keyword: "隔离测试", sort: "最新", timeRange: "一周内", page: 2 };
+    const response = await fixture.run("alice", () => route.POST(new Request("http://local/api/market/search", {
+      method: "POST", body: JSON.stringify(query),
+    })));
+    assert.equal(response.status, 200);
+    const result = (await response.json()).data;
+    assert.deepEqual(result.items.map(item => item.id), input.map(item => item.id));
+    assert.ok(result.items.every(item => item.opportunityScore && item.provider === "market-data"));
+    assert.equal(savedHistory.query.sort, query.sort); assert.equal(savedHistory.query.timeRange, query.timeRange);
+    assert.deepEqual(savedHistory.items.map(item => item.id), input.map(item => item.id));
+    assert.equal((await fixture.run("alice", () => fixture.db.listMarketItemsFromDb())).length, 20);
+    assert.equal(fixture.writes, 1);
+  } finally {
+    if (previousKey === undefined) delete process.env.REDFOX_API_KEY;
+    else process.env.REDFOX_API_KEY = previousKey;
+  }
+});
+
 test("simultaneous searches keep all results and existing saved identities and fields", async () => {
   const fixture = await marketFixture();
   const legacy = { id: "saved-original-id", platform: "xiaohongshu", platform_content_id: "a-0",

@@ -3,6 +3,8 @@
 日期：2026-10-08。分支：`fix/image-market-reliability`，基于 `main@36d5d05`。
 工作区：`/Users/renxiaokang/connor/berich/内容工厂/.worktrees/image-market-reliability`。
 
+此文记录首次本地验收；后续合并与发布检查见 [合并发布验收](Market-Image-Release-2026-10-08.md)。
+
 ## 根因与修复
 
 - 生图：生产 `IMAGE_BASE_URL` 和 `IMAGE_MODEL` 末尾存在换行。原代码把带换行的 `/v1` 地址再次追加 `/v1/images/generations`，实际请求 `/v1/v1/images/generations`，空请求复现 405。调用时清理地址、模型、密钥与尺寸的首尾空白，继续支持域名、`/v1` 和完整生成端点。
@@ -38,4 +40,4 @@ node --test src/tests/account-isolation.test.mjs
 node --test src/tests/core-api.test.mjs
 ```
 
-生图测试使用模拟服务，证明调用参数与应用流程修复；未执行真实模型出图，模型服务实际可用性仍需用户在发布后主动验证。生产环境变量未修改。改动保留本地，未提交、push、创建 PR、合并或发布；生产修复尚未生效。
+首次本地验收的生图测试使用模拟服务，证明调用参数与应用流程修复；未执行真实模型出图，模型服务实际可用性仍需用户在发布后主动验证。生产环境变量未修改。首次验收完成时改动仅保留本地，尚未提交或发布。
