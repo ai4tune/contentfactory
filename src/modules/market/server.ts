@@ -1,5 +1,5 @@
 import { createRedFoxProvider } from "./providers/redfox-provider";
-import { upsertMarketItemToDb, type TrackedAccountBundle } from "@/lib/db";
+import { upsertMarketItemsToDb, type TrackedAccountBundle } from "@/lib/db";
 import type { MarketAccount, MarketItem, OpportunityScore } from "./types";
 
 const PUBLIC_PROVIDER_NAME = "market-data";
@@ -11,14 +11,15 @@ export function marketProvider() {
 }
 
 export async function persistMarketItems(items: Array<MarketItem & { opportunityScore?: OpportunityScore }>) {
-  return Promise.all(items.map(async (item) => publicMarketItem({ ...item, id: await upsertMarketItemToDb({
+  const savedIds = await upsertMarketItemsToDb(items.map((item) => ({
       ...item, authorId: item.author.id, authorName: item.author.name,
       authorFollowers: item.author.followers ?? undefined, authorProfileUrl: item.author.profileUrl,
       views: item.metrics.views ?? undefined, likes: item.metrics.likes ?? undefined,
       collects: item.metrics.collects ?? undefined, comments: item.metrics.comments ?? undefined,
       shares: item.metrics.shares ?? undefined,
       opportunityScore: item.opportunityScore?.total,
-    }) })));
+    })));
+  return items.map((item, index) => publicMarketItem({ ...item, id: savedIds[index] }));
 }
 
 export function publicMarketItem(item: MarketItem): MarketItem {

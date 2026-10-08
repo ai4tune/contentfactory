@@ -25,6 +25,9 @@ export async function saveMarketItemToDb(item: MarketItemInput) {
 export async function upsertMarketItemToDb(item: MarketItemInput) {
   return cloudEnabled() ? cloud.upsertMarketItemToDb(item) : local.upsertMarketItemToDb(item);
 }
+export async function upsertMarketItemsToDb(items: MarketItemInput[]) {
+  return cloudEnabled() ? cloud.upsertMarketItemsToDb(items) : items.map((item) => local.upsertMarketItemToDb(item));
+}
 export async function getMarketItemFromDb(id: string) {
   return cloudEnabled() ? cloud.getMarketItemFromDb(id) : local.getMarketItemFromDb(id);
 }

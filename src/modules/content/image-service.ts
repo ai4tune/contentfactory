@@ -178,20 +178,20 @@ function normalizeCardLayout(
 }
 
 async function requestImage(prompt: string) {
-  const model = requireEnv("IMAGE_MODEL");
+  const model = requireEnv("IMAGE_MODEL").trim();
   const startedAt = new Date();
   try {
     const response = await fetch(normalizeImageGenerationUrl(requireEnv("IMAGE_BASE_URL")), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${requireEnv("IMAGE_API_KEY")}`,
+        Authorization: `Bearer ${requireEnv("IMAGE_API_KEY").trim()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model,
         prompt,
         n: 1,
-        size: process.env.IMAGE_SIZE || "1024x1536",
+        size: process.env.IMAGE_SIZE?.trim() || "1024x1536",
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(readImageTimeout()),
@@ -247,7 +247,7 @@ function readImageTimeout() {
 }
 
 function normalizeImageGenerationUrl(baseUrl: string) {
-  const trimmed = baseUrl.replace(/\/+$/, "");
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
   if (trimmed.endsWith("/images/generations")) return trimmed;
   if (trimmed.endsWith("/v1")) return `${trimmed}/images/generations`;
   return `${trimmed}/v1/images/generations`;
