@@ -5,7 +5,7 @@ import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
 
 export async function GET() {
   const membership = isSupabaseAuthConfigured() ? await getWorkspaceMembership() : null;
-  return NextResponse.json({ workspaceId: await getDataWorkspaceId() ?? "local", email: membership?.email }, {
+  return NextResponse.json({ workspaceId: await getDataWorkspaceId() ?? "local", email: membership?.email, role: membership?.role }, {
     headers: { "Cache-Control": "no-store" },
   });
 }

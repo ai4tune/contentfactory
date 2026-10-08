@@ -16,12 +16,14 @@ const shared = "11111111-1111-4111-8111-111111111111";
 const alice = "22222222-2222-4222-8222-222222222222";
 const bob = "33333333-3333-4333-8333-333333333333";
 const outsider = "44444444-4444-4444-8444-444444444444";
+const owner = "66666666-6666-4666-8666-666666666666";
 function privateWorkspace(userId) {
   const hex = createHash("sha256").update(`${shared}:${userId}`).digest("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 const aliceWorkspace = privateWorkspace(alice), bobWorkspace = privateWorkspace(bob);
 const users = new Map([alice, bob, outsider].map((id, index) => [id, { id, email: `user${index}@example.com`, aud: "authenticated", role: "authenticated" }]));
+users.set(owner, { id: owner, email: "owner@example.com", email_confirmed_at: "2026-10-01T00:00:00Z", aud: "authenticated", role: "authenticated" });
 const rows = {
   content_factory_workspaces: [{ id: shared, name: "Legacy shared" }],
   content_factory_workspace_members: [alice, bob].map((id) => ({ workspace_id: shared, user_id: id, role: "member" })),
@@ -29,6 +31,9 @@ const rows = {
 };
 let app, service, directory, logs = "";
 let readOnlyGuard = false, blockedMutations = 0;
+let failInvitation = false, failGrant = false;
+const invitations = [];
+const stateReads = [];
 
 function jwt(id) {
   return [Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url"), Buffer.from(JSON.stringify({ sub: id, exp: expiresAt })).toString("base64url"), "synthetic-signature"].join(".");
@@ -41,7 +46,7 @@ async function request(id, url, body, method = body === undefined ? "GET" : "POS
   return fetch(`${base}${url}`, { method, headers: { ...(id ? { Cookie: cookie(id) } : {}), "Content-Type": "application/json", ...extra }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 }
 function respond(response, status, data) {
-  response.writeHead(status, { "Content-Type": "application/json" });
+  response.writeHead(status, { "Content-Type": "application/json", "X-Supabase-Api-Version": "2024-01-01" });
   response.end(JSON.stringify(data));
 }
 
@@ -57,6 +62,18 @@ before(async () => {
       const id = [...users.keys()].find((key) => token === jwt(key));
       return respond(response, id ? 200 : 401, id ? users.get(id) : { msg: "Invalid token" });
     }
+    if (url.pathname === "/auth/v1/invite") {
+      if (failInvitation) return respond(response, 429, { code: "over_email_send_rate_limit", msg: "Rate limited" });
+      let user = [...users.values()].find((candidate) => candidate.email === body.email);
+      if (user?.email_confirmed_at) return respond(response, 422, { code: "email_exists", msg: "Registered" });
+      if (!user) {
+        user = { id: crypto.randomUUID(), email: body.email, aud: "authenticated", role: "authenticated", invited_at: new Date().toISOString() };
+        users.set(user.id, user);
+      }
+      invitations.push({ email: body.email, redirectTo: url.searchParams.get("redirect_to") });
+      return respond(response, 200, user);
+    }
+    if (url.pathname === "/auth/v1/admin/users") return respond(response, 200, { users: [...users.values()], aud: "authenticated" });
     if (url.pathname === "/v1/chat/completions") {
       await delay(500);
       const organization = body.messages[0].content.includes("summary 和 assignments");
@@ -72,8 +89,12 @@ before(async () => {
     if (!rows[table]) return respond(response, 404, { message: "Unknown table" });
     const filters = [...url.searchParams].filter(([, value]) => value.startsWith("eq."));
     const matches = (row) => filters.every(([key, value]) => String(row[key]) === value.slice(3));
-    if (request.method === "GET") return respond(response, 200, rows[table].filter(matches));
+    if (request.method === "GET") {
+      if (table === "content_factory_state") stateReads.push(Object.fromEntries(filters));
+      return respond(response, 200, rows[table].filter(matches));
+    }
     if (request.method === "POST") {
+      if (failGrant && table === "content_factory_workspace_members") return respond(response, 500, { message: "Synthetic permission failure" });
       const keys = table === "content_factory_state" ? ["workspace_id", "store_key"] : table === "content_factory_workspace_members" ? ["workspace_id", "user_id"] : ["id"];
       const existing = rows[table].find((row) => keys.every((key) => row[key] === body[key]));
       if (existing && !request.headers.prefer?.includes("resolution=ignore-duplicates")) return respond(response, 409, { code: "23505", message: "Duplicate" });
@@ -87,7 +108,7 @@ before(async () => {
     }
     respond(response, 405, {});
   });
-  await new Promise((resolve) => service.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => service.listen(Number(process.env.ACCOUNT_ISOLATION_SERVICE_PORT || 0), "127.0.0.1", resolve));
   const serviceUrl = `http://127.0.0.1:${service.address().port}`;
   app = spawn(process.execPath, [path.join(root, ".next/standalone/server.js")], { cwd: root, env: {
     ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port),
@@ -283,4 +304,80 @@ test("existing v1 customer spaces load through the upgrade without any write or 
     assert.equal(blockedMutations, 0, "opening upgraded pages must not attempt cloud mutations");
     assert.deepEqual(rows, before, "all payloads, versions, membership rows and timestamps must remain exactly unchanged");
   } finally { readOnlyGuard = false; }
+});
+
+test("page reads are deduplicated per request and remain fresh and private on later requests", async () => {
+  stateReads.length = 0;
+  assert.equal((await request(alice, "/brand")).status, 200);
+  const keys = stateReads.map((read) => `${read.workspace_id}:${read.store_key}`);
+  assert.equal(new Set(keys).size, keys.length, "one render should only read each account store once");
+  assert.ok(keys.some((key) => key.endsWith("json:contentfactory.local.json")));
+  stateReads.length = 0;
+  assert.equal((await request(bob, "/brand")).status, 200);
+  assert.ok(stateReads.length > 0);
+  assert.ok(stateReads.every((read) => read.workspace_id === `eq.${bobWorkspace}`));
+  stateReads.length = 0;
+  assert.equal((await request(alice, "/brand")).status, 200);
+  assert.ok(stateReads.length > 0, "another request must fetch fresh data");
+});
+
+test("only deployment owners can invite; invalid input and cross-origin requests send no mail", async () => {
+  rows.content_factory_workspace_members.push({ workspace_id: shared, user_id: owner, role: "owner" });
+  const before = structuredClone(rows);
+  const sent = invitations.length;
+  assert.equal((await request(null, "/api/operations/invitations", { email: "new@example.com" })).status, 401);
+  assert.equal((await request(alice, "/api/operations/invitations", { email: "new@example.com", role: "owner" })).status, 403);
+  assert.equal((await request(owner, "/api/operations/invitations", { email: "invalid" })).status, 400);
+  assert.equal((await request(owner, "/api/operations/invitations", { email: "new@example.com" }, "POST", { Origin: "https://other.example" })).status, 403);
+  assert.equal(invitations.length, sent);
+  assert.deepEqual(rows, before);
+  assert.equal((await request(alice, "/operations/invitations", undefined, "GET", { "x-test": "member" })).url.endsWith("/access-denied"), true);
+  assert.equal((await request(owner, "/operations/invitations")).status, 200);
+});
+
+test("one invitation both sends mail and grants only member access without touching existing spaces", async () => {
+  const before = structuredClone(rows);
+  const response = await request(owner, "/api/operations/invitations", { email: " New@Example.com ", role: "owner", workspaceId: bobWorkspace }, "POST", { Origin: base });
+  assert.equal(response.status, 200, await response.clone().text());
+  const result = await response.json();
+  assert.equal(result.email, "new@example.com"); assert.equal(result.emailSent, true); assert.equal(result.role, "member");
+  const user = [...users.values()].find((candidate) => candidate.email === result.email);
+  assert.deepEqual(invitations.at(-1), { email: result.email, redirectTo: `${base}/auth/confirm?next=/set-password` });
+  assert.deepEqual(rows.content_factory_workspace_members.at(-1), { workspace_id: shared, user_id: user.id, role: "member" });
+  assert.deepEqual({ ...rows, content_factory_workspace_members: rows.content_factory_workspace_members.slice(0, -1) }, before);
+  assert.equal((await request(user.id, "/api/positioning/current")).status, 200);
+  assert.equal((await request(user.id, "/api/operations/invitations", { email: "another@example.com" })).status, 403);
+});
+
+test("mail failures grant no access and permission failures remain retryable after confirmation", async () => {
+  const before = structuredClone(rows);
+  failInvitation = true;
+  try { assert.equal((await request(owner, "/api/operations/invitations", { email: "limited@example.com" })).status, 429); }
+  finally { failInvitation = false; }
+  assert.deepEqual(rows, before);
+  failGrant = true;
+  try {
+    const response = await request(owner, "/api/operations/invitations", { email: "retry@example.com" });
+    assert.equal(response.status, 502);
+    const result = await response.json();
+    assert.equal(result.emailSent, true); assert.match(result.error, /权限开通失败/);
+  } finally { failGrant = false; }
+  assert.deepEqual(rows, before);
+  const user = [...users.values()].find((candidate) => candidate.email === "retry@example.com");
+  user.email_confirmed_at = "2026-10-08T00:00:00Z";
+  const sent = invitations.length;
+  const response = await request(owner, "/api/operations/invitations", { email: user.email });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal((await response.json()).emailSent, false);
+  assert.equal(invitations.length, sent);
+  assert.equal((await request(user.id, "/api/positioning/current")).status, 200);
+});
+
+test("repeated invitations preserve existing owner roles, private data and timestamps", async () => {
+  const before = structuredClone(rows);
+  const response = await request(owner, "/api/operations/invitations", { email: "owner@example.com" });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.emailSent, false); assert.equal(result.role, "owner");
+  assert.deepEqual(rows, before);
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import NextLink, { useLinkStatus } from "next/link";
-import type { ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 import { createPortal } from "react-dom";
 import { PageLoadingNotice } from "@/components/loading-feedback";
 
@@ -11,5 +11,11 @@ export default function NavigationLink({ children, ...props }: ComponentProps<ty
 
 function PendingNotice() {
   const { pending } = useLinkStatus();
-  return pending ? createPortal(<PageLoadingNotice />, document.body) : null;
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setVisible(true), 200);
+    return () => { clearTimeout(timer); setVisible(false); };
+  }, [pending]);
+  return pending && visible ? createPortal(<PageLoadingNotice />, document.body) : null;
 }
