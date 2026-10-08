@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import { dataFilePath } from "@/lib/data-directory";
-import type { MarketItem } from "./types";
+import type { MarketItem, SearchWorksInput } from "./types";
 
 export type MarketHistory = {
   id: string; kind: "search" | "hot"; createdAt: string;
-  query: { platform: string; keyword?: string; page?: number; date?: string; category?: string };
+  query: { platform: string; keyword?: string; page?: number; date?: string; category?: string }
+    & Pick<SearchWorksInput, "sort" | "timeRange" | "startDate" | "endDate">;
   items: MarketItem[];
 };
 const file = () => dataFilePath("market-history.local.json");

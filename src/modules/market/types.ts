@@ -91,9 +91,15 @@ export type MarketAccount = {
 };
 
 // 搜索输入
+export type SearchSort = "综合" | "最新" | "最热" | "最多点赞" | "最多评论" | "最多收藏";
+export type SearchTimeRange = "不限" | "一天内" | "一周内" | "一个月内" | "一年内" | "自定义";
 export type SearchWorksInput = {
   platform: MarketPlatform;
   keyword: string;
+  sort?: SearchSort;
+  timeRange?: SearchTimeRange;
+  startDate?: string;
+  endDate?: string;
   filters?: {
     contentType?: "article" | "image" | "video";
     minLikes?: number;

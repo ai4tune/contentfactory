@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { MarketItem, SearchWorksInput } from "../types";
+import { searchDateRange, searchFilterError } from "../search-filters";
 
 // Contract sources: doc.redfox.hk/474468723e0 and RedFoxHub's
 // douyin/774OBKK0, gongzhonghao/PW97QFBS API documentation.
@@ -8,17 +9,23 @@ export function redfoxSearchRequest(input: SearchWorksInput) {
   if (!keyword.trim() || !Number.isInteger(page) || page < 1 || pageSize < 1 || pageSize > 20) {
     throw new Error("搜索参数无效：页码从 1 开始，每页最多 20 条。");
   }
+  const filterError = searchFilterError(input);
+  if (filterError) throw new Error(filterError);
+  const sort = input.sort ?? "综合";
   if (platform === "xiaohongshu") return {
     endpoint: "xhs/ability/searchWork",
-    params: { keyword, page, sort: "综合", note_type: "不限", noteTime: "不限" },
+    params: { keyword, page, sort, note_type: "不限", noteTime: input.timeRange ?? "不限" },
   };
   if (platform === "channels") return {
     endpoint: "sphAllData/searchWork",
-    params: { keyword, page, size: pageSize, sort: "综合" },
+    params: { keyword, page, size: pageSize, sort },
   };
   if (platform === "douyin" || platform === "wechat") return {
     endpoint: platform === "douyin" ? "dyData/searchArticle" : "gzhData/searchArticle",
-    params: { keyword, offset: (page - 1) * 20, sortType: platform === "wechat" ? "_0" : "default" },
+    params: { keyword, offset: (page - 1) * 20,
+      sortType: sort === "最新" ? "_2" : sort === "最热" ? "_4" : platform === "wechat" ? "_0" : "default",
+      ...(platform === "douyin" ? searchDateRange(input) : {}),
+    },
   };
   throw new Error(`尚未接入 ${platform} 搜索`);
 }
