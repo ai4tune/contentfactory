@@ -1,14 +1,15 @@
 // 市场搜索 API
 // 支持小红书、抖音、公众号等平台
 import { NextRequest, NextResponse } from "next/server";
-import { rankMarketItems } from "@/modules/market/ranking";
+import { calculateOpportunityScore } from "@/modules/market/ranking";
+import { searchDateRange, searchFilterError } from "@/modules/market/search-filters";
 import { saveMarketHistory } from "@/modules/market/history";
 import { marketError, marketProvider, persistMarketItems } from "@/modules/market/server";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { platform, keyword, page = 1, pageSize = 20 } = body;
+    const { platform, keyword, page = 1, pageSize = 20, sort = "综合", timeRange = "不限", startDate, endDate } = body;
 
     if (!["xiaohongshu", "douyin", "wechat", "channels"].includes(platform) || typeof keyword !== "string" || !keyword.trim() || keyword.length > 100
       || !Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 20) {
@@ -17,6 +18,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const query = { platform, keyword, sort, timeRange,
+      ...(startDate !== undefined ? { startDate } : {}), ...(endDate !== undefined ? { endDate } : {}) };
+    const filterError = searchFilterError(query);
+    if (filterError) return NextResponse.json({ error: filterError }, { status: 400 });
+
+    // Resolve relative dates once so history and later pages reuse the same window.
+    const resolvedQuery = platform === "douyin" && timeRange !== "不限"
+      ? { ...query, ...searchDateRange(query) } : query;
 
     // 检查市场数据服务配置
     if (!process.env.REDFOX_API_KEY) {
@@ -33,17 +43,13 @@ export async function POST(request: NextRequest) {
 
     // 搜索
     const items = await provider.searchWorks({
-      platform,
-      keyword,
+      ...resolvedQuery,
       page,
       pageSize,
     });
 
-    // 排名（Provider 已返回标准化 MarketItem，无需再次标准化）
-    const rankedItems = rankMarketItems(items, {
-      sortBy: "total",
-      limit: pageSize,
-    });
+    // Keep the provider's selected order while attaching opportunity scores.
+    const rankedItems = items.slice(0, pageSize).map(item => ({ ...item, opportunityScore: calculateOpportunityScore(item) }));
 
     // 保存到数据库
     let publicItems;
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "搜索结果保存失败，请重试后再收藏。" }, { status: 500 });
     }
 
-    const history = await saveMarketHistory("search", { platform, keyword, page }, publicItems);
+    const history = await saveMarketHistory("search", { ...resolvedQuery, page }, publicItems);
     return NextResponse.json({
       success: true,
       data: {
@@ -63,6 +69,7 @@ export async function POST(request: NextRequest) {
         totalCount: publicItems.length,
         page,
         pageSize,
+        query: resolvedQuery,
         expandedKeywords: [keyword],
       },
     });

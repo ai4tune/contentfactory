@@ -9,7 +9,8 @@ import {
   PageHeader,
   primaryButtonClass,
 } from "@/components/app-shell";
-import type { MarketItem, MarketPlatform } from "@/modules/market/types";
+import type { MarketItem, MarketPlatform, SearchWorksInput, SearchSort, SearchTimeRange } from "@/modules/market/types";
+import { searchFilterOptions, searchFilterSummary } from "@/modules/market/search-filters";
 import type { MarketHistory } from "@/modules/market/history";
 import {
   formatNumber,
@@ -89,20 +90,28 @@ function RadarPageContent() {
   );
 }
 
+type SearchQuery = Pick<SearchWorksInput, "platform" | "keyword" | "sort" | "timeRange" | "startDate" | "endDate">;
+
 function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: string; historyId?: string }) {
   const [keyword, setKeyword] = useState(initialQuery);
   const [platform, setPlatform] = useState<MarketPlatform>("xiaohongshu");
+  const [sort, setSort] = useState<SearchSort>("综合");
+  const [timeRange, setTimeRange] = useState<SearchTimeRange>("不限");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [searchResults, setSearchResults] = useState<MarketItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
-  const [searched, setSearched] = useState<{ platform: MarketPlatform; keyword: string } | null>(null);
+  const [searched, setSearched] = useState<SearchQuery | null>(null);
   const [history, setHistory] = useState<MarketHistory[]>([]);
   const [restoring, setRestoring] = useState(true);
   function restore(record: MarketHistory) {
     setKeyword(record.query.keyword || ""); setPlatform(record.query.platform as MarketPlatform);
     setPage(record.query.page || 1); setSearchResults(record.items);
-    setSearched({ platform: record.query.platform as MarketPlatform, keyword: record.query.keyword || "" });
+    setSort(record.query.sort ?? "综合"); setTimeRange(record.query.timeRange ?? "不限");
+    setStartDate(record.query.startDate ?? ""); setEndDate(record.query.endDate ?? "");
+    setSearched({ ...record.query, platform: record.query.platform as MarketPlatform, keyword: record.query.keyword || "", sort: record.query.sort ?? "综合", timeRange: record.query.timeRange ?? "不限" });
   }
   useEffect(() => {
     let active = true;
@@ -119,7 +128,9 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
   }, [initialQuery, historyId]);
 
 
-  const handleSearch = async (nextPage = 1, query = { platform, keyword: keyword.trim() }) => {
+  const filterOptions = searchFilterOptions(platform);
+  const handleSearch = async (nextPage = 1, query: SearchQuery = { platform, keyword: keyword.trim(), sort, timeRange,
+    ...(timeRange === "自定义" ? { startDate, endDate } : {}) }) => {
     if (!query.keyword || isSearching) return;
 
     setIsSearching(true);
@@ -130,8 +141,7 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform: query.platform,
-          keyword: query.keyword,
+          ...query,
           page: nextPage,
           pageSize: 20,
         }),
@@ -145,8 +155,9 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
 
       setSearchResults(data.data?.items || []);
       setPage(nextPage);
-      setSearched(query);
-      setHistory(rows => [{ id: data.data.historyId, kind: "search" as const, createdAt: new Date().toISOString(), query: { ...query, page: nextPage }, items: data.data.items }, ...rows].slice(0, 100));
+      const savedQuery: SearchQuery = data.data.query ?? query;
+      setSearched(savedQuery);
+      setHistory(rows => [{ id: data.data.historyId, kind: "search" as const, createdAt: new Date().toISOString(), query: { ...savedQuery, page: nextPage }, items: data.data.items }, ...rows].slice(0, 100));
       window.history.replaceState(null, "", `/radar?tab=search&history=${encodeURIComponent(data.data.historyId)}`);
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "搜索失败");
@@ -161,7 +172,7 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="text-lg font-semibold text-slate-900">主题搜索</h2>
         <p className="mt-2 text-sm text-slate-500">
-          自由输入关键词，例如“咖啡店”“AI 企业落地”，搜索所选平台的相关内容。不受榜单分类限制；当前使用综合排序、时间不限。
+          自由输入关键词，例如“咖啡店”“AI 企业落地”，搜索所选平台的相关内容。可按平台支持的排序方式和发布时间筛选，默认综合排序、时间不限。
         </p>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -170,7 +181,7 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
             disabled={restoring || isSearching}
             aria-label="搜索平台"
             value={platform}
-            onChange={(e) => setPlatform(e.target.value as MarketPlatform)}
+            onChange={(e) => { setPlatform(e.target.value as MarketPlatform); setSort("综合"); setTimeRange("不限"); setStartDate(""); setEndDate(""); }}
             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           >
             <option value="xiaohongshu">小红书</option>
@@ -200,10 +211,24 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
             {isSearching ? "搜索中..." : "搜索"}
           </button>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2">排序方式 <select aria-label="排序方式" className="rounded-lg border border-slate-200 px-3 py-2" disabled={restoring || isSearching} value={sort} onChange={event => setSort(event.target.value as SearchSort)}>
+            {filterOptions.sorts.map(value => <option key={value} value={value}>{value === "最新" ? "最新发布" : value === "综合" ? "综合排序" : value}</option>)}
+          </select></label>
+          <label className="flex items-center gap-2">发布时间 <select aria-label="发布时间" className="rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-500" disabled={restoring || isSearching || filterOptions.timeRanges.length === 1} value={timeRange} onChange={event => setTimeRange(event.target.value as SearchTimeRange)}>
+            {filterOptions.timeRanges.map(value => <option key={value} value={value}>{value === "不限" ? "时间不限" : value === "自定义" ? "自定义日期" : value}</option>)}
+          </select></label>
+          {timeRange === "自定义" && <>
+            <label className="flex items-center gap-2">开始日期 <input aria-label="开始日期" type="date" className="rounded-lg border border-slate-200 px-3 py-2" disabled={restoring || isSearching} value={startDate} max={endDate || undefined} onChange={event => setStartDate(event.target.value)} /></label>
+            <label className="flex items-center gap-2">结束日期 <input aria-label="结束日期" type="date" className="rounded-lg border border-slate-200 px-3 py-2" disabled={restoring || isSearching} value={endDate} min={startDate || undefined} onChange={event => setEndDate(event.target.value)} /></label>
+          </>}
+          {filterOptions.timeRanges.length === 1 && <span className="text-xs text-slate-500">该平台当前仅支持时间不限。</span>}
+          {platform === "douyin" && <span className="text-xs text-slate-500">时间范围按北京时间自然日筛选。</span>}
+        </div>
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-          <label>搜索记录（本地读取，不扣积分） <select aria-label="搜索记录" className="max-w-full rounded-lg border p-2" disabled={restoring || isSearching} value={historyId} onChange={event => { const row = history.find(item => item.id === event.target.value); if (row) window.history.replaceState(null, "", `/radar?tab=search&history=${encodeURIComponent(row.id)}`); }}>
+          <label className="flex min-w-0 max-w-full flex-col gap-2 sm:flex-row sm:items-center">搜索记录（本地读取，不扣积分） <select aria-label="搜索记录" className="min-w-0 max-w-full rounded-lg border p-2" disabled={restoring || isSearching} value={historyId} onChange={event => { const row = history.find(item => item.id === event.target.value); if (row) window.history.replaceState(null, "", `/radar?tab=search&history=${encodeURIComponent(row.id)}`); }}>
             <option value="">{restoring ? "恢复记录中…" : history.length ? "选择历史查询" : "暂无记录，首次查询后自动保存"}</option>
-            {history.map(row => <option key={row.id} value={row.id}>{row.query.keyword} · {formatPlatformName(row.query.platform as MarketPlatform)} · 第 {row.query.page || 1} 页 · {row.createdAt.slice(0, 16)}</option>)}
+            {history.map(row => <option key={row.id} value={row.id}>{row.query.keyword} · {formatPlatformName(row.query.platform as MarketPlatform)} · {searchFilterSummary(row.query)} · 第 {row.query.page || 1} 页 · {row.createdAt.slice(0, 16)}</option>)}
           </select></label>
         </div>
       </div>
@@ -224,6 +249,8 @@ function SearchTab({ initialQuery = "", historyId = "" }: { initialQuery?: strin
               {searchResults.length} 条结果
             </span>
           </div>
+
+          <p className="mt-2 text-sm text-slate-500">{formatPlatformName(searched.platform)} · {searchFilterSummary(searched)}</p>
 
           <div aria-busy={isSearching} className={`mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 ${isSearching ? "opacity-50" : ""}`}>
             {searchResults.map((item) => (
