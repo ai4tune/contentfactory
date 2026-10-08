@@ -4,9 +4,9 @@ export function LoadingSpinner() {
 
 export function PageLoadingNotice() {
   return (
-    <div role="status" className="pointer-events-none fixed left-1/2 top-5 z-[100] flex -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-2xl border border-emerald-900/10 bg-white px-5 py-3 text-sm font-medium text-[#173e32] shadow-lg">
+    <div role="status" className="pointer-events-none fixed right-4 top-4 z-[100] flex items-center gap-2 rounded-lg border border-emerald-900/10 bg-white/95 px-3 py-2 text-xs font-medium text-[#173e32] shadow-sm">
       <LoadingSpinner />
-      页面加载中，请稍候…
+      正在切换…
     </div>
   );
 }

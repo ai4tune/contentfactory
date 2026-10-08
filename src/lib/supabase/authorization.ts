@@ -1,7 +1,8 @@
 import { createServerSupabaseClient } from "./server";
 import { contentFactoryWorkspaceId } from "./config";
+import { cache } from "react";
 
-export async function getWorkspaceMembership() {
+export const getWorkspaceMembership = cache(async () => {
   const workspaceId = contentFactoryWorkspaceId();
   if (!workspaceId) return null;
   const supabase = await createServerSupabaseClient();
@@ -14,4 +15,4 @@ export async function getWorkspaceMembership() {
     .eq("user_id", user.id)
     .maybeSingle();
   return data ? { userId: user.id, email: user.email, role: data.role as "owner" | "member" } : null;
-}
+});

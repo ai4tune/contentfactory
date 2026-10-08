@@ -1,11 +1,18 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { getDataWorkspaceId } from "@/lib/data-workspace";
 import type { Json } from "@/lib/supabase/database.types";
+import { cache } from "react";
 
 type StateRow<T> = { payload: T; version: number };
 
 export async function readCloudState<T>(storeKey: string, fallback: T): Promise<T> {
   const workspaceId = await requiredWorkspaceId();
+  const data = await readRequestState(workspaceId, storeKey);
+  return data ? data.payload as T : fallback;
+}
+
+// React cache only deduplicates a server render; account identity remains part of the key.
+const readRequestState = cache(async (workspaceId: string, storeKey: string) => {
   const { data, error } = await createAdminSupabaseClient()
     .from("content_factory_state")
     .select("payload")
@@ -13,8 +20,8 @@ export async function readCloudState<T>(storeKey: string, fallback: T): Promise<
     .eq("store_key", storeKey)
     .maybeSingle();
   if (error) throw new Error(`Cloud state read failed (${storeKey}): ${error.message}`);
-  return data ? data.payload as T : fallback;
-}
+  return data;
+});
 
 export async function updateCloudState<T>(
   storeKey: string,
