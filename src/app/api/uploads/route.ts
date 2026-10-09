@@ -13,6 +13,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Uploads are disabled" }, { status: 403 });
     }
 
+    // PDF/Word originals stay on the client; persist only the explicitly imported text.
+    if (request.headers.get("content-type")?.includes("application/json")) {
+      const body = await request.json() as { name?: unknown; size?: unknown; text?: unknown };
+      if (typeof body.name !== "string" || !body.name.trim() || body.name.length > 255 || typeof body.size !== "number" || !Number.isSafeInteger(body.size) || body.size < 0 || typeof body.text !== "string" || !body.text.trim() || body.text.length > 128_000) {
+        return NextResponse.json({ error: "请选择有正文的资料，单份提取文字最多 128000 字。" }, { status: 400 });
+      }
+      const source: KnowledgeSource = { id: `upload:${body.name}:${body.size}`, title: body.name, source: "upload", text: body.text };
+      await saveMaterial(source);
+      return NextResponse.json({ sources: [source] });
+    }
+
     const form = await request.formData();
     const files = form.getAll("files").filter((item): item is File => item instanceof File);
     const sources: KnowledgeSource[] = [];
@@ -23,7 +34,7 @@ export async function POST(request: Request) {
 
       if (!supported) {
         return NextResponse.json(
-          { error: `Unsupported file type: ${file.name}. Use txt, md, or csv for this spike.` },
+          { error: `不支持直接上传“${file.name}”，请在知识库的文件上传入口读取 PDF、Word 或图片。` },
           { status: 400 },
         );
       }

@@ -60,7 +60,7 @@ export function shouldIgnoreKnowledgeDirectory(name: string) {
 
 export function recommendKnowledgeItems(items: LocalKnowledgeItem[], limit = 30) {
   return items
-    .filter((item) => item.searchText.trim())
+    .filter((item) => item.searchText.trim() || (item.needsRecognition && !["heic", "heif", "tif", "tiff"].includes(item.extension)))
     .map((item, index) => ({ item, index, score: recommendationScore(item) }))
     .sort((left, right) => right.score - left.score || left.index - right.index)
     .slice(0, limit)

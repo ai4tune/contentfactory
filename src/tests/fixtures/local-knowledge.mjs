@@ -1,6 +1,6 @@
 // In-memory browser handles: no user files or real permission prompts are used.
 export function installLocalKnowledgeFixture(target = globalThis) {
-  const state = { permission: "granted", grant: "granted", checks: 0, requests: 0, reads: 0, activation: null, failRead: false };
+  const state = { permission: "granted", grant: "granted", checks: 0, requests: 0, reads: 0, writes: 0, activation: null, failRead: false };
   const records = Array.from({ length: 30 }, (_, index) => {
     const name = `品牌资料-${index}.md`;
     const file = new File([`# 品牌资料 ${index}\n测试正文 ${index}`], name, { type: "text/markdown" });
@@ -48,8 +48,8 @@ export function installLocalKnowledgeFixture(target = globalThis) {
           return {
             get: (key) => request(store.get(key)),
             getAll: () => request([...store.values()]),
-            put: (value, key) => store.set(key ?? value.id, value),
-            clear: () => store.clear(),
+            put: (value, key) => { state.writes += 1; return store.set(key ?? value.id, value); },
+            clear: () => { state.writes += 1; store.clear(); },
           };
         },
       };

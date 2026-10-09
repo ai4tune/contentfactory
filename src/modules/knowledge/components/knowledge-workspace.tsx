@@ -19,7 +19,7 @@ import {
   supportsDirectoryPicker,
 } from "../local-index";
 import { recommendKnowledgeItems } from "../file-classification";
-import { MAX_PDF_INDEX_PAGES } from "../document-text";
+import { extractLocalDocumentText, MAX_OFFICE_DOCUMENT_BYTES, MAX_PDF_INDEX_PAGES } from "../document-text";
 import type { LocalKnowledgeScanOptions } from "../local-index";
 import type { KnowledgeOrganizationPlan } from "../organization";
 import type { KnowledgePreview, KnowledgeScanProgress, KnowledgeScanReport, LocalKnowledgeItem, RemoteKnowledgeSource } from "../types";
@@ -32,6 +32,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
   const { tasks, refresh: refreshTasks } = useKnowledgeTasks();
   const [organizationTaskId, setOrganizationTaskId] = useState<string | null>(initialOrganizationTaskId ?? null);
   const [localItems, setLocalItems] = useState<LocalKnowledgeItem[]>([]);
+  const [uploadedSources, setUploadedSources] = useState<KnowledgePreview[]>([]);
   const [remoteSources, setRemoteSources] = useState<RemoteKnowledgeSource[]>([]);
   const [feishuResults, setFeishuResults] = useState<FeishuItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -45,6 +46,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const localResults = useMemo(() => searchLocalKnowledge(localItems, query), [localItems, query]);
+  const uploadedResults = uploadedSources.filter((item) => `${item.title} ${item.text}`.toLowerCase().includes(query.trim().toLowerCase()));
   const displayedRemoteResults = query.trim() ? feishuResults : remoteSources;
   const selectedLocalCount = selectedIds.filter((id) => id.startsWith("local:")).length;
   const recommendedLocalItems = useMemo(() => recommendKnowledgeItems(localItems), [localItems]);
@@ -72,6 +74,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
     }
     void restore();
     void loadRemoteSources().then((sources) => active && setRemoteSources(sources));
+    void loadUploadedSources().then((sources) => active && setUploadedSources(sources)).catch(() => { if (active) setMessage("已上传资料读取失败，请刷新重试。"); });
     return () => { active = false; scanController.current?.abort(); };
   }, []);
 
@@ -103,7 +106,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
       setScanReport(snapshot.report);
       setOrganizationTaskId("");
       setPermission("granted");
-      setMessage(`资料检查完成：找到 ${snapshot.report.readableFiles} 份可直接整理的文字与办公文档。原文件没有被修改。`);
+      setMessage(`资料检查完成：找到 ${snapshot.items.length} 份资料。图片和扫描件已列入清单，点击预览或生成档案时再识别。`);
     });
   }
 
@@ -113,7 +116,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
       setLocalItems(snapshot.items);
       setScanReport(snapshot.report);
       setOrganizationTaskId("");
-      setMessage(`资料已重新检查，共 ${snapshot.items.length} 份文字与办公文档可以直接整理。`);
+      setMessage(`资料更新完成：新增 ${snapshot.report.addedFiles ?? 0} 份，更新 ${snapshot.report.updatedFiles ?? 0} 份，复用 ${snapshot.report.reusedFiles ?? 0} 份。${snapshot.report.retainedFiles ? `另有 ${snapshot.report.retainedFiles} 份暂时无法读取，已保留旧摘要，请查看下方原因。` : ""}请选中新增资料并生成知识档案，再核对确认更新。`);
     });
   }
 
@@ -141,14 +144,19 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
   }
 
   async function previewLocal(item: LocalKnowledgeItem) {
-    await run(`preview:${item.id}`, async () => setPreview({
-      id: item.id,
-      title: item.title,
-      source: "local",
-      text: await readLocalKnowledgeItem(item.id),
-      path: item.path,
-      lastModified: item.lastModified,
-    }));
+    await run(`preview:${item.id}`, async () => {
+      const text = await readLocalKnowledgeItem(item.id, setMessage);
+      setLocalItems(await loadLocalKnowledge());
+      setMessage(null);
+      setPreview({
+        id: item.id,
+        title: item.title,
+        source: "local",
+        text,
+        path: item.path,
+        lastModified: item.lastModified,
+      });
+    });
   }
 
   async function searchFeishu() {
@@ -198,14 +206,30 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
   async function upload(files: FileList | null) {
     if (!files?.length) return;
     await run("upload", async () => {
-      const form = new FormData();
-      Array.from(files).forEach((file) => form.append("files", file));
-      const response = await fetch("/api/uploads", { method: "POST", body: form });
-      const payload = (await response.json()) as { sources?: FeishuItem[]; error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "文件上传失败。");
-      const first = payload.sources?.[0];
-      if (first) setPreview(toPreview(first));
-      setMessage(`已通过兼容入口读取 ${payload.sources?.length ?? 0} 份文件。`);
+      let imported = 0;
+      const failures: string[] = [];
+      for (const file of Array.from(files)) {
+        try {
+          setMessage(`正在读取：${file.name}…`);
+          if (file.size > MAX_OFFICE_DOCUMENT_BYTES) throw new Error("单份文件超过 20 MB，请先压缩或拆分后再读取。");
+          const extension = file.name.split(".").pop()?.toLowerCase();
+          if (!extension || !["md", "txt", "csv", "pdf", "docx", "jpg", "jpeg", "png", "webp", "gif", "bmp"].includes(extension)) throw new Error("请使用文字、PDF、Word 或 JPG/PNG/WebP 图片。");
+          const text = extension === "csv" ? await file.text() : await extractLocalDocumentText(file, extension as LocalKnowledgeItem["extension"], { onProgress: setMessage });
+          if (!text.trim()) throw new Error("没有读取到正文，请检查文件内容。");
+          const response = await fetch("/api/uploads", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, size: file.size, text: text.slice(0, 128_000) }) });
+          const payload = await response.json() as { sources?: KnowledgePreview[]; error?: string };
+          if (!response.ok) throw new Error(payload.error ?? "文件上传失败。");
+          const first = payload.sources?.[0];
+          if (first) {
+            setPreview(first);
+            setUploadedSources((sources) => [first, ...sources.filter((source) => source.id !== first.id)]);
+            setSelectedIds((ids) => [...new Set([...ids, first.id])]);
+          }
+          imported += 1;
+        } catch (error) { failures.push(`${file.name}：${error instanceof Error ? error.message : "读取失败"}`); }
+      }
+      setMessage(`已读取并选择 ${imported} 份资料，可生成知识档案。${failures.length ? ` ${failures.join("；")}` : ""}`);
     });
   }
 
@@ -221,7 +245,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
     setSelectedIds([...remoteIds, ...recommendedIds]);
     setMessage(recommendedIds.length
       ? `已按系统建议选择 ${recommendedIds.length} 份本地资料。请点击“生成知识档案”，也可以在下方逐份调整。已有目录结构无需重新整理。`
-      : "当前没有可以新增的文字或办公文档。");
+      : "当前没有可以新增的资料。");
   }
 
   function reviewLocalSources() {
@@ -230,8 +254,9 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
 
   async function resolveSelectedSources(ids = selectedIds) {
     const remoteById = new Map([...remoteSources, ...feishuResults].map((item) => [item.id, item]));
-    const localTexts = new Map((await readLocalKnowledgeItems(ids.filter((id) => id.startsWith("local:"))))
+    const localTexts = new Map((await readLocalKnowledgeItems(ids.filter((id) => id.startsWith("local:")), setMessage))
       .map((item) => [item.id, item.text]));
+    setLocalItems(await loadLocalKnowledge());
     return Promise.all(ids.map(async (id) => {
       const local = localItems.find((item) => item.id === id);
       if (local) return {
@@ -241,6 +266,8 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
         path: local.path,
         text: localTexts.get(local.id)!.slice(0, 12_000),
       };
+      const uploaded = uploadedSources.find((item) => item.id === id);
+      if (uploaded) return { ...uploaded, text: uploaded.text.slice(0, 12_000) };
       if (preview?.id === id && preview.text.trim()) return preview;
       const remote = remoteById.get(id);
       if (!remote) throw new Error(`无法读取已选资料：${id}`);
@@ -309,7 +336,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
           <h2 className="text-sm font-semibold text-slate-900">知识来源</h2>
           <p className="mt-1 text-xs text-slate-500">需要新增或更新资料时再使用这些入口。</p>
         </div>
-        <span className="text-xs text-slate-400">{localItems.length + remoteSources.length} 个可用来源</span>
+        <span className="text-xs text-slate-400">{localItems.length + remoteSources.length + uploadedSources.length} 个可用来源</span>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1.12fr_1fr_0.68fr]">
@@ -323,7 +350,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
               {permission === "granted" ? "已连接" : permission === "prompt" || permission === "denied" ? "等待授权" : "未连接"}
             </span>
           </div>
-          <p className="mt-2 text-xs leading-5 text-slate-500">支持 MD、TXT、PDF、Word（DOCX）；PPT、图片和视频暂不读取。PDF 索引检查前 {MAX_PDF_INDEX_PAGES} 页，选中资料用于 AI 建档时再读取正文。</p>
+          <p className="mt-2 text-xs leading-5 text-slate-500">支持文字、PDF、Word 和图片。刷新只重读新增或变更文件；图片和扫描件先列入清单，预览或建档时将压缩图发送给 AI 识别，请核对结果。PDF、Word 和图片每份最多 20 MB，扫描 PDF 最多 {MAX_PDF_INDEX_PAGES} 页。</p>
           {permission === "unsupported" ? (
             <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">请使用桌面版 Chrome 或 Edge。</p>
           ) : (
@@ -340,7 +367,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
             <p className="flex items-center gap-2 font-semibold text-emerald-900"><span className="size-3 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-800" aria-hidden="true" />{scanProgress.phase === "connecting" ? "正在核对登录状态并准备索引…" : scanProgress.phase === "saving" ? "正在保存本地索引…" : "正在检查本地资料…"}</p>
             <p className="mt-1 text-slate-600">已发现 {scanProgress.checkedFiles} 个文件 · 已索引 {scanProgress.indexedFiles} 份 · 已跳过 {scanProgress.skippedFiles} 份</p>
             {scanProgress.currentPath ? <p className="mt-1 break-all text-slate-600">{scanProgress.phase === "reading" ? "正在读取：" : "正在检查："}{scanProgress.currentPath}</p> : null}
-            <p className="mt-2 text-slate-500">本地索引请保持页面打开。单个文件读取超过 15 秒会跳过并列出原因；AI 建档提交成功后可离开页面。</p>
+            <p className="mt-2 text-slate-500">本地索引请保持页面打开。单个文件读取超过 15 秒会列出原因，旧摘要仍保留；AI 建档提交成功后可离开页面。</p>
             {scanProgress.phase !== "saving" ? <button className="mt-2 font-semibold text-emerald-800 underline" type="button" onClick={() => scanController.current?.abort()}>停止索引</button> : null}
           </div> : null}
         </section>
@@ -365,24 +392,24 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
 
         <section className="rounded-xl bg-slate-50 p-3">
           <h3 className="text-sm font-semibold text-slate-800">文件上传</h3>
-          <p className="mt-1 text-xs text-slate-500">临时兼容入口</p>
+          <p className="mt-1 text-xs text-slate-500">PDF / Word 在本机提取文字；图片由 AI 识别</p>
           <label className="mt-3 flex min-h-9 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-emerald-700 hover:text-emerald-800">
-            <span>{busy === "upload" ? "读取中…" : "上传 MD / TXT"}</span>
-            <input className="sr-only" type="file" multiple accept=".md,.txt,text/markdown,text/plain" onChange={(event) => upload(event.target.files)} />
+            <span>{busy === "upload" ? "读取中…" : "选择文件"}</span>
+            <input className="sr-only" type="file" multiple disabled={busy !== null} accept=".md,.txt,.csv,.pdf,.docx,.jpg,.jpeg,.png,.webp,.gif,.bmp" onChange={(event) => upload(event.target.files)} />
           </label>
         </section>
       </div>
       {scanReport && scanSummary ? <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 sm:p-5">
         <div>
           <h3 className="text-sm font-semibold text-emerald-950">资料检查完成，原文件没有被修改</h3>
-          <p className="mt-1 text-xs leading-5 text-emerald-900/75">系统已自动排除常见程序、缓存和系统目录，并把剩余内容按用途分组。你不需要判断文件扩展名。</p>
+          <p className="mt-1 text-xs leading-5 text-emerald-900/75">系统已排除常见程序和缓存目录。新增文件出现在下方清单；刷新文件夹后，选中资料生成知识档案，核对确认后才会更新经营信息。</p>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-emerald-200 bg-white/85 p-4">
             <div className="flex items-start gap-3"><input aria-label="读取文字与办公文档" checked readOnly type="checkbox" className="mt-0.5 size-4 accent-emerald-800" /><div><p className="text-sm font-semibold text-slate-900">文字与办公文档</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.readable} 份可直接整理：Markdown、TXT、PDF、Word</p></div></div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white/70 p-4">
-            <div className="flex items-start gap-3"><input aria-label="读取图片与扫描件" disabled type="checkbox" className="mt-0.5 size-4" /><div><p className="text-sm font-semibold text-slate-800">图片与无文字摘要的 PDF</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.imagesAndScans} 份暂不读取；扫描件需先转换成文字，PDF 前 {MAX_PDF_INDEX_PAGES} 页没有文字时也会归入此处</p></div></div>
+            <div className="flex items-start gap-3"><input aria-label="读取图片与扫描件" checked readOnly type="checkbox" className="mt-0.5 size-4 accent-emerald-800" /><div><p className="text-sm font-semibold text-slate-800">图片与无文字摘要的 PDF</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.imagesAndScans} 份已列入资料清单；点击预览或选中建档时再识别，结果需人工核对。HEIC / TIFF 请先转成 JPG 或 PNG</p></div></div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white/70 p-4">
             <p className="text-sm font-semibold text-slate-800">已自动忽略</p><p className="mt-1 text-xs leading-5 text-slate-500">{scanSummary.ignored} 份其他文件或无法读取的资料已跳过；常见程序、日志和缓存目录也会自动跳过</p>
@@ -412,7 +439,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
               <h2 className="text-base font-semibold text-slate-900">搜索与选择</h2>
               <p className="mt-1 text-xs text-slate-500">本地资料即时过滤，飞书资料按需搜索。</p>
             </div>
-            <span className="shrink-0 text-xs text-slate-400">{localResults.length + displayedRemoteResults.length} 条结果</span>
+            <span className="shrink-0 text-xs text-slate-400">{localResults.length + displayedRemoteResults.length + uploadedResults.length} 条结果</span>
           </div>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <label className="min-w-0 flex-1">
@@ -423,9 +450,10 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
           </div>
         </div>
         <div className="min-h-[420px] max-h-[calc(100dvh-320px)] divide-y divide-slate-100 overflow-y-auto">
+          {uploadedResults.map((item) => <article className="flex items-start gap-3 p-4" key={item.id}><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={() => setPreview(item)}><span className="block text-[10px] font-semibold text-emerald-700">已上传资料</span><span className="mt-1 block truncate text-sm font-semibold">{item.title}</span><span className="mt-2 line-clamp-2 block text-xs leading-5 text-slate-500">{item.text.slice(0, 220)}</span></button><SelectButton selected={selectedIds.includes(item.id)} onClick={() => toggle(item.id)} /></article>)}
           {localResults.map((item) => <LocalRow key={item.id} item={item} busy={busy} selected={selectedIds.includes(item.id)} onPreview={() => previewLocal(item)} onToggle={() => toggle(item.id)} />)}
           {displayedRemoteResults.map((item) => <RemoteRow key={`${item.source}:${item.id}`} item={item} busy={busy} selected={selectedIds.includes(item.id)} onPreview={() => previewRemote(item)} onToggle={() => toggle(item.id)} />)}
-          {!localResults.length && !displayedRemoteResults.length ? (
+          {!localResults.length && !displayedRemoteResults.length && !uploadedResults.length ? (
             <div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
               <h3 className="text-sm font-semibold text-slate-800">{query.trim() ? "没有匹配的资料" : "知识库还是空的"}</h3>
               <p className="mt-2 max-w-xs text-xs leading-5 text-slate-500">{query.trim() ? "换一个关键词，或点击“搜索飞书”查询远程资料。" : "从上方连接本地文件夹、飞书，或临时上传文件。"}</p>
@@ -465,7 +493,7 @@ export function KnowledgeWorkspace({ initialOrganizationTaskId, bare = false }: 
 }
 
 function LocalRow({ item, busy, selected, onPreview, onToggle }: { item: LocalKnowledgeItem; busy: string | null; selected: boolean; onPreview: () => void; onToggle: () => void }) {
-  return <article className="flex items-start gap-3 p-4"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{item.title}</span><span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{item.extension === "docx" ? "Word" : item.extension}</span></span><span className="mt-1 block truncate text-xs text-slate-400">本地 · {item.path}</span><span className="mt-2 line-clamp-2 block text-xs leading-5 text-slate-500">{item.excerpt || "空文件"}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
+  return <article className="flex items-start gap-3 p-4"><button className="min-w-0 flex-1 text-left" disabled={busy !== null} onClick={onPreview}><span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{item.title}</span><span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{item.extension === "docx" ? "Word" : item.extension}</span></span><span className="mt-1 block truncate text-xs text-slate-400">本地 · {item.path}</span><span className="mt-2 line-clamp-2 block text-xs leading-5 text-slate-500">{busy === `preview:${item.id}` ? "正在读取资料…" : item.excerpt || (item.needsRecognition ? "点击预览或选中建档时识别图片内容" : "空文件")}</span></button><SelectButton selected={selected} onClick={onToggle} /></article>;
 }
 
 function OrganizationPlanPanel({ busy, items, plan, onConfirm }: { busy: string | null; items: LocalKnowledgeItem[]; plan: KnowledgeOrganizationPlan; onConfirm: () => void }) {
@@ -490,6 +518,13 @@ function SelectButton({ selected, onClick }: { selected: boolean; onClick: () =>
   return <button className={selected ? `${primaryButtonClass} min-h-8 px-3 text-xs` : `${secondaryButtonClass} min-h-8 px-3 text-xs`} onClick={onClick}>{selected ? "已选择" : "选择"}</button>;
 }
 
+async function loadUploadedSources() {
+  const response = await fetch("/api/materials", { cache: "no-store" });
+  if (!response.ok) throw new Error("资料读取失败");
+  const payload = await response.json() as { materials?: KnowledgePreview[] };
+  return (payload.materials ?? []).filter((item) => item.source === "upload");
+}
+
 async function loadRemoteSources() {
   const response = await fetch("/api/knowledge-sources", { cache: "no-store" });
   const payload = (await response.json()) as { sources?: RemoteKnowledgeSource[] };
@@ -508,14 +543,14 @@ function toPreview(item: FeishuItem): KnowledgePreview {
 }
 
 function sourceName(source: KnowledgePreview["source"]) {
-  return source === "local" ? "本地" : source === "base" ? "飞书多维表格" : source === "feishu" ? "飞书文档" : "兼容上传";
+  return source === "local" ? "本地" : source === "base" ? "飞书多维表格" : source === "feishu" ? "飞书文档" : "已上传";
 }
 
 function summarizeKnowledgeScan(report: KnowledgeScanReport) {
   const images = report.imageFiles ?? imageCountFromExtensions(report.skippedByExtension);
   const needsOcr = report.needsOcrFiles ?? 0;
   return {
-    readable: Math.max(0, report.readableFiles - report.emptyFiles),
+    readable: report.textFiles !== undefined ? Math.max(0, report.textFiles + (report.officeDocumentFiles ?? 0) - report.emptyFiles) : Math.max(0, report.readableFiles - report.emptyFiles),
     imagesAndScans: images + needsOcr,
     ignored: report.ignoredFiles ?? Math.max(0, report.skippedFiles - images - needsOcr),
   };

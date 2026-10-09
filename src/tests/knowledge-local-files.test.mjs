@@ -54,6 +54,12 @@ test("PDF and Word documents expose text without uploading the original file", a
   assert.match(await extractDocxText(docx), /Hello Word/);
 });
 
+test("recommendations include new recognizable pictures but leave unsupported image formats for conversion", () => {
+  const image = knowledgeItem({ id: "local:产品.png", extension: "png", searchText: "", needsRecognition: true });
+  const heic = knowledgeItem({ id: "local:产品.heic", extension: "heic", searchText: "", needsRecognition: true });
+  assert.deepEqual(recommendKnowledgeItems([heic, image]).map((item) => item.id), [image.id]);
+});
+
 test("PDF indexing stops after 20 pages while selected-document reads include later pages", async () => {
   const pages = Array.from({ length: 21 }, (_, index) => index === 20 ? "Later business material" : "");
   const indexed = await extractPdfText(arrayBuffer(minimalPdf(pages)), { indexOnly: true });

@@ -120,7 +120,7 @@ export async function saveMaterial(source: KnowledgeSource) {
     const materials = [...store.materials];
     const existingIndex = materials.findIndex((item) => item.id === source.id);
 
-    if (existingIndex >= 0) materials[existingIndex] = record;
+    if (existingIndex >= 0) materials[existingIndex] = { ...materials[existingIndex], ...record, createdAt: materials[existingIndex].createdAt };
     else materials.push(record);
 
     return { ...store, materials };
@@ -201,6 +201,7 @@ function createId(prefix: string) {
 
 function normalizeStore(parsed: Partial<ContentStore>): ContentStore {
   return {
+    ...parsed,
     accountContext: parsed.accountContext ?? null,
     accountCaptures: parsed.accountCaptures ?? [],
     accountProfiles: parsed.accountProfiles ?? [],

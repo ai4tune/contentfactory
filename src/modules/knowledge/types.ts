@@ -1,4 +1,4 @@
-export type LocalKnowledgeExtension = "md" | "txt" | "pdf" | "docx";
+export type LocalKnowledgeExtension = "md" | "txt" | "pdf" | "docx" | "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" | "heic" | "heif" | "tif" | "tiff";
 
 export type LocalKnowledgeItem = {
   id: string;
@@ -11,6 +11,8 @@ export type LocalKnowledgeItem = {
   excerpt: string;
   searchText: string;
   indexedAt: string;
+  needsRecognition?: boolean;
+  recognizedText?: string;
 };
 
 export type KnowledgeScanReport = {
@@ -19,6 +21,10 @@ export type KnowledgeScanReport = {
   emptyFiles: number;
   skippedFiles: number;
   skippedByExtension: Record<string, number>;
+  addedFiles?: number;
+  updatedFiles?: number;
+  reusedFiles?: number;
+  retainedFiles?: number;
   textFiles?: number;
   officeDocumentFiles?: number;
   imageFiles?: number;

@@ -133,12 +133,12 @@ export async function refreshStoredDirectory(options: LocalKnowledgeScanOptions 
   return refreshLocalIndex(handle, options);
 }
 
-export async function readLocalKnowledgeItem(id: string) {
-  const [item] = await readLocalKnowledgeItems([id]);
+export async function readLocalKnowledgeItem(id: string, onProgress?: (message: string) => void) {
+  const [item] = await readLocalKnowledgeItems([id], onProgress);
   return item.text;
 }
 
-export async function readLocalKnowledgeItems(ids: string[]) {
+export async function readLocalKnowledgeItems(ids: string[], onProgress?: (message: string) => void) {
   if (!ids.length) return [];
   const root = await storedDirectory();
 
@@ -150,19 +150,37 @@ export async function readLocalKnowledgeItems(ids: string[]) {
   }
 
   const records = new Map((await readAllRecords<LocalIndexRecord>(INDEX_STORE)).map((record) => [record.id, record]));
-  return Promise.all(ids.map(async (id) => {
+  if (root !== connectedDirectory) throw new Error("登录账号已切换，请重新读取当前账号的资料。");
+  const result: { id: string; text: string }[] = [];
+  for (const id of ids) {
     const record = records.get(id);
     if (!record) throw new Error("没有找到这份本地资料，请刷新知识库后重试。");
     try {
-      const file = await record.handle.getFile();
-      return { id, text: await extractLocalDocumentText(file, record.extension) };
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "NotAllowedError") {
-        throw new KnowledgeDirectoryPermissionError();
+      onProgress?.(`正在读取第 ${result.length + 1}/${ids.length} 份资料：${record.title}…`);
+      const file = await waitForScan(record.handle.getFile(), AbortSignal.timeout(SCAN_READ_TIMEOUT_MS));
+      const unchanged = file.size === record.size && file.lastModified === record.lastModified;
+      const readSignal = AbortSignal.timeout(180_000);
+      const text = unchanged && record.recognizedText ? record.recognizedText
+        : await waitForScan(extractLocalDocumentText(file, record.extension, { onProgress, signal: readSignal }), readSignal);
+      result.push({ id, text });
+      // Cache only explicitly read PDF/images; opening the page never recognizes or writes records.
+      if ((record.needsRecognition || record.extension === "pdf") && text.trim() && !(unchanged && record.recognizedText)) {
+        const database = await openDatabase();
+        try {
+          if (root !== connectedDirectory) throw new Error("登录账号已切换，请重新读取当前账号的资料。");
+          const transaction = database.transaction(INDEX_STORE, "readwrite");
+          transaction.objectStore(INDEX_STORE).put({ ...record, size: file.size, lastModified: file.lastModified,
+            recognizedText: text, searchText: text.slice(0, MAX_SEARCH_CHARACTERS), excerpt: text.slice(0, 220), needsRecognition: false });
+          await transactionDone(transaction);
+        } finally { database.close(); }
       }
-      throw error;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotAllowedError") throw new KnowledgeDirectoryPermissionError();
+      const reason = error instanceof DOMException && error.name === "TimeoutError" ? "读取超时，请检查文件已下载到电脑；扫描 PDF 可拆分后重试。" : error instanceof Error ? error.message : "请重试";
+      throw new Error(`“${record.path}”读取失败：${reason}`);
     }
-  }));
+  }
+  return result;
 }
 
 export async function applyKnowledgeOrganization(plan: KnowledgeOrganizationPlan) {
@@ -247,7 +265,18 @@ async function refreshLocalIndex(root: ReadableDirectoryHandle, options: LocalKn
   // Check identity before scanning; a failed or cancelled scan keeps the previous folder and index together.
   const database = await openDatabase();
   try {
-    const { records, report } = await collectFiles(root, options);
+    const scanDatabaseName = databaseName;
+    const previousTransaction = database.transaction([HANDLE_STORE, INDEX_STORE], "readonly");
+    const [previousRoot, previousRecords] = await Promise.all([
+      requestResult<ReadableDirectoryHandle | undefined>(previousTransaction.objectStore(HANDLE_STORE).get(ROOT_HANDLE_KEY)),
+      requestResult<LocalIndexRecord[]>(previousTransaction.objectStore(INDEX_STORE).getAll()),
+    ]);
+    const sameDirectory = previousRoot && (root === previousRoot || (root.isSameEntry && await root.isSameEntry(previousRoot)));
+    const previous = sameDirectory ? previousRecords : [];
+    const { records, report } = await collectFiles(root, options, previous);
+    options.signal?.throwIfAborted();
+    await resolveDatabaseName();
+    if (databaseName !== scanDatabaseName) throw new Error("登录账号已切换，本次扫描未保存，请重新连接当前账号的文件夹。");
     options.signal?.throwIfAborted();
     options.onProgress?.({ phase: "saving", checkedFiles: report.totalFiles, indexedFiles: records.length, skippedFiles: report.skippedFiles });
     const transaction = database.transaction([HANDLE_STORE, INDEX_STORE, META_STORE], "readwrite");
@@ -264,7 +293,12 @@ async function refreshLocalIndex(root: ReadableDirectoryHandle, options: LocalKn
   }
 }
 
-async function collectFiles(root: IterableDirectoryHandle, options: LocalKnowledgeScanOptions) {
+async function collectFiles(root: IterableDirectoryHandle, options: LocalKnowledgeScanOptions, previous: LocalIndexRecord[]) {
+  const previousByPath = new Map(previous.map((record) => [record.path, record]));
+  let addedFiles = 0;
+  let updatedFiles = 0;
+  let reusedFiles = 0;
+  let retainedFiles = 0;
   const records: LocalIndexRecord[] = [];
   let totalFiles = 0;
   let emptyFiles = 0;
@@ -316,17 +350,14 @@ async function collectFiles(root: IterableDirectoryHandle, options: LocalKnowled
       progress("scanning", path);
       const extension = knowledgeFileExtension(name);
       const category = classifyKnowledgeFile(extension);
-      if (category === "image") {
-        imageFiles += 1;
-        incrementSkipped(extension);
-        continue;
-      }
       if (category === "ignored") {
         ignoredFiles += 1;
         incrementSkipped(extension);
         continue;
       }
 
+      if (category === "image") imageFiles += 1;
+      const old = previousByPath.get(path);
       const readableExtension = extension as LocalKnowledgeExtension;
       const fileSignal = AbortSignal.any([signal, AbortSignal.timeout(SCAN_READ_TIMEOUT_MS)]);
       let file: File;
@@ -334,34 +365,42 @@ async function collectFiles(root: IterableDirectoryHandle, options: LocalKnowled
       try {
         progress("reading", path);
         file = await waitForScan(handle.getFile(), fileSignal);
-        text = category === "text"
+        if (old && old.size === file.size && old.lastModified === file.lastModified) {
+          records.push({ ...old, handle });
+          reusedFiles += 1;
+          if (old.needsRecognition && readableExtension === "pdf") needsOcrFiles += 1;
+          if (category === "text") { textFiles += 1; if (!old.searchText.trim()) emptyFiles += 1; }
+          if (category === "office" && !old.needsRecognition) officeDocumentFiles += 1;
+          continue;
+        }
+        text = category === "image" ? "" : category === "text"
           ? await waitForScan(file.slice(0, MAX_INDEX_BYTES).text(), fileSignal)
           : await waitForScan(extractLocalDocumentText(file, readableExtension, { indexOnly: true, signal: fileSignal }), fileSignal);
       } catch (error) {
         signal.throwIfAborted();
         if (error instanceof DOMException && error.name === "NotAllowedError") throw new KnowledgeDirectoryPermissionError();
-        ignoredFiles += 1;
-        incrementSkipped(extension);
-        failedFiles.push({ path, reason: fileSignal.aborted ? "读取超过 15 秒，已跳过；请检查文件是否已下载到电脑后重试。" : error instanceof Error ? error.message : "无法读取此文件。" });
+        if (old) { records.push(old); retainedFiles += 1; }
+        else { ignoredFiles += 1; incrementSkipped(extension); }
+        const reason = fileSignal.aborted ? "读取超过 15 秒；请检查文件是否已下载到电脑后重试。" : error instanceof Error ? error.message : "无法读取此文件。";
+        failedFiles.push({ path, reason: `${reason}${old ? " 已保留上次索引，可继续查看旧摘要。" : ""}` });
         continue;
       }
       const normalized = text.replace(/\s+/g, " ").trim();
-      if (!normalized && category === "office") {
-        if (readableExtension === "pdf") needsOcrFiles += 1;
-        else ignoredFiles += 1;
-        incrementSkipped(extension);
-        continue;
-      }
-      if (!normalized) emptyFiles += 1;
+      const needsRecognition = category === "image" || (!normalized && readableExtension === "pdf");
+      if (needsRecognition && readableExtension === "pdf") needsOcrFiles += 1;
+      if (!normalized && !needsRecognition) emptyFiles += 1;
       if (category === "text") textFiles += 1;
-      else officeDocumentFiles += 1;
+      else if (category === "office" && !needsRecognition) officeDocumentFiles += 1;
+      if (old) updatedFiles += 1;
+      else addedFiles += 1;
 
       const frontMatter = category === "text" ? readFrontMatter(text) : { title: undefined, tags: [] as string[] };
       const title = frontMatter.title
         ?? (readableExtension === "md" ? readMarkdownTitle(text) : undefined)
-        ?? name.replace(/\.(md|txt|pdf|docx)$/i, "");
+        ?? name.slice(0, -(extension.length + 1));
 
       records.push({
+        ...old,
         id: `local:${path}`,
         title,
         path,
@@ -372,6 +411,8 @@ async function collectFiles(root: IterableDirectoryHandle, options: LocalKnowled
         excerpt: normalized.slice(0, 220),
         searchText: normalized.slice(0, MAX_SEARCH_CHARACTERS),
         indexedAt: new Date().toISOString(),
+        needsRecognition,
+        recognizedText: undefined,
         handle,
       });
     }
@@ -387,6 +428,10 @@ async function collectFiles(root: IterableDirectoryHandle, options: LocalKnowled
       emptyFiles,
       skippedFiles: totalFiles - sortedRecords.length,
       skippedByExtension,
+      addedFiles,
+      updatedFiles,
+      reusedFiles,
+      retainedFiles,
       textFiles,
       officeDocumentFiles,
       imageFiles,

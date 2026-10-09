@@ -219,12 +219,12 @@ export async function analyzeInspiration(request: InspirationRequest): Promise<I
 }
 
 export async function chatCompletionJson(
-  messages: Array<{ role: "system" | "user"; content: string }>,
-  options: { minimumTimeoutMs?: number; timeoutMs?: number } = {},
+  messages: Array<{ role: "system" | "user"; content: string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> }>,
+  options: { minimumTimeoutMs?: number; timeoutMs?: number; vision?: boolean } = {},
 ) {
-  const baseUrl = requireEnv("AI_BASE_URL").trim();
-  const apiKey = requireEnv("AI_API_KEY").trim();
-  const model = requireEnv("AI_MODEL").trim();
+  const baseUrl = options.vision ? process.env.VISION_BASE_URL?.trim() || requireEnv("IMAGE_BASE_URL").trim() : requireEnv("AI_BASE_URL").trim();
+  const apiKey = options.vision ? process.env.VISION_API_KEY?.trim() || requireEnv("IMAGE_API_KEY").trim() : requireEnv("AI_API_KEY").trim();
+  const model = options.vision ? process.env.VISION_MODEL?.trim() || "gpt-5-3-mini" : requireEnv("AI_MODEL").trim();
   const url = normalizeChatCompletionsUrl(baseUrl);
   const startedAt = new Date();
 

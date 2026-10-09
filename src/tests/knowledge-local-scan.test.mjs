@@ -38,20 +38,20 @@ test("one hung file cannot block later material, and unreadable files are report
     [good.path, good.handle],
     file("损坏.docx", async () => { throw new Error("文件无法打开"); }),
     file("介绍.pptx", () => { throw new Error("PPT must be skipped without reading"); }),
-    file("菜单.jpg", () => { throw new Error("Image must be skipped without reading"); }),
+    file("菜单.jpg", async () => new File(["isolated image"], "菜单.jpg")),
   ]);
   const progress = [];
   const snapshot = await knowledge.chooseKnowledgeDirectory({ onProgress: (value) => progress.push(value) });
-  assert.equal(snapshot.items.length, 1);
+  assert.equal(snapshot.items.length, 2);
   assert.equal(snapshot.report.totalFiles, 5);
-  assert.equal(snapshot.report.skippedFiles, 4);
+  assert.equal(snapshot.report.skippedFiles, 3);
   assert.equal(snapshot.report.imageFiles, 1);
   assert.deepEqual(snapshot.report.failedFiles.map(({ path }) => path), ["未下载.pdf", "损坏.docx"]);
   assert.match(snapshot.report.failedFiles[0].reason, /超过 15 秒/);
   assert.ok(progress.some((value) => value.phase === "reading" && value.currentPath === "未下载.pdf"));
   assert.ok(progress.some((value) => value.currentPath === good.path));
-  assert.deepEqual(progress.at(-1), { phase: "saving", checkedFiles: 5, indexedFiles: 1, skippedFiles: 4 });
-  assert.equal((await knowledge.loadLocalKnowledge()).length, 1);
+  assert.deepEqual(progress.at(-1), { phase: "saving", checkedFiles: 5, indexedFiles: 2, skippedFiles: 3 });
+  assert.equal((await knowledge.loadLocalKnowledge()).length, 2);
 });
 
 test("stopping a new scan preserves the previous folder handle and complete index", async () => {
