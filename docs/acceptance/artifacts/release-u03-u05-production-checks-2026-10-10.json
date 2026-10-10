@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-10-10T11:32:14.215240+00:00",
+  "base": "https://nrgc.xingren.me",
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "healthy": true,
+      "configuration": {
+        "environment": "production",
+        "aiConfigured": true,
+        "supabaseAuthConfigured": true,
+        "supabasePersistenceConfigured": true,
+        "marketConfigured": true,
+        "missingRequired": []
+      }
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "login_page": true
+    },
+    {
+      "path": "/api/agent/chat",
+      "status": 401
+    },
+    {
+      "path": "/api/agent/chat/location",
+      "status": 401
+    },
+    {
+      "path": "/api/content-plans",
+      "status": 401
+    }
+  ],
+  "commit": "77035bf2ca930eb56789138884d4801c89d1d3cb",
+  "deploymentId": "dpl_6fCJwkCJQFATfs7Q1dQViGAcrnX8",
+  "deploymentUrl": "https://contentfactory-9o9hsbl5m-xkceshi-gmailcoms-projects.vercel.app",
+  "target": "production",
+  "status": "Ready",
+  "aliases": [
+    "nrgc.xingren.me",
+    "contentfactory-orpin.vercel.app",
+    "contentfactory-xkceshi-gmailcoms-projects.vercel.app",
+    "contentfactory-git-main-xkceshi-gmailcoms-projects.vercel.app"
+  ]
+}
