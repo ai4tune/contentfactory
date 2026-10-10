@@ -146,6 +146,7 @@ export async function getQuickPlanContext(input: {
   }
   const item = plan.items.find((candidate) => candidate.id === input.contentPlanItemId);
   if (!item) throw new QuickRequestError("计划选题不存在。", 404);
+  if (item.status === "paused" || (item.taskType ?? "content") !== "content") throw new QuickRequestError("这项任务不是当前可创作的选题，请回到计划调整。", 409);
   return { plan, item };
 }
 

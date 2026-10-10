@@ -9,8 +9,14 @@ export const contentPlanItemStatuses = [
   "generated",
   "published",
   "reviewed",
+  "paused",
+  "completed",
 ] as const;
 export type ContentPlanItemStatus = (typeof contentPlanItemStatuses)[number];
+
+export const planTaskTypes = ["content", "research", "photos", "materials"] as const;
+export type PlanTaskType = (typeof planTaskTypes)[number];
+export const planTaskLabels: Record<PlanTaskType, string> = { content: "写内容", research: "调研", photos: "拍真实照片", materials: "补充资料" };
 
 export const contentObjectives = ["reach", "trust", "conversion"] as const;
 export type ContentObjective = (typeof contentObjectives)[number];
@@ -38,6 +44,7 @@ export type ContentPillar = {
 
 export type ContentPlanItem = {
   id: string;
+  taskType?: PlanTaskType;
   title: string;
   angle?: string;
   pillarId: string;
@@ -70,6 +77,7 @@ export type ContentPlan = {
   publishingFrequency: number;
   periodStart: string;
   periodEnd: string;
+  timeZone?: string;
   status: ContentPlanStatus;
   items: ContentPlanItem[];
   createdAt: string;
@@ -83,6 +91,7 @@ export type ContentPlanGenerationOptions = {
   publishingFrequency: number;
   periodStart: string;
   periodEnd: string;
+  timeZone: string;
   contextEvidence: ContentPlanEvidence[];
 };
 

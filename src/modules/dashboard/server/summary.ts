@@ -1,3 +1,4 @@
+import { localDate } from "@/modules/plans/calendar";
 import { readStore } from "@/lib/store";
 import { listContentDrafts, listContentLibraryItems } from "@/modules/drafts/server/repository";
 import { listRemoteKnowledgeSources } from "@/modules/knowledge/server/source-store";
@@ -23,6 +24,8 @@ export async function getDashboardSummary() {
   return {
     account,
     contentPlan,
+    today: localDate(new Date(), contentPlan?.timeZone),
+    drafts: drafts.map((draft) => ({ ...draft, publications: contentItems.filter((item) => item.draftId === draft.id && item.publication).map((item) => item.publication!) })),
     serverKnowledgeCount: knowledgeSourceKeys.size,
     contentProjectCount: drafts.length,
     generatedContentCount: drafts.reduce(

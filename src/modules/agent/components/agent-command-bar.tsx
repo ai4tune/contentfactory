@@ -44,9 +44,9 @@ export function AgentCommandBar({
         }}
       >
         <label className="block text-sm font-semibold text-slate-900" htmlFor="agent-command">
-          告诉 AI 你现在想做什么
+          你现在想做什么
         </label>
-        <p className="mt-1 text-xs leading-5 text-slate-500">可以直接说目标，不需要先找到对应菜单。</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">输入选题开始创作，或找到计划、草稿与资料。</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <textarea
             className="min-h-24 resize-none rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-800 focus:bg-white focus:ring-2 focus:ring-emerald-900/10 sm:min-h-12"
@@ -61,7 +61,7 @@ export function AgentCommandBar({
                 runCommand(input);
               }
             }}
-            placeholder="例如：我想写一篇关于企业 AI 落地的文章"
+            placeholder="例如：帮我写一篇介绍店铺服务的内容"
             value={input}
           />
           <button
@@ -130,7 +130,7 @@ function resolveCommand(
         : `/setup/first-content?topic=${encodeURIComponent(input)}`,
     };
   }
-  if (containsAny(normalized, ["计划", "选题", "本周", "下周", "30天", "30 天"])) {
+  if (containsAny(normalized, ["计划", "选题", "本周", "下周", "7天", "7 天", "30天", "30 天"])) {
     return { href: "/plans" };
   }
   if (containsAny(normalized, ["企业", "定位", "资料", "知识", "风格", "品牌"])) {
@@ -138,7 +138,7 @@ function resolveCommand(
   }
 
   return {
-    message: "这版工作台先支持计划、选题、创作、审核、企业资料和视频脚本。你也可以直接选择上方建议，我会继续把更多自由指令接进来。",
+    message: "暂时还不能处理这项诉求。可以从上方建议继续，或查看计划、草稿与企业资料。",
   };
 }
 

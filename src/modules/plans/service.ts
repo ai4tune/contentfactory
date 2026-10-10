@@ -14,6 +14,7 @@ import {
   type GeneratedContentPlan,
 } from "./types";
 import { createContentPlan, replaceContentPlan } from "./repository";
+import { daysBetween, defaultTimeZone, itemDate, localDate, publishingDates } from "./calendar";
 
 export async function generateNewContentPlan(input: {
   account: AccountContext;
@@ -23,13 +24,13 @@ export async function generateNewContentPlan(input: {
 }) {
   const generated = await requestPlanFromAi(input.account, input.options, input.knowledgeProfile);
   const now = new Date().toISOString();
-  const items = normalizeItems(generated.items, generated.pillars, [], now);
+  const items = normalizeItems(generated.items, generated.pillars, [], now, input.options, publishingDates(input.options.periodStart, input.options.periodEnd, input.options.publishingFrequency));
 
   return createContentPlan({
     accountContextUpdatedAt: input.account.updatedAt,
     styleProfileVersion: input.styleProfileVersion,
     enterpriseKnowledgeProfileVersion: input.knowledgeProfile?.version,
-    title: text(generated.title, 200) || `${input.account.accountName || "当前账号"} 30 天内容计划`,
+    title: `${input.account.accountName || "当前账号"} ${daysBetween(input.options.periodStart, input.options.periodEnd) + 1} 天内容计划`,
     operatingGoal: input.options.operatingGoal,
     primaryChannel: input.options.primaryChannel,
     targetAudience: input.options.targetAudience,
@@ -37,6 +38,7 @@ export async function generateNewContentPlan(input: {
     publishingFrequency: input.options.publishingFrequency,
     periodStart: input.options.periodStart,
     periodEnd: input.options.periodEnd,
+    timeZone: input.options.timeZone,
     status: "draft",
     items,
   });
@@ -57,15 +59,23 @@ export async function regenerateUnlockedPlanItems(input: {
     publishingFrequency: input.plan.publishingFrequency,
     periodStart: input.plan.periodStart,
     periodEnd: input.plan.periodEnd,
+    timeZone: input.plan.timeZone || defaultTimeZone,
     contextEvidence: input.contextEvidence,
   };
-  const lockedItems = input.plan.items.filter((item) => item.locked);
+  const today = localDate(new Date(), options.timeZone);
+  const lockedItems = input.plan.items.filter((item) => item.locked || item.status !== "pending" || item.contentProjectId || item.publicationId || (item.taskType ?? "content") !== "content" || itemDate(input.plan, item) < today);
+  const remainingDates = publishingDates(options.periodStart, options.periodEnd, options.publishingFrequency).filter((date) => date >= today);
+  for (const item of lockedItems.filter((item) => (item.taskType ?? "content") === "content")) {
+    const index = remainingDates.indexOf(itemDate(input.plan, item));
+    if (index >= 0) remainingDates.splice(index, 1);
+  }
+  if (!remainingDates.length) return input.plan;
   const generated = await requestPlanFromAi(input.account, options, input.knowledgeProfile, {
     pillars: input.plan.pillars,
-    lockedItems,
+    lockedItems, dates: remainingDates,
   });
   const now = new Date().toISOString();
-  const items = normalizeItems(generated.items, input.plan.pillars, lockedItems, now);
+  const items = normalizeItems(generated.items, input.plan.pillars, lockedItems, now, options, remainingDates);
   const updated = await replaceContentPlan({
     ...input.plan,
     accountContextUpdatedAt: input.account.updatedAt,
@@ -81,15 +91,15 @@ async function requestPlanFromAi(
   account: AccountContext,
   options: ContentPlanGenerationOptions,
   knowledgeProfile?: EnterpriseKnowledgeProfile | null,
-  existing?: { pillars: ContentPillar[]; lockedItems: ContentPlanItem[] },
+  existing?: { pillars: ContentPillar[]; lockedItems: ContentPlanItem[]; dates: string[] },
 ): Promise<{ title: string; pillars: ContentPillar[]; items: GeneratedContentPlan["items"] }> {
-  const needed = 30 - (existing?.lockedItems.length ?? 0);
+  const needed = existing?.dates.length ?? publishingDates(options.periodStart, options.periodEnd, options.publishingFrequency).length;
   const items: GeneratedContentPlan["items"] = [];
   const usedTitles = new Set(existing?.lockedItems.map((item) => normalizeTitle(item.title)) ?? []);
   let pillars = existing?.pillars;
   let title = "";
 
-  for (let batchNumber = 1; batchNumber <= 4 && items.length < needed; batchNumber++) {
+  for (let batchNumber = 1; batchNumber <= Math.ceil(needed / 10) + 1 && items.length < needed; batchNumber++) {
     const count = Math.min(10, needed - items.length);
     const batch = await requestPlanBatch(account, options, knowledgeProfile, pillars, existing?.lockedItems ?? [], {
       count,
@@ -131,7 +141,7 @@ async function requestPlanBatch(
     "pillarIndex 从 0 开始；objective 只能是 reach、trust、conversion。",
     "evidence 是数组，每项包含 type、可选 refId、label；type 只能是 enterprise_knowledge、customer_pain、market_signal、inspiration。",
     "不要编造企业事实、案例、客户、数字或市场结果。依据不足时使用 customer_pain 并明确这是待验证的问题判断。",
-    "items 按未来 30 天的推荐优先级排序；第 1～7 个是本周优先选题。",
+    `items 按 ${options.periodStart} 至 ${options.periodEnd} 的执行顺序排列；每周 ${options.publishingFrequency} 篇，本批只生成要求的数量，日期由系统安排。`,
   ].join("\n");
   const user = [
     "【当前账号】",
@@ -204,52 +214,35 @@ function normalizePillars(value: GeneratedContentPlan["pillars"], accountPillars
 function normalizeItems(
   generated: GeneratedContentPlan["items"],
   pillars: ContentPillar[],
-  lockedItems: ContentPlanItem[],
+  preservedItems: ContentPlanItem[],
   now: string,
+  options: ContentPlanGenerationOptions,
+  dates: string[],
 ): ContentPlanItem[] {
-  if (lockedItems.length > 30) throw new Error("锁定选题不能超过 30 个。");
-  const lockedTitles = new Set(lockedItems.map((item) => normalizeTitle(item.title)));
+  const preservedTitles = new Set(preservedItems.map((item) => normalizeTitle(item.title)));
   const uniqueGenerated = generated
-    .filter((item) => item.title && item.rationale)
-    .filter((item) => !lockedTitles.has(normalizeTitle(item.title)))
+    .filter((item) => item.title && item.rationale && !preservedTitles.has(normalizeTitle(item.title)))
     .filter((item, index, all) => all.findIndex((candidate) => normalizeTitle(candidate.title) === normalizeTitle(item.title)) === index);
-  const needed = 30 - lockedItems.length;
-  if (uniqueGenerated.length < needed) {
-    throw new Error(`AI 只返回 ${uniqueGenerated.length} 个可用且不重复的选题，需要 ${needed} 个，请重试。`);
-  }
-
-  const weekCounts = [0, 0, 0, 0];
-  const usedPriorities = new Set<number>();
-  for (const item of lockedItems) {
-    if (item.week >= 1 && item.week <= 4) weekCounts[item.week - 1] += 1;
-    usedPriorities.add(item.priority);
-  }
-  const availablePriorities = Array.from({ length: 30 }, (_, index) => index + 1)
-    .filter((priority) => !usedPriorities.has(priority));
-
-  const freshItems = uniqueGenerated.slice(0, needed).map((item, index): ContentPlanItem => {
-    const pillar = pillars[item.pillarIndex] ?? pillars[index % pillars.length];
-    const evidence = item.evidence.length
-      ? item.evidence
-      : [{ type: "customer_pain" as const, label: `${item.rationale}（待验证）` }];
-    return {
-      id: `contentPlanItem_${randomUUID()}`,
-      title: item.title,
-      angle: item.angle || undefined,
-      pillarId: pillar.id,
-      objective: contentObjectives.includes(item.objective) ? item.objective : contentObjectives[index % contentObjectives.length],
-      rationale: item.rationale,
-      evidence,
-      week: allocateWeek(weekCounts),
-      priority: availablePriorities[index],
-      locked: false,
-      origin: "ai",
-      status: "pending",
-      updatedAt: now,
-    };
-  });
-
-  return [...lockedItems, ...freshItems].sort((left, right) => left.priority - right.priority);
+  if (uniqueGenerated.length < dates.length) throw new Error(`AI 只返回 ${uniqueGenerated.length} 个可用且不重复的选题，需要 ${dates.length} 个，请重试。`);
+  const firstPriority = Math.max(0, ...preservedItems.map((item) => item.priority)) + 1;
+  const freshItems = uniqueGenerated.slice(0, dates.length).map((item, index): ContentPlanItem => ({
+    id: `contentPlanItem_${randomUUID()}`,
+    taskType: "content",
+    title: item.title,
+    angle: item.angle || undefined,
+    pillarId: (pillars[item.pillarIndex] ?? pillars[index % pillars.length]).id,
+    objective: contentObjectives.includes(item.objective) ? item.objective : "trust",
+    rationale: item.rationale,
+    evidence: item.evidence.length ? item.evidence : [{ type: "customer_pain", label: `${item.rationale}（待验证）` }],
+    week: Math.floor(daysBetween(options.periodStart, dates[index]) / 7) + 1,
+    scheduledDate: dates[index],
+    priority: firstPriority + index,
+    locked: false,
+    origin: "ai",
+    status: "pending",
+    updatedAt: now,
+  }));
+  return [...preservedItems, ...freshItems].sort((left, right) => left.priority - right.priority);
 }
 
 function normalizeGeneratedItem(
@@ -289,14 +282,6 @@ function normalizeGeneratedItem(
     rationale: text(record.rationale, 1000),
     evidence,
   };
-}
-
-function allocateWeek(counts: number[]) {
-  const capacities = [7, 7, 7, 9];
-  const index = counts.findIndex((count, week) => count < capacities[week]);
-  const selected = index >= 0 ? index : 3;
-  counts[selected] += 1;
-  return selected + 1;
 }
 
 function normalizeTitle(value: string) {

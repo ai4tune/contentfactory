@@ -15,7 +15,7 @@ export async function PATCH(
     if (!current.items.some((item) => item.id === itemId)) {
       return NextResponse.json({ error: "计划选题不存在。" }, { status: 404 });
     }
-    const update = parsePlanItemPatch(await request.json().catch(() => ({})), current);
+    const update = parsePlanItemPatch(await request.json().catch(() => ({})), current, current.items.find((item) => item.id === itemId));
     const plan = await updateContentPlanItem(id, itemId, update, { humanEdit: true });
     return NextResponse.json({ plan, item: plan?.items.find((item) => item.id === itemId) });
   } catch (error) {
