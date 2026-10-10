@@ -1,4 +1,5 @@
 import type { BriefKnowledgeSource } from "@/modules/content/types";
+import type { ResearchSource, ResearchLocation } from "@/modules/research/types";
 
 export type ChatMessage = {
   id: string;
@@ -15,9 +16,13 @@ export type ToolRecord = {
   name: string;
   input: Record<string, unknown>;
   status: "running" | "succeeded" | "failed";
+  attempt?: number;
   output?: Record<string, unknown>;
   draftSources?: BriefKnowledgeSource[];
+  researchSources?: ResearchSource[];
   error?: string;
+  errorStatus?: number;
+  externalAttempts?: number;
   updatedAt: string;
 };
 export type ChatTurn = {
@@ -35,7 +40,7 @@ export type ChatTurn = {
   tools: ToolRecord[];
   steps: number;
 };
-export type ChatStore = { conversations: Conversation[]; memories: ChatMemory[]; turns: ChatTurn[] };
+export type ChatStore = { conversations: Conversation[]; memories: ChatMemory[]; turns: ChatTurn[]; researchLocation?: ResearchLocation };
 export class ChatError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
 }

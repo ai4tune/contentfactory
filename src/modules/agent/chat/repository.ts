@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { dataFilePath } from "@/lib/data-directory";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import { ChatError, isActiveTurn, type ChatStore, type ChatTurn, type ToolRecord } from "./types";
+import type { ResearchRecord } from "@/modules/research/types";
 import type { SendChatInput } from "./request";
 
 const storePath = dataFilePath("agent-chat.local.json");
@@ -99,5 +100,18 @@ export async function saveMemory(id: string, content: string, sourceMessageId: s
     if (content) memories.push({ id, content, sourceMessageId, updatedAt: new Date().toISOString() });
     if (memories.length > 30) throw new ChatError("已保存 30 条记忆，请先删去不再需要的内容。");
     return { ...store, memories };
+  });
+}
+
+// This action is exposed only to the user-facing API, never as an AI tool.
+export async function confirmResearchLocation(sourceId: string) {
+  await updateJsonFile(storePath, empty, (store) => {
+    if (store.turns.some(isActiveTurn)) throw new ChatError("请等待当前任务完成或暂停后，再确认调研地点。", 409);
+    const source = store.turns.flatMap((turn) => turn.tools.filter((tool) => tool.status === "succeeded")
+      .flatMap((tool) => (tool.output?.research as ResearchRecord | undefined)?.sources ?? []))
+      .find((item) => item.id === sourceId && item.provider === "amap" && item.place);
+    if (!source?.place) throw new ChatError("当前账号没有这个高德地点，请先查询并选择自己的地点来源。", 404);
+    if (store.researchLocation?.sourceId === sourceId) return store;
+    return { ...store, researchLocation: { sourceId, title: source.title, place: source.place, confirmedAt: new Date().toISOString() } };
   });
 }

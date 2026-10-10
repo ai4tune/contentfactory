@@ -51,13 +51,22 @@ const server = http.createServer(async (request, response) => {
     const latestIndex = messages.findLastIndex((message) => message.role === "user");
     const latest = String(messages[latestIndex]?.content ?? "");
     const calls = messages.slice(latestIndex).flatMap((message) => message.tool_calls ?? []).map((call) => call.function.name);
-    if (!calls.length && body.tool_choice !== "required") return json(response, 400, { error: { message: "the first agent step must require a real tool call" } });
+    const progress = JSON.parse(system.match(/本次任务恢复进度：(.*)\n/)?.[1] ?? "{}");
+    if (!calls.length && body.tool_choice !== "required" && !progress.completed?.length) return json(response, 400, { error: { message: "the first agent step must require a real tool call" } });
     const attempts = (agentAttempts.get(latest) ?? 0) + 1;
     agentAttempts.set(latest, attempts);
     if (latest.includes("验收对话故障") && attempts === 1) return json(response, 502, { error: { message: "simulated agent failure" } });
     if (latest.includes("验收保存后故障") && calls.includes("create_draft") && !system.includes('"name":"create_draft"')) return json(response, 502, { error: { message: "simulated failure after saving draft" } });
     if (latest.includes("验收慢任务")) await new Promise((resolve) => setTimeout(resolve, 1200));
     let name, input;
+    const toolData = messages.filter((message) => message.role === "tool").map((message) => { try { return JSON.parse(message.content); } catch { return {}; } });
+    const research = toolData.findLast((data) => data.research)?.research;
+    const researchIndex = JSON.parse(system.match(/当前账号近期调研索引：(\[[^\n]*\])/)?.[1] ?? "[]");
+    if ((latest.includes("验收调研换词恢复") || latest.includes("验收直接汇总") || latest.includes("验收未开始步骤") || latest.includes("验收次数失败")) && calls.includes("search_web") && !progress.continuing) return json(response, 502, { error: { message: "failure after first research step" } });
+    if (latest.includes("验收高德网页恢复") && calls.includes("search_web") && !progress.continuing) return json(response, 502, { error: { message: "failure after rejected place and saved web query" } });
+    if (latest.includes("验收高德保存后故障") && calls.includes("search_places") && !system.includes('"name":"search_places"')) return json(response, 502, { error: { message: "failure after saved places" } });
+    if (latest.includes("验收高德旧编号") && calls.includes("read_research") && !system.includes('"name":"read_research"')) return json(response, 502, { error: { message: "failure after rejected source and saved research" } });
+    if (latest.includes("验收调研重试") && calls.includes("search_web") && !system.includes('"name":"search_web"')) return json(response, 502, { error: { message: "failure after saved research" } });
     if (latest.includes("验收循环")) { name = "search_content"; input = { query: `loop-${calls.length}` }; }
     else if (latest.includes("验收越权读取")) { name = "read_content"; input = { projectId: "other-account-project" }; }
     else if (latest.includes("验收缺资料")) { name = "request_input"; input = { question: "请选择要使用的本地资料。" }; }
@@ -69,7 +78,44 @@ const server = http.createServer(async (request, response) => {
       const refs = JSON.parse(system.match(/本对话此前提供的可读资料：(\[[^\n]*\])/)?.[1] ?? "[]");
       name = "read_knowledge"; input = { sourceId: refs[0]?.id ?? "missing-source" };
     }
+    else if (latest.includes("验收调研越权")) { name = "read_research"; input = { researchId: latest.match(/research_\w+/)?.[0] ?? "research_foreign" }; }
+    else if (latest.includes("验收直接汇总") && progress.continuing) { name = undefined; }
     else if (!calls.includes("get_business_context")) { name = "get_business_context"; input = {}; }
+    else if (latest.includes("验收高德网页恢复") && !calls.includes("read_place")) { name = "read_place"; input = { sourceId: progress.continuing ? latest.match(/source=([^\s]+)/)?.[1] : `${latest.match(/source=([^\s]+)/)?.[1].split(":source:")[0]}:source:0` }; }
+    else if (latest.includes("验收高德网页恢复") && !calls.includes("search_web")) { name = "search_web"; input = { query: progress.continuing ? "验收广场 官方账号 小红书 公众号" : "验收广场 官方账号", freshness: "any", limit: 3 }; }
+    else if (latest.includes("验收调研换词恢复") && !calls.includes("search_web")) { name = "search_web"; input = { query: progress.continuing ? "花店经营参考 官方账号" : "花店经营参考", freshness: progress.continuing ? "week" : "month", limit: progress.continuing ? 8 : 3 }; }
+    else if ((latest.includes("验收次数换词") || latest.includes("验收次数并行")) && calls.filter((name) => name === "search_web").length < (latest.includes("并行") ? 2 : 3)) { name = "search_web"; input = { query: `次数参考-${calls.filter((name) => name === "search_web").length}`, freshness: "month", limit: 3 }; }
+    else if (latest.includes("验收次数失败") && !calls.includes("search_web")) { name = "search_web"; input = { query: "failure-once-quota", freshness: "month", limit: 3 }; }
+    else if (latest.includes("验收次数失败") && calls.includes("search_web")) { name = "request_input"; input = { question: "本次网页搜索失败，一次搜索额度已经用完。请发送新的查询诉求。" }; }
+    else if (latest.includes("验收次数直接失败") && !calls.includes("search_web")) { name = "search_web"; input = { query: "failure-once-final", freshness: "month", limit: 3 }; }
+    else if (latest.includes("验收参数沿用") && calls.filter((name) => name === "search_web").length < (progress.continuing ? 2 : 1)) { name = "search_web"; input = { query: progress.continuing && !calls.includes("search_web") ? "更换后的查询" : "failure-once-resume", freshness: "month", limit: 3 }; }
+    else if ((latest.includes("验收直接汇总") || latest.includes("验收未开始步骤")) && !progress.continuing && !calls.includes("search_web")) { name = "search_web"; input = { query: "已完成的查询", freshness: "month", limit: 3 }; }
+    else if (latest.includes("验收未开始步骤") && progress.continuing && !calls.includes("search_peer_content")) { name = "search_peer_content"; input = { platform: "xiaohongshu", query: "鲜花花束", sort: "最多点赞", timeRange: "一个月内" }; }
+    else if (latest.includes("验收高德附近") && !calls.includes("search_nearby_places")) {
+      const center = JSON.parse(system.match(/用户通过界面确认的调研中心[^：]*：(.*)\n/)?.[1] ?? "null");
+      name = "search_nearby_places"; input = { centerSourceId: latest.match(/source=([^\s]+)/)?.[1] ?? center?.sourceId ?? "unconfirmed", query: "咖啡", radiusMeters: Number(latest.match(/radius=(\d+)/)?.[1] ?? 3000) };
+    }
+    else if (latest.includes("验收高德旧编号") && system.includes('"name":"read_research"') && !calls.includes("read_place")) { name = "read_place"; input = { sourceId: latest.match(/source=([^\s]+)/)?.[1] }; }
+    else if (latest.includes("验收高德编号修正") && !calls.includes("read_place")) { name = "read_place"; input = { sourceId: `${latest.match(/source=([^\s]+)/)?.[1].split(":source:")[0]}:source:0` }; }
+    else if (latest.includes("验收高德编号修正") && !calls.includes("read_research")) { name = "read_research"; input = { researchId: latest.match(/source=([^\s]+)/)?.[1].split(":source:")[0] }; }
+    else if (latest.includes("验收高德编号修正") && calls.filter((name) => name === "read_place").length < 2) { name = "read_place"; input = { sourceId: research.sources[0].id }; }
+    else if (latest.includes("验收高德详情") && !calls.includes("read_place")) { name = "read_place"; input = { sourceId: latest.match(/source=([^\s]+)/)?.[1] ?? "missing" }; }
+    else if (latest.includes("验收高德定位") && !calls.includes("search_places") && !system.includes('"name":"search_places"')) { name = "search_places"; input = { query: latest.match(/query=([^\s]+)/)?.[1] ?? "验收广场", city: "天津市" }; }
+    else if (latest.includes("验收高德定位")) { name = "request_input"; input = { question: "请展开地点来源并点选‘以这里为调研中心’，然后继续查询。" }; }
+    else if (latest.includes("验收参考参数修正") && !calls.includes("read_research")) { name = "read_research"; input = { researchId: researchIndex[0].id }; }
+    else if (latest.includes("验收参考参数修正") && calls.filter((call) => call === "create_draft").length < 2) {
+      name = "create_draft"; input = { topic: "介绍我们的鲜花花束服务", channel: "wechat_article", instructions: "验收发布交付", sourceIds: [], referenceSourceIds: [calls.includes("create_draft") ? research.sources[0].id : research.id] };
+    }
+    else if (latest.includes("验收调研上限")) { name = "search_web"; input = { query: `loop-${calls.length}`, freshness: "any", limit: 3 }; }
+    else if (latest.includes("验收调研连错") && calls.includes("search_web")) { name = "search_web"; input = { query: "malformed", freshness: "month", limit: 3 }; }
+    else if (latest.includes("验收调研续聊") && !calls.includes("search_research")) { name = "search_research"; input = { query: "" }; }
+    else if (latest.includes("验收调研续聊") && !calls.includes("read_research")) { name = "read_research"; input = { researchId: researchIndex[0]?.id ?? "missing" }; }
+    else if (latest.includes("验收平台账号") && !calls.includes("read_peer_account")) { name = "read_peer_account"; input = { platform: "xiaohongshu", accountId: "peer42" }; }
+    else if (latest.includes("验收平台账号") && !calls.includes("read_peer_posts")) { name = "read_peer_posts"; input = { platform: "xiaohongshu", accountId: "peer42" }; }
+    else if (latest.includes("验收调研") && !latest.includes("验收调研续聊") && !calls.includes("load_skill")) { name = "load_skill"; input = { name: "research" }; }
+    else if (latest.includes("验收调研") && !latest.includes("验收调研续聊") && !calls.includes("search_web")) { name = "search_web"; input = { query: latest.includes("empty") ? "empty" : latest.includes("malformed") ? "malformed" : latest.includes("rate-limit") ? "rate-limit" : "花店经营参考", freshness: "month", limit: 3 }; }
+    else if (latest.includes("验收调研组合") && !calls.includes("search_peer_content")) { name = "search_peer_content"; input = { platform: "xiaohongshu", query: "鲜花花束", sort: "最多点赞", timeRange: "一个月内" }; }
+    else if (latest.includes("验收参考写作") && !calls.includes("create_draft")) { name = "create_draft"; input = { topic: "介绍我们的鲜花花束服务", channel: "wechat_article", instructions: "验收发布交付", sourceIds: [], referenceSourceIds: [latest.match(/research_\w+:source:\w+/)?.[0] ?? research?.sources?.[0]?.id ?? "foreign-reference"] }; }
     else if (latest.includes("验收查旧内容") && !calls.includes("search_content")) { name = "search_content"; input = { query: "" }; }
     else if (latest.includes("验收历史对话") && !calls.includes("search_conversation")) { name = "search_conversation"; input = { query: "鲜花" }; }
     else if (latest.includes("验收写作") && !calls.includes("load_skill")) { name = "load_skill"; input = { name: "writing" }; }
@@ -83,7 +129,7 @@ const server = http.createServer(async (request, response) => {
     const answer = latest.includes("验收续聊") ? `已读取你的草稿：https://www.example.com/drafts/${previousDraft.projectId}` : "已按当前账号资料处理，结果已保存。草稿仍待人工核对，尚未发布。";
     return json(response, 200, { id: `agent-${attempts}`, model: body.model, object: "chat.completion", created: 1,
       choices: [{ index: 0, finish_reason: name ? "tool_calls" : latest.includes("验收截断") ? "length" : "stop", message: { role: "assistant", content: name ? latest.includes("验收循环") ? "还在处理" : "" : answer,
-        ...(name ? { tool_calls: Array.from({ length: name === "create_draft" && latest.includes("验收并行") ? 2 : 1 }, (_, index) => ({ id: `tool-${attempts}-${index}`, type: "function", function: { name, arguments: JSON.stringify(input) } })) } : {}) } }],
+        ...(name ? { tool_calls: Array.from({ length: (name === "create_draft" && latest.includes("验收并行")) || (name === "search_web" && latest.includes("验收次数并行")) ? 2 : 1 }, (_, index) => ({ id: `tool-${attempts}-${index}`, type: "function", function: { name, arguments: JSON.stringify(name === "search_web" && latest.includes("验收次数并行") ? { ...input, query: `${input.query}-${index}` } : input) } })) } : {}) } }],
       usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
     });
   }

@@ -4,10 +4,11 @@ import type { MarketAccount, MarketItem, OpportunityScore } from "./types";
 
 const PUBLIC_PROVIDER_NAME = "market-data";
 
-export function marketProvider() {
+export function marketProvider(options: { cache?: boolean } = {}) {
   if (!process.env.REDFOX_API_KEY) throw new Error("市场数据服务尚未配置，请联系管理员完成配置后重试。");
   return createRedFoxProvider({ name: "redfox", enabled: true, apiKey: process.env.REDFOX_API_KEY,
-    baseUrl: process.env.REDFOX_BASE_URL || (process.env.REDFOX_HOST ? `https://${process.env.REDFOX_HOST}` : undefined) });
+    baseUrl: process.env.REDFOX_BASE_URL || (process.env.REDFOX_HOST ? `https://${process.env.REDFOX_HOST}` : undefined),
+    cache: { enabled: options.cache !== false, ttlSeconds: 0 } });
 }
 
 export async function persistMarketItems(items: Array<MarketItem & { opportunityScore?: OpportunityScore }>) {

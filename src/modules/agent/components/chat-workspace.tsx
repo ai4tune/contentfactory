@@ -5,6 +5,7 @@ import Link from "@/components/navigation-link";
 import type { BriefKnowledgeSource } from "@/modules/content/types";
 import { isActiveTurn, type ChatMessage, type ChatStore, type ChatTurn } from "@/modules/agent/chat/types";
 import { ChatKnowledgePicker } from "./chat-knowledge-picker";
+import type { ResearchRecord, ResearchLocation } from "@/modules/research/types";
 
 type Snapshot = ChatStore & { workspaceId: string };
 type MemoryEdit = { id: string; content: string; sourceMessageId: string };
@@ -80,12 +81,13 @@ export function ChatWorkspace({ primaryHref }: { primaryHref: string }) {
     {state.conversations.length ? <select disabled={busy} aria-label="选择历史对话" className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" value={conversationId ?? ""} onChange={(event) => { setConversationId(event.target.value); setInput(""); setSources([]); pending.current = null; }}>
       <option value="">新的对话</option>{state.conversations.slice().reverse().map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}
     </select> : null}
+    {state.researchLocation ? <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600"><p>调研中心：<span className="font-semibold text-slate-900">{state.researchLocation.title}</span></p><p className="break-words">{state.researchLocation.place.city}{state.researchLocation.place.district}{state.researchLocation.place.address}</p><p>要研究别处，可以说出城市和具体店名或地址，再选择新的地点。</p></div> : null}
     <div ref={messagesBox} className="mt-4 max-h-[32rem] space-y-4 overflow-y-auto" aria-live="polite">
       {conversation?.messages.map((message) => <div key={message.id} className={`rounded-xl p-3 text-sm leading-6 ${message.role === "user" ? "ml-6 bg-slate-100" : "mr-2 bg-emerald-50"}`}>
         <p className="mb-1 text-xs font-semibold text-slate-500">{message.role === "user" ? "你" : "小掌柜"}</p><p className="whitespace-pre-wrap break-words">{message.content}</p>
         {message.sources?.length ? <p className="mt-2 text-xs text-slate-500">参考资料：{message.sources.map((item) => item.title).join("、")}</p> : null}
         {message.role === "user" ? <button type="button" className="mt-2 text-xs text-emerald-800 underline underline-offset-4" onClick={() => remember(message)}>保存为长期记忆</button> : null}
-        {state.turns.filter((turn) => turn.id === message.turnId && message.role === "user").map((turn) => <TurnProgress key={turn.id} turn={turn} disabled={busy || Boolean(active && active.id !== turn.id)} onAction={(name) => void action(async () => { await call(`/api/agent/chat/turns/${turn.id}`, { action: name }); })} />)}
+        {state.turns.filter((turn) => turn.id === message.turnId && message.role === "user").map((turn) => <TurnProgress key={turn.id} turn={turn} location={state.researchLocation} onConfirmLocation={(sourceId) => void action(async () => { await call("/api/agent/chat/location", { sourceId }); if (!input.trim()) setInput("以已确认地点为中心，继续刚才的周边调研。"); })} disabled={busy || Boolean(active && active.id !== turn.id)} locationDisabled={busy || Boolean(active)} onAction={(name) => void action(async () => { await call(`/api/agent/chat/turns/${turn.id}`, { action: name }); })} />)}
       </div>)}
       {!conversation?.messages.length ? <p className="py-3 text-sm leading-6 text-slate-500">可以让我找回最近的草稿、基于资料写一篇，或一起确定下一步。</p> : null}
     </div>
@@ -109,17 +111,37 @@ export function ChatWorkspace({ primaryHref }: { primaryHref: string }) {
     {error ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-950" role="alert">{error}</p> : null}
   </section>;
 }
-function TurnProgress({ turn, disabled, onAction }: { turn: ChatTurn; disabled: boolean; onAction: (name: "continue" | "pause") => void }) {
+function TurnProgress({ turn, disabled, onAction, location, onConfirmLocation, locationDisabled }: { turn: ChatTurn; disabled: boolean; location?: ResearchLocation; onConfirmLocation: (sourceId: string) => void; locationDisabled: boolean; onAction: (name: "continue" | "pause") => void }) {
   const results = turn.tools.filter((item) => item.status === "succeeded" && (["create_draft", "read_content"].includes(item.name)) && typeof (item.output?.projectId ?? item.output?.id) === "string");
+  const research = [...new Map(turn.tools.filter((item) => item.status === "succeeded" && item.output?.research).map((item) => {
+    const record = item.output!.research as ResearchRecord; return [record.id, record] as const;
+  })).values()];
   return <div className="mt-3 border-t border-slate-200/70 pt-2 text-xs text-slate-600"><p>{turn.stage}</p>
     {turn.error ? <p className="mt-1 text-amber-800">{turn.error}</p> : null}
     {turn.tools.length ? <details className="mt-2"><summary className="cursor-pointer">查看执行记录（{turn.tools.length}）</summary><ul className="mt-2 space-y-1">{turn.tools.map((item) => <li key={item.key}>{toolLabels[item.name] ?? item.name} · {item.status === "succeeded" ? "已完成" : item.status === "failed" ? "未完成" : "处理中"}</li>)}</ul></details> : null}
     {results.map((item) => <Link key={item.key} className="mt-2 block font-semibold text-emerald-800 underline" href={`/drafts/${encodeURIComponent(String(item.output!.projectId ?? item.output!.id))}`}>打开草稿：{String(item.output!.title ?? item.output!.topic)}{item.name === "create_draft" ? "（待人工核对）" : ""}</Link>)}
+    {research.map((record) => <details key={record.id} className="mt-2 rounded-lg border border-slate-200 bg-white p-3"><summary className="cursor-pointer font-semibold text-emerald-800">查看调研来源（{record.sources.length} 条）</summary>
+      <p className="mt-2 break-words">查询：{String(record.query.query ?? record.query.accountId ?? (record.kind === "place_detail" ? "所选地点详情" : "已保存记录"))}</p><p className="mt-1">取得时间：{new Date(record.retrievedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</p>
+      {record.kind === "nearby_places" ? <p className="mt-1">范围：以 {String((record.query.center as ResearchLocation | undefined)?.title ?? "已确认地点")} 为中心，{Number(record.query.radiusMeters) / 1000} 公里圆形范围</p> : null}
+      {!record.sources.length ? <p className="mt-2">本次没有取得可用来源，可以调整关键词后再查。</p> : null}
+      <ul className="mt-2 space-y-3">{record.sources.map((source) => <li key={source.id} className="min-w-0 border-t border-slate-100 pt-2">
+        {source.url ? <a href={source.url} target="_blank" rel="noopener noreferrer" className="break-words font-semibold underline">{source.title}</a> : <p className="break-words font-semibold">{source.title}（来源未提供链接）</p>}
+        <p className="mt-1">{source.provider === "amap" ? "高德地图" : source.provider === "brave" ? "公开网页" : source.platform === "xiaohongshu" ? "小红书" : "公众号"} · {source.evidence === "place" ? "地点资料" : source.evidence === "snippet" ? "搜索摘要" : source.evidence === "body" ? "正文片段" : source.evidence === "profile" ? "账号资料" : "内容摘要"}{source.authorName ? ` · ${source.authorName}` : ""}</p>
+        <p className="mt-1">{source.provider === "amap" ? "地点资料可能滞后，营业情况以门店确认为准" : source.publishedAt ? `来源日期：${sourceDate(source.publishedAt)}` : "来源未提供发布时间"}</p>
+        {source.metrics ? <p className="mt-1">{[["点赞", source.metrics.likes], ["收藏", source.metrics.collects], ["评论", source.metrics.comments]].map(([label, value]) => `${label}：${typeof value === "number" ? value : "未知"}`).join(" · ")}</p> : null}
+        <p className="mt-1 whitespace-pre-wrap break-words leading-5">{source.text.slice(0, 600) || "来源没有返回内容片段。"}</p>
+        {source.place ? <button type="button" disabled={locationDisabled || location?.sourceId === source.id} className="mt-2 rounded-lg border border-emerald-800 px-3 py-2 font-semibold text-emerald-800 disabled:opacity-50" onClick={() => onConfirmLocation(source.id)}>{location?.sourceId === source.id ? "当前调研中心" : "以这里为调研中心"}</button> : null}
+      </li>)}</ul><p className="mt-3 leading-5 text-slate-500">{record.limitations.join(" ")}</p>
+    </details>)}
     {isActiveTurn(turn) ? <button type="button" disabled={disabled} className="mt-2 underline" onClick={() => onAction("pause")}>暂停后续处理</button> : null}
     {turn.status === "failed" || turn.status === "paused" ? <button type="button" disabled={disabled} className="mt-2 font-semibold text-emerald-800 underline disabled:opacity-40" onClick={() => onAction("continue")}>继续处理</button> : null}
   </div>;
 }
-const toolLabels: Record<string, string> = { get_business_context: "读取经营资料", search_content: "查找历史内容", read_content: "读取正文", search_knowledge: "检索知识资料", read_knowledge: "读取知识文件", search_conversation: "查找历史对话", load_skill: "加载写作方法", create_draft: "写作与审核", request_input: "等待补充" };
+function sourceDate(value: string) {
+  if (!/^(\d{10}|\d{13})$/.test(value)) return value;
+  return new Date(Number(value) * (value.length === 10 ? 1000 : 1)).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+}
+const toolLabels: Record<string, string> = { get_business_context: "读取经营资料", search_content: "查找历史内容", read_content: "读取正文", search_knowledge: "检索知识资料", read_knowledge: "读取知识文件", search_conversation: "查找历史对话", load_skill: "加载处理方法", create_draft: "写作与审核", request_input: "等待补充", search_web: "搜索公开网页", search_peer_content: "查询同行内容", read_peer_account: "查询平台账号资料", read_peer_posts: "查询账号近期作品", search_research: "查找历史调研", read_research: "读取历史来源", search_places: "查找调研地点", search_nearby_places: "查询附近门店", read_place: "查询地点详情" };
 class RequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
