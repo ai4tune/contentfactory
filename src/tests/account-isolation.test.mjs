@@ -76,6 +76,16 @@ before(async () => {
     if (url.pathname === "/auth/v1/admin/users") return respond(response, 200, { users: [...users.values()], aud: "authenticated" });
     if (url.pathname === "/v1/chat/completions") {
       await delay(500);
+      if (body.tools) {
+        const calls = body.messages.flatMap((message) => message.tool_calls ?? []).map((call) => call.function.name);
+        const source = JSON.parse(body.messages[0].content.match(/本次选中的本地文件：(\[[^\n]*\])/)?.[1] ?? "[]")[0];
+        const name = !calls.includes("get_business_context") ? "get_business_context" : !calls.includes("search_knowledge") ? "search_knowledge" : !calls.includes("read_knowledge") && source ? "read_knowledge" : null;
+        const input = name === "search_knowledge" ? { query: "" } : name === "read_knowledge" ? { sourceId: source.id } : {};
+        return respond(response, 200, { id: "synthetic-agent", model: "synthetic", object: "chat.completion", created: 1,
+          choices: [{ index: 0, finish_reason: name ? "tool_calls" : "stop", message: { role: "assistant", content: name ? "" : "已读取本账号资料。",
+            ...(name ? { tool_calls: [{ id: `call-${calls.length}`, type: "function", function: { name, arguments: JSON.stringify(input) } }] } : {}) } }],
+          usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+      }
       const organization = body.messages[0].content.includes("summary 和 assignments");
       const result = organization ? { summary: "独立整理", assignments: [{ sourceId: "private-source", folderId: "brand", reason: "资料" }] }
         : { name: "私有档案", businessSummary: "私人业务", targetCustomers: [], offers: [], strengths: [], businessGoals: [], preferredTopics: [], forbiddenClaims: [], gaps: [], facts: [{ category: "业务", statement: "账号资料", confidence: "confirmed", sourceIds: ["private-source"] }] };
@@ -302,6 +312,43 @@ test("delivery project and photo preparation cannot be accessed by guessing anot
   assert.deepEqual(rows.content_factory_state.filter((row) => row.workspace_id === bobWorkspace), bobBefore);
 });
 
+test("chat, memories, selected files and background tools remain owned by the authenticated account", { timeout: 30_000 }, async () => {
+  const before = structuredClone(rows.content_factory_state);
+  assert.deepEqual((await (await request(alice, "/api/agent/chat")).json()).conversations, []);
+  assert.deepEqual(rows.content_factory_state, before, "empty chat reads cannot create a cloud row");
+  const inputs = ["Alice-only-knowledge", "Bob-only-knowledge"].map((text) => ({ requestId: "same-request-id", content: `读取资料 ${text}`, sources: [{ id: "local:selected", title: "本地素材", source: "local", text }] }));
+  const results = await Promise.all([request(alice, "/api/agent/chat", inputs[0]), request(bob, "/api/agent/chat", inputs[1])]);
+  assert.ok(results.every((response) => response.status === 202));
+  const turns = await Promise.all(results.map(async (response) => (await response.json()).turn));
+  assert.notEqual(turns[0].id, turns[1].id);
+  let states;
+  for (let index = 0; index < 100; index++) {
+    states = await Promise.all([alice, bob].map(async (id) => (await (await request(id, "/api/agent/chat")).json())));
+    if (states.every((state) => state.turns[0]?.status === "completed")) break;
+    await delay(150);
+  }
+  assert.ok(states.every((state) => state.turns[0].status === "completed"), JSON.stringify(states) + logs.slice(-2000));
+  for (const [index, id] of [alice, bob].entries()) {
+    const state = states[index];
+    assert.equal(state.workspaceId, index ? bobWorkspace : aliceWorkspace);
+    assert.equal(state.turns[0].tools.find((tool) => tool.name === "read_knowledge").output.text, inputs[index].sources[0].text);
+    assert.doesNotMatch(JSON.stringify(state), new RegExp(inputs[1 - index].sources[0].text));
+    assert.equal((await request(id, "/api/agent/chat", { ...inputs[index], requestId: "forged-conversation", conversationId: turns[1 - index].conversationId })).status, 404);
+    assert.equal((await request(id, `/api/agent/chat/turns/${turns[1 - index].id}`, { action: "continue" })).status, 404);
+    assert.equal((await request(id, `/api/agent/chat/turns/${turns[1 - index].id}`, { action: "pause" })).status, 404);
+    assert.equal((await request(id, "/api/agent/chat/memories/shared-memory", { sourceMessageId: states[1 - index].conversations[0].messages[0].id, content: "他人的记忆" }, "PATCH")).status, 404);
+  }
+  const sourceMessageId = states[0].conversations[0].messages[0].id;
+  assert.equal((await request(alice, "/api/agent/chat/memories/voice", { sourceMessageId, content: "Alice 私有表达偏好" }, "PATCH")).status, 200);
+  assert.deepEqual((await (await request(bob, "/api/agent/chat")).json()).memories, []);
+  const own = await (await request(alice, "/api/agent/chat", undefined, "GET", { "x-workspace-id": bobWorkspace })).json();
+  assert.equal(own.memories[0].content, "Alice 私有表达偏好");
+  assert.equal(own.conversations[0].messages.length, 2, "another client restores the same complete history");
+  const businessRows = (state) => state.filter((row) => !["json:agent-chat.local.json", "db:provider-call-logs"].includes(row.store_key));
+  assert.deepEqual(businessRows(rows.content_factory_state), businessRows(before));
+  assert.equal(rows.content_factory_state.some((row) => row.workspace_id === shared && row.store_key === "json:agent-chat.local.json"), false);
+});
+
 test("existing v1 customer spaces load through the upgrade without any write or payload change", async () => {
   for (const id of [alice, bob]) {
     for (let index = 0; index < 40; index++) {
@@ -325,7 +372,7 @@ test("existing v1 customer spaces load through the upgrade without any write or 
   readOnlyGuard = true;
   try {
     for (const [id, workspace] of [[alice, aliceWorkspace], [bob, bobWorkspace]]) {
-      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/onboarding/status", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
+      for (const url of ["/api/agent/chat", "/", "/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/onboarding/status", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
         const response = await request(id, url);
         assert.equal(response.status, 200, url + " " + await response.clone().text());
         if (url === "/api/onboarding/first-content") {

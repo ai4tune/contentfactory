@@ -2,6 +2,8 @@ import http from "node:http";
 
 const port = Number(process.env.MOCK_AI_PORT || 4320);
 let imageCounter = 0;
+let draftCounter = 0;
+const agentAttempts = new Map();
 
 const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && request.url === "/health") {
@@ -11,6 +13,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && request.url === "/image-count") {
     return json(response, 200, { count: imageCounter });
   }
+  if (request.method === "GET" && request.url === "/draft-count") return json(response, 200, { count: draftCounter });
 
   if (request.method === "GET" && request.url?.startsWith("/generated/")) {
     const png = Buffer.from(
@@ -44,6 +47,46 @@ const server = http.createServer(async (request, response) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(messages.find((message) => message.role === "system")?.content ?? "");
   const user = String(messages.find((message) => message.role === "user")?.content ?? "");
+  if (Array.isArray(body.tools) && system.includes("你是小掌柜")) {
+    const latestIndex = messages.findLastIndex((message) => message.role === "user");
+    const latest = String(messages[latestIndex]?.content ?? "");
+    const calls = messages.slice(latestIndex).flatMap((message) => message.tool_calls ?? []).map((call) => call.function.name);
+    if (!calls.length && body.tool_choice !== "required") return json(response, 400, { error: { message: "the first agent step must require a real tool call" } });
+    const attempts = (agentAttempts.get(latest) ?? 0) + 1;
+    agentAttempts.set(latest, attempts);
+    if (latest.includes("验收对话故障") && attempts === 1) return json(response, 502, { error: { message: "simulated agent failure" } });
+    if (latest.includes("验收保存后故障") && calls.includes("create_draft") && !system.includes('"name":"create_draft"')) return json(response, 502, { error: { message: "simulated failure after saving draft" } });
+    if (latest.includes("验收慢任务")) await new Promise((resolve) => setTimeout(resolve, 1200));
+    let name, input;
+    if (latest.includes("验收循环")) { name = "search_content"; input = { query: `loop-${calls.length}` }; }
+    else if (latest.includes("验收越权读取")) { name = "read_content"; input = { projectId: "other-account-project" }; }
+    else if (latest.includes("验收缺资料")) { name = "request_input"; input = { question: "请选择要使用的本地资料。" }; }
+    else if (latest.includes("验收续聊") && !calls.includes("read_content")) {
+      const refs = JSON.parse(system.match(/本对话已保存的真实草稿引用：(\[[^\n]*\])/)?.[1] ?? "[]");
+      name = "read_content"; input = { projectId: refs[0]?.projectId ?? "missing-result" };
+    }
+    else if (latest.includes("验收续聊") && !calls.includes("read_knowledge")) {
+      const refs = JSON.parse(system.match(/本对话此前提供的可读资料：(\[[^\n]*\])/)?.[1] ?? "[]");
+      name = "read_knowledge"; input = { sourceId: refs[0]?.id ?? "missing-source" };
+    }
+    else if (!calls.includes("get_business_context")) { name = "get_business_context"; input = {}; }
+    else if (latest.includes("验收查旧内容") && !calls.includes("search_content")) { name = "search_content"; input = { query: "" }; }
+    else if (latest.includes("验收历史对话") && !calls.includes("search_conversation")) { name = "search_conversation"; input = { query: "鲜花" }; }
+    else if (latest.includes("验收写作") && !calls.includes("load_skill")) { name = "load_skill"; input = { name: "writing" }; }
+    else if (latest.includes("验收写作") && !calls.includes("create_draft") && !system.includes('"name":"create_draft"')) {
+      name = "create_draft";
+      const sources = JSON.parse(system.match(/本次选中的本地文件：(\[[^\n]*\])/)?.[1] ?? "[]");
+      input = { topic: "介绍我们的鲜花花束服务", channel: "wechat_article", instructions: "验收发布交付", sourceIds: sources.map((item) => item.id) };
+    }
+    const previousDraft = JSON.parse(system.match(/本对话已保存的真实草稿引用：(\[[^\n]*\])/)?.[1] ?? "[]")[0];
+    if (latest.includes("验收忽略工具约束")) name = undefined;
+    const answer = latest.includes("验收续聊") ? `已读取你的草稿：https://www.example.com/drafts/${previousDraft.projectId}` : "已按当前账号资料处理，结果已保存。草稿仍待人工核对，尚未发布。";
+    return json(response, 200, { id: `agent-${attempts}`, model: body.model, object: "chat.completion", created: 1,
+      choices: [{ index: 0, finish_reason: name ? "tool_calls" : latest.includes("验收截断") ? "length" : "stop", message: { role: "assistant", content: name ? latest.includes("验收循环") ? "还在处理" : "" : answer,
+        ...(name ? { tool_calls: Array.from({ length: name === "create_draft" && latest.includes("验收并行") ? 2 : 1 }, (_, index) => ({ id: `tool-${attempts}-${index}`, type: "function", function: { name, arguments: JSON.stringify(input) } })) } : {}) } }],
+      usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+    });
+  }
   if (system.includes("成稿事实核验员") && user.includes("验收核对不可用")) {
     return json(response, 502, { error: { message: "simulated grounding failure" } });
   }
@@ -82,6 +125,7 @@ function mockCompletion(system, user, latestUser) {
     return { photoSuggestions: [{ purpose: "说明花束服务", subject: "本次实际制作的花束", how: "用自然光拍摄主体", placement: "业务介绍段落旁", fallback: "没有实拍时先用文字介绍，不用AI图冒充实拍", sourceIds: [input.sources[0].id] }] };
   }
   if (system.includes("编辑") && system.includes('"photoSuggestions"') && user.includes("验收发布交付")) {
+    draftCounter += 1;
     const sourceId = user.includes("验收非法实拍来源") ? "foreign-account-source" : user.match(/"sourceId":\s*"([^"]+)"/)?.[1];
     return { title: "认识我们的花束服务", titleOptions: ["用鲜花介绍我们的业务", "先聊聊花束制作"], summary: "这是一段不复制进正文的摘要。", tags: ["花束", "花艺"],
       content: "## 花束服务\n\n我们制作**鲜花花束**，提供花艺服务。\n\n欢迎提出你想了解的问题。",
