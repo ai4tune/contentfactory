@@ -4,11 +4,15 @@ This repository contains the runnable Content Factory V1 baseline for real-use a
 
 ## Source of truth
 
+For a new session, read AGENTS.md, docs/progress.md, and docs/architecture.md first, then follow the task-specific references below.
+
 - Mandatory development rules: [AGENTS.md](AGENTS.md) — preserve all existing customer private data and access to historical records; stop after local changes and checks until the user validates locally and explicitly authorizes the relevant commit, push, merge or release.
+- Current implementation and module boundaries: [docs/architecture.md](docs/architecture.md)
+- Current progress, verification limits, production snapshot, and next steps: [docs/progress.md](docs/progress.md)
 - Product requirements: `docs/prd/Content-Factory-MVP-PRD-v0.1.md`
 - Paid-pilot service blueprint: `docs/sbd/Content-Factory-Paid-Pilot-SBD-v1.0.md`
-- Technical specification: `docs/specs/AI-Growth-OS-Spec-v1.0.md`
-- Execution order: `todo.md`
+- Baseline technical specification (2026-09-24 snapshot): `docs/specs/AI-Growth-OS-Spec-v1.0.md`
+- Detailed tasks and historical execution order: `todo.md`; current priorities are summarized in [docs/progress.md](docs/progress.md).
 - Paid-pilot architecture spike: `docs/spikes/Paid-Pilot-Architecture-and-Cost-Ledger-Spike-2026-09-19.md`
 - Video production architecture and roadmap: `docs/roadmap/Content-Factory-Video-Production-Roadmap-2026-09-22.md`
 - Video asset taxonomy, OSS layout, and catalog: `docs/roadmap/Video-Asset-Library-Catalog-v0.1.md`
@@ -17,7 +21,9 @@ This repository contains the runnable Content Factory V1 baseline for real-use a
 - Paid-pilot deployment: `docs/deployment/Paid-Pilot-Deployment-Checklist.md`
 - Privacy and data lifecycle: `docs/deployment/Privacy-and-Data-Lifecycle.md`
 
-The implemented V1 direction, as of `main@8cf696b`, is:
+The V1 notes below retain the historical baseline at `main@8cf696b`. For current capabilities and limits, use [docs/architecture.md](docs/architecture.md) and [docs/progress.md](docs/progress.md).
+
+The implemented direction at that baseline was:
 
 - Web app, single-enterprise deployment.
 - Customer-owned knowledge base first.
