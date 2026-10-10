@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { daysBetween } from "./calendar";
 import { readJsonFile, updateJsonFile } from "@/lib/local-store/json-file";
 import { dataFilePath } from "@/lib/data-directory";
 import type {
@@ -43,18 +44,22 @@ export async function createContentPlan(
   };
 
   await updateJsonFile<ContentPlanStore>(storePath, emptyStore, (store) => ({
+    ...store,
     schemaVersion: 1,
     plans: [plan, ...(store.plans ?? [])],
   }));
   return plan;
 }
 
+export class PlanConflictError extends Error {
+  constructor() { super("计划在生成期间已被调整，结果没有覆盖新安排，请刷新后重试。"); this.name = "PlanConflictError"; }
+}
+
 export async function replaceContentPlan(plan: ContentPlan): Promise<ContentPlan | null> {
-  return mutateContentPlan(plan.id, (current) => ({
-    ...plan,
-    schemaVersion: 1,
-    createdAt: current.createdAt,
-  }));
+  return mutateContentPlan(plan.id, (current) => {
+    if (current.updatedAt !== plan.updatedAt) throw new PlanConflictError();
+    return { ...plan, schemaVersion: 1, createdAt: current.createdAt };
+  });
 }
 
 export async function updateContentPlan(
@@ -70,6 +75,7 @@ export async function updateContentPlan(
     | "periodStart"
     | "periodEnd"
     | "status"
+    | "timeZone"
   >>,
 ): Promise<ContentPlan | null> {
   return mutateContentPlan(planId, (current) => ({ ...current, ...update }));
@@ -111,6 +117,25 @@ export async function updateContentPlanItem(
     });
     return { ...current, items };
   });
+}
+
+export async function addPlanTask(planId: string, input: Pick<ContentPlanItem, "taskType" | "title" | "rationale" | "scheduledDate">) {
+  return mutateContentPlan(planId, (current) => ({
+    ...current,
+    items: [...current.items, {
+      ...input,
+      id: `contentPlanItem_${randomUUID()}`,
+      pillarId: current.pillars[0].id,
+      objective: "trust",
+      evidence: [],
+      week: Math.floor(daysBetween(current.periodStart, input.scheduledDate!) / 7) + 1,
+      priority: Math.max(0, ...current.items.map((item) => item.priority)) + 1,
+      locked: true,
+      origin: "manual",
+      status: "pending",
+      updatedAt: new Date().toISOString(),
+    }],
+  }));
 }
 
 export async function linkContentProjectToPlanItem(
@@ -174,7 +199,7 @@ async function updatePlanItemSystemFields(
   return mutateContentPlan(planId, (current) => {
     if (!current.items.some((item) => item.id === itemId)) return null;
     const items = current.items.map((item) => item.id === itemId
-      ? { ...item, ...update, updatedAt: now }
+      ? { ...item, ...update, status: item.status === "paused" ? "paused" as const : update.status, updatedAt: now }
       : item);
     return { ...current, items };
   });
@@ -225,6 +250,7 @@ async function mutateContentPlan(
 ): Promise<ContentPlan | null> {
   let updated: ContentPlan | null = null;
   await updateJsonFile<ContentPlanStore>(storePath, emptyStore, (store) => ({
+    ...store,
     schemaVersion: 1,
     plans: (store.plans ?? []).map((current) => {
       if (current.id !== planId) return current;

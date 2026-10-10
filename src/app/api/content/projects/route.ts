@@ -41,9 +41,11 @@ export async function POST(request: Request) {
       if (plan.status === "archived") {
         return NextResponse.json({ error: "已归档计划不能创建内容项目。" }, { status: 409 });
       }
-      if (!plan.items.some((item) => item.id === contentPlanItemId)) {
+      const planItem = plan.items.find((item) => item.id === contentPlanItemId);
+      if (!planItem) {
         return NextResponse.json({ error: "计划选题不存在。" }, { status: 404 });
       }
+      if (planItem.status === "paused" || (planItem.taskType ?? "content") !== "content") return NextResponse.json({ error: "这项任务不是当前可创作的选题。" }, { status: 409 });
     }
 
     const [accountSnapshot, styleSnapshot] = await Promise.all([

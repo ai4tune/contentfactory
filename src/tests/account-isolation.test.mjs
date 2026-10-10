@@ -302,6 +302,19 @@ test("delivery project and photo preparation cannot be accessed by guessing anot
   assert.deepEqual(rows.content_factory_state.filter((row) => row.workspace_id === bobWorkspace), bobBefore);
 });
 
+test("home plans and operational tasks reject another login even with known record ids", async () => {
+  const plan = { id: "alice-plan", schemaVersion: 1, title: "Alice 私有计划", accountContextUpdatedAt: "2026-10-01", operatingGoal: "介绍真实服务", primaryChannel: "wechat_article", targetAudience: ["本账号顾客"], pillars: [{ id: "pillar", name: "服务介绍", description: "真实资料", priority: 1 }], publishingFrequency: 1, periodStart: "2026-10-10", periodEnd: "2026-10-16", status: "confirmed", createdAt: "2026-10-10T00:00:00Z", updatedAt: "2026-10-10T00:00:00Z", items: [{ id: "alice-task", title: "拍门头照片", taskType: "photos", pillarId: "pillar", objective: "trust", rationale: "用户安排", evidence: [], week: 1, scheduledDate: "2026-10-10", priority: 1, locked: true, origin: "manual", status: "pending", updatedAt: "2026-10-10T00:00:00Z" }] };
+  rows.content_factory_state.push({ workspace_id: aliceWorkspace, store_key: "json:content-plans.local.json", version: 1, payload: { schemaVersion: 1, plans: [plan] } });
+  const before = structuredClone(rows);
+  assert.equal((await request(alice, "/api/content-plans/alice-plan")).status, 200);
+  assert.equal((await request(bob, "/api/content-plans/alice-plan")).status, 404);
+  assert.equal((await request(bob, "/api/content-plans/alice-plan/items", { taskType: "research", title: "伪造任务", scheduledDate: "2026-10-10", workspaceId: aliceWorkspace })).status, 404);
+  assert.equal((await request(bob, "/api/content-plans/alice-plan/items/alice-task", { status: "completed", workspaceId: aliceWorkspace }, "PATCH")).status, 404);
+  assert.equal((await request(bob, "/api/content-plans/alice-plan/generate", { workspaceId: aliceWorkspace })).status, 404);
+  assert.equal((await request(null, "/api/content-plans/alice-plan/items", { taskType: "photos", title: "未登录任务", scheduledDate: "2026-10-10" })).status, 401);
+  assert.deepEqual(rows, before, "cross-account reads and writes must not alter either space");
+});
+
 test("existing v1 customer spaces load through the upgrade without any write or payload change", async () => {
   for (const id of [alice, bob]) {
     for (let index = 0; index < 40; index++) {
@@ -325,7 +338,7 @@ test("existing v1 customer spaces load through the upgrade without any write or 
   readOnlyGuard = true;
   try {
     for (const [id, workspace] of [[alice, aliceWorkspace], [bob, bobWorkspace]]) {
-      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/onboarding/status", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
+      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/onboarding/status", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/content-plans", "/api/content-plans/current", "/api/materials", "/", "/plans", "/articles", "/setup", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
         const response = await request(id, url);
         assert.equal(response.status, 200, url + " " + await response.clone().text());
         if (url === "/api/onboarding/first-content") {

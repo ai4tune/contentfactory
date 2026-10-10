@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 function planError(error: unknown, fallback: string) {
   if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
     return NextResponse.json(
-      { error: "30 天内容计划生成超时，计划尚未创建。请稍后重试；若持续超时，请检查 AI 模型服务。" },
+      { error: "内容计划生成超时，计划尚未创建。请稍后重试；若持续超时，请检查 AI 模型服务。" },
       { status: 504 },
     );
   }

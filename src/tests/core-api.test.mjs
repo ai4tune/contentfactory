@@ -422,7 +422,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     assert.equal(created.body.plan.pillars[0].name, "选购避坑");
     assert.equal(created.body.plan.pillars[2].name, "真实案例");
     assert.ok(created.body.plan.pillars.every((pillar) => pillar.description));
-    assert.equal(created.body.plan.items.length, 30);
+    assert.equal(created.body.plan.items.length, 3);
   });
 
   await context.test("a 30-day content plan persists and protects human edits during regeneration", async () => {
@@ -431,8 +431,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
       body: {
         operatingGoal: "帮助装修家庭建立信任并获得有效咨询",
         publishingFrequency: 3,
-        periodStart: "2026-09-15",
-        periodEnd: "2026-10-14",
+        periodStart: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+        periodDays: 30,
         contextEvidence: [{
           type: "enterprise_knowledge",
           refId: "local:flooring.md",
@@ -442,8 +442,8 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(created.response.status, 201, "30 天计划生成应允许超过普通 AI 请求的超时时间：" + serverOutput);
     contentPlan = created.body.plan;
-    assert.equal(contentPlan.items.length, 30);
-    assert.equal(contentPlan.items.filter((item) => item.week === 1).length, 7);
+    assert.equal(contentPlan.items.length, 13);
+    assert.equal(contentPlan.items.filter((item) => item.week === 1).length, 3);
     assert.equal(contentPlan.pillars.length, 3);
     assert.equal(contentPlan.primaryChannel, "wechat_article");
     assert.equal(contentPlan.styleProfileVersion, 1);
@@ -453,12 +453,12 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
 
     const draftPlanHome = await appFetch(baseUrl);
     assert.equal(draftPlanHome.status, 200);
-    assert.match(await draftPlanHome.text(), /确认本周 7 个优先选题/);
+    assert.match(await draftPlanHome.text(), /确认这份内容安排/);
     const planPage = await appFetch(`${baseUrl}/plans`);
     const planPageHtml = await planPage.text();
     assert.equal(planPage.status, 200);
     assert.match(planPageHtml, /帮助装修家庭建立信任并获得有效咨询/);
-    assert.match(planPageHtml, /第 1 周选题/);
+    assert.match(planPageHtml, /第 1 周安排/);
 
     const current = await requestJson("/api/content-plans/current");
     assert.equal(current.response.status, 200);
@@ -479,7 +479,7 @@ test("P0 core API flow: account → knowledge → brief → four channels", asyn
     });
     assert.equal(regenerated.response.status, 200, serverOutput);
     contentPlan = regenerated.body.plan;
-    assert.equal(contentPlan.items.length, 30);
+    assert.equal(contentPlan.items.length, 13);
     assert.equal(contentPlan.items.some((item) => item.id === firstItem.id && item.title === "人工确认保留的选题"), true);
     assert.equal(contentPlan.items.some((item) => item.title === "重新生成选题 1"), true);
 

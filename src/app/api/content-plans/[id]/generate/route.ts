@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getActiveAccountContext } from "@/modules/positioning/service";
 import { getConfirmedStyleProfile } from "@/modules/style-profile/repository";
-import { getContentPlan } from "@/modules/plans/repository";
+import { PlanConflictError, getContentPlan } from "@/modules/plans/repository";
 import { parseEvidenceList, PlanValidationError } from "@/modules/plans/request";
 import { regenerateUnlockedPlanItems } from "@/modules/plans/service";
 import { getConfirmedKnowledgeProfile } from "@/modules/knowledge-profile/repository";
@@ -38,13 +38,13 @@ export async function POST(
   } catch (error) {
     if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
       return NextResponse.json(
-        { error: "30 天内容计划重新生成超时，原计划未改变。请稍后重试。" },
+        { error: "内容计划重新生成超时，原计划未改变。请稍后重试。" },
         { status: 504 },
       );
     }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "内容计划重新生成失败。" },
-      { status: error instanceof PlanValidationError ? 400 : 502 },
+      { status: error instanceof PlanConflictError ? 409 : error instanceof PlanValidationError ? 400 : 502 },
     );
   }
 }

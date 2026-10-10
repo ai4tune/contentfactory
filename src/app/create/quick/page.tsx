@@ -1,4 +1,5 @@
 import Link from "@/components/navigation-link";
+import { itemDate } from "@/modules/plans/calendar";
 import { redirect } from "next/navigation";
 import { AppShell, PageHeader, secondaryButtonClass } from "@/components/app-shell";
 import { QuickCreationWorkspace } from "@/modules/content/quick/components/quick-creation-workspace";
@@ -26,10 +27,10 @@ export default async function QuickCreatePage({
   const item = values.planItemId
     ? plan.items.find((candidate) => candidate.id === values.planItemId)
     : plan.items
-        .filter((candidate) => candidate.week === 1 && candidate.status === "pending")
+        .filter((candidate) => (candidate.taskType ?? "content") === "content" && candidate.status === "pending")
         .slice()
-        .sort((left, right) => left.priority - right.priority)[0];
-  if (!item) redirect("/plans");
+        .sort((left, right) => itemDate(plan, left).localeCompare(itemDate(plan, right)) || left.priority - right.priority)[0];
+  if (!item || item.status === "paused" || (item.taskType ?? "content") !== "content") redirect("/plans");
 
   if (item.contentProjectId) {
     const existingProject = await getContentProject(item.contentProjectId);

@@ -1,10 +1,12 @@
 import { isContentChannel, type ContentChannel } from "@/modules/content/types";
 import type { AccountContext } from "@/modules/positioning/types";
+import { addDays, daysBetween, defaultTimeZone, localDate } from "./calendar";
 import {
   contentObjectives,
   contentPlanEvidenceTypes,
   contentPlanItemStatuses,
   contentPlanStatuses,
+  planTaskTypes,
   type ContentPillar,
   type ContentPlan,
   type ContentPlanEvidence,
@@ -24,9 +26,13 @@ export function parsePlanGenerationOptions(
   account: AccountContext,
 ): ContentPlanGenerationOptions {
   const record = asRecord(value);
-  const periodStart = parseDate(record.periodStart) ?? today();
-  const periodEnd = parseDate(record.periodEnd) ?? addDays(periodStart, 29);
+  const timeZone = requiredTimeZone(record.timeZone ?? defaultTimeZone);
+  const periodDays = record.periodDays ?? 7;
+  if (periodDays !== 7 && periodDays !== 30) throw new PlanValidationError("请选择 7 天或 30 天计划。");
+  const periodStart = "periodStart" in record ? requiredDate(record.periodStart, "开始日期") : localDate(new Date(), timeZone);
+  const periodEnd = "periodEnd" in record ? requiredDate(record.periodEnd, "结束日期") : addDays(periodStart, periodDays - 1);
   if (periodEnd < periodStart) throw new PlanValidationError("计划结束日期不能早于开始日期。");
+  if (![7, 30].includes(daysBetween(periodStart, periodEnd) + 1)) throw new PlanValidationError("新计划的周期必须是 7 天或 30 天。");
 
   const operatingGoal = optionalText(record.operatingGoal, 500)
     || account.conversionGoal.trim()
@@ -34,7 +40,8 @@ export function parsePlanGenerationOptions(
   const requestedAudience = stringList(record.targetAudience, 20);
   const targetAudience = requestedAudience.length ? requestedAudience : account.targetAudience;
   if (!targetAudience.length) throw new PlanValidationError("请先确认目标客户，再生成内容计划。");
-  const publishingFrequency = integer(record.publishingFrequency, 1, 14) ?? 3;
+  const publishingFrequency = record.publishingFrequency === undefined ? 3 : integer(record.publishingFrequency, 1, 14);
+  if (!publishingFrequency) throw new PlanValidationError("每周发布频率必须是 1～14 的整数。");
 
   return {
     operatingGoal,
@@ -45,6 +52,7 @@ export function parsePlanGenerationOptions(
     publishingFrequency,
     periodStart,
     periodEnd,
+    timeZone,
     contextEvidence: parseEvidenceList(record.contextEvidence, 50),
   };
 }
@@ -62,6 +70,7 @@ export function parsePlanPatch(value: unknown, current: ContentPlan) {
     | "periodStart"
     | "periodEnd"
     | "status"
+    | "timeZone"
   >> = {};
 
   if ("title" in record) update.title = requiredText(record.title, "计划名称", 200);
@@ -82,6 +91,7 @@ export function parsePlanPatch(value: unknown, current: ContentPlan) {
   }
   if ("periodStart" in record) update.periodStart = requiredDate(record.periodStart, "开始日期");
   if ("periodEnd" in record) update.periodEnd = requiredDate(record.periodEnd, "结束日期");
+  if ("timeZone" in record) update.timeZone = requiredTimeZone(record.timeZone);
   const nextStart = update.periodStart ?? current.periodStart;
   const nextEnd = update.periodEnd ?? current.periodEnd;
   if (nextEnd < nextStart) throw new PlanValidationError("计划结束日期不能早于开始日期。");
@@ -106,7 +116,7 @@ export function parsePlanPatch(value: unknown, current: ContentPlan) {
   return update;
 }
 
-export function parsePlanItemPatch(value: unknown, plan: ContentPlan) {
+export function parsePlanItemPatch(value: unknown, plan: ContentPlan, current?: ContentPlanItem) {
   const record = asRecord(value);
   const update: Partial<Pick<
     ContentPlanItem,
@@ -149,7 +159,13 @@ export function parsePlanItemPatch(value: unknown, plan: ContentPlan) {
     if (!week) throw new PlanValidationError("周次必须是 1～5 的整数。");
     update.week = week;
   }
-  if ("scheduledDate" in record) update.scheduledDate = optionalDate(record.scheduledDate);
+  if ("scheduledDate" in record) {
+    update.scheduledDate = optionalDate(record.scheduledDate);
+    if (update.scheduledDate && current?.scheduledDate !== update.scheduledDate) {
+      if (update.scheduledDate < plan.periodStart || update.scheduledDate > plan.periodEnd) throw new PlanValidationError("任务日期需要在计划周期内。");
+      update.week = Math.floor(daysBetween(plan.periodStart, update.scheduledDate) / 7) + 1;
+    }
+  }
   if ("priority" in record) {
     const priority = integer(record.priority, 1, 999);
     if (!priority) throw new PlanValidationError("优先级必须是正整数。");
@@ -164,10 +180,27 @@ export function parsePlanItemPatch(value: unknown, plan: ContentPlan) {
       throw new PlanValidationError("选题状态无效。");
     }
     update.status = record.status as ContentPlanItem["status"];
+    if (current && (current.taskType ?? "content") !== "content" && !["pending", "paused", "completed"].includes(update.status)) throw new PlanValidationError("运营任务只能标记待办、暂停或已完成。");
+    if (current && (current.taskType ?? "content") === "content" && update.status === "completed") {
+      throw new PlanValidationError("内容任务请分别记录创作、审核和实际发布状态。");
+    }
   }
 
   if (!Object.keys(update).length) throw new PlanValidationError("没有可更新的选题字段。");
   return update;
+}
+
+export function parseManualTask(value: unknown, plan: ContentPlan) {
+  const record = asRecord(value);
+  if (!planTaskTypes.includes(record.taskType as (typeof planTaskTypes)[number]) || record.taskType === "content") throw new PlanValidationError("请选择调研、拍照片或补资料任务。");
+  const scheduledDate = requiredDate(record.scheduledDate, "任务日期");
+  if (scheduledDate < plan.periodStart || scheduledDate > plan.periodEnd) throw new PlanValidationError("任务日期需要在计划周期内。");
+  return {
+    taskType: record.taskType as Exclude<ContentPlanItem["taskType"], undefined>,
+    title: requiredText(record.title, "任务名称", 300),
+    rationale: optionalText(record.rationale, 1000) || "由你安排，完成后手动确认。",
+    scheduledDate,
+  };
 }
 
 export function parseEvidenceList(value: unknown, max: number): ContentPlanEvidence[] {
@@ -260,12 +293,9 @@ function optionalDate(value: unknown) {
   return requiredDate(value, "计划日期");
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(date: string, days: number) {
-  const value = new Date(`${date}T00:00:00.000Z`);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
+function requiredTimeZone(value: unknown) {
+  if (typeof value !== "string" || value.length > 100) throw new PlanValidationError("时区无效。");
+  try { new Intl.DateTimeFormat("en", { timeZone: value }).format(); }
+  catch { throw new PlanValidationError("时区无效，请使用 Asia/Shanghai 等时区名称。"); }
+  return value;
 }
