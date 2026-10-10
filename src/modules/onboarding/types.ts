@@ -1,6 +1,7 @@
 import type { ContentChannel } from "@/modules/content/types";
 import type { AccountContext } from "@/modules/positioning/types";
 import type { StyleProfile } from "@/modules/style-profile/types";
+import type { EnterpriseKnowledgeProfile } from "@/modules/knowledge-profile/types";
 
 export const onboardingStates = ["not_started", "in_progress", "completed"] as const;
 export type OnboardingState = (typeof onboardingStates)[number];
@@ -34,6 +35,7 @@ export type OnboardingSnapshot = {
   styleProfile: StyleProfile | null;
   serverKnowledgeCount: number;
   knowledgeProfileConfirmed: boolean;
+  businessProfile: EnterpriseKnowledgeProfile | null;
 };
 
 export type OnboardingAction = "start" | "sync" | "complete" | "restart";

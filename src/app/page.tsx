@@ -12,5 +12,5 @@ export default async function DashboardPage() {
   ]);
   if (onboarding.status.state !== "completed") redirect("/setup");
 
-  return <AgentWorkspace primaryChannel={onboarding.status.primaryChannel} summary={summary} />;
+  return <AgentWorkspace primaryChannel={onboarding.status.primaryChannel} businessName={onboarding.businessProfile?.name} summary={summary} />;
 }

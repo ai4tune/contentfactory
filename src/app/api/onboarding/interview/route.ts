@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { asRecord, InterviewError, parseInterviewAnswers, parseInterviewRevision } from "@/modules/onboarding/interview";
-import { confirmInterview, getInterviewInitialState, previewInterview, saveInterviewAnswers } from "@/modules/onboarding/interview-service";
+import { confirmBusiness, confirmInterview, getInterviewInitialState, previewInterview, saveInterviewAnswers } from "@/modules/onboarding/interview-service";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -18,6 +18,8 @@ export async function POST(request: Request) {
       const step = Number(body.step);
       if (!Number.isInteger(step) || step < 0 || step > 5) throw new InterviewError("访谈步骤无效。");
       interview = await saveInterviewAnswers(parseInterviewAnswers(body.answers), revision, step);
+    } else if (body.action === "confirm_business") {
+      interview = await confirmBusiness(parseInterviewAnswers(body.answers, true), revision);
     } else if (body.action === "preview") {
       interview = await previewInterview(parseInterviewAnswers(body.answers, true), revision);
     } else if (body.action === "confirm") {

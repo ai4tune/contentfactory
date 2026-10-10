@@ -56,7 +56,8 @@ export async function POST(
             temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
           }),
         ]);
-    const draft = await generateChannelDraft({ channel, brief, sources, accountContext, styleContract });
+    const draft = await generateChannelDraft({ topic, channel, brief, sources, accountContext, styleContract,
+      temporaryStyleInstructions: existingProject?.temporaryStyleInstructions ?? normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions) });
 
     if (body.projectId) {
       const project = await replaceChannelDraft(body.projectId, draft);

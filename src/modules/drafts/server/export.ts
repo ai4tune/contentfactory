@@ -1,10 +1,11 @@
 import { channelLabels, type ContentChannel } from "@/modules/content/types";
 import type { ContentDraft } from "../types";
+import { publicationBody } from "@/modules/content/publication-delivery";
 
 export function renderDraftMarkdown(draft: ContentDraft, channel?: ContentChannel) {
   if (channel) {
     const current = draft.channelDrafts.find((item) => item.channel === channel);
-    return current?.status === "generated" ? `${current.content}\n` : `生成未完成：${current?.error || "暂无本渠道正文"}\n`;
+    return current?.status === "generated" ? `${current.delivery ? `# ${current.delivery.title}\n\n` : ""}${publicationBody(current)}\n` : `生成未完成：${current?.error || "暂无本渠道正文"}\n`;
   }
   const channelDrafts = draft.channelDrafts;
 
@@ -59,7 +60,7 @@ export function renderDraftMarkdown(draft: ContentDraft, channel?: ContentChanne
     ...channelDrafts.flatMap((item) => [
       `## ${channelLabels[item.channel]}`,
       "",
-      item.status === "failed" ? `生成失败：${item.error || "未知错误"}` : item.content,
+      item.status === "failed" ? `生成失败：${item.error || "未知错误"}` : item.delivery ? `# ${item.delivery.title}\n\n${publicationBody(item)}` : item.content,
       "",
     ]),
   ].join("\n");

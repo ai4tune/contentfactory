@@ -6,7 +6,10 @@ export const interviewFields = ["accountName", "business", "goal", "offer", "aud
 export type InterviewField = (typeof interviewFields)[number];
 export type InterviewAnswers = Record<InterviewField, string> & { primaryChannel?: ContentChannel; industry?: IndustryId };
 export type InterviewPreview = { id: string; account: AccountContextDraft; confirmationStartedAt?: string; confirmedAt?: string };
-export type InterviewState = { revision: number; step: number; answers: InterviewAnswers; preview: InterviewPreview | null };
+export type InterviewState = {
+  revision: number; step: number; answers: InterviewAnswers; preview: InterviewPreview | null;
+  confirmedBusiness?: { id: string; inputRevision: number; answers: InterviewAnswers; startedAt?: string; confirmedAt?: string };
+};
 
 export const emptyInterviewAnswers: InterviewAnswers = {
   accountName: "", business: "", goal: "", offer: "", audience: "", differentiator: "", boundaries: "", tone: "",
@@ -33,8 +36,8 @@ export function parseInterviewAnswers(value: unknown, requireMinimum = false): I
     if (!isContentChannel(record.primaryChannel)) throw new InterviewError("请选择支持的发布渠道。");
     answers.primaryChannel = record.primaryChannel;
   }
-  if (requireMinimum && (!answers.accountName || !answers.business || !answers.goal || !answers.offer || !answers.primaryChannel)) {
-    throw new InterviewError("请先补充名称、主营业务、这次目标、主推产品或服务，并选择发布渠道。");
+  if (requireMinimum && (!answers.accountName || !answers.business || !answers.primaryChannel)) {
+    throw new InterviewError("请先补充名称、主营业务，并选择发布渠道；目标和主推内容可以稍后补充。");
   }
   return answers;
 }

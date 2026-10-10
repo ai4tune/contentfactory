@@ -70,6 +70,8 @@ export async function updateContentDraft(input: {
   draftId: string;
   channel: ContentChannel;
   content: string;
+  title?: string;
+  expectedUpdatedAt?: string;
 }): Promise<ContentDraft | null> {
   const nextContent = input.content;
   let updatedDraft: ContentDraft | null = null;
@@ -83,7 +85,9 @@ export async function updateContentDraft(input: {
       const draft = normalizeDraft(project);
       const existingChannel = draft.channelDrafts.find((item) => item.channel === input.channel);
       if (!existingChannel) return project;
-      if (existingChannel.content === nextContent) {
+      if (input.expectedUpdatedAt && input.expectedUpdatedAt !== existingChannel.updatedAt) throw new DraftConflictError();
+      const titleChanged = input.title !== undefined && input.title !== existingChannel.delivery?.title;
+      if (existingChannel.content === nextContent && !titleChanged) {
         updatedDraft = draft;
         return draft;
       }
@@ -95,13 +99,15 @@ export async function updateContentDraft(input: {
         id: `draftVersions_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         channel: input.channel,
         content: existingChannel.content,
+        delivery: existingChannel.delivery,
         createdAt: existingChannel.updatedAt || draft.updatedAt,
       };
       updatedDraft = {
         ...draft,
         channelDrafts: draft.channelDrafts.map((item) =>
           item.channel === input.channel
-            ? { ...item, content: nextContent, status: "generated", error: undefined, updatedAt: now }
+            ? { ...item, content: nextContent, status: "generated", error: undefined, updatedAt: now,
+              ...(titleChanged ? { delivery: { ...item.delivery, title: input.title!, titleOptions: item.delivery?.titleOptions ?? [], summary: item.delivery?.summary ?? "", tags: item.delivery?.tags ?? [] }, review: undefined } : {}) }
             : item,
         ),
         reviewStatus: "editing",
@@ -112,7 +118,7 @@ export async function updateContentDraft(input: {
     }),
   }));
 
-  if (feedbackOriginalText) {
+  if (feedbackOriginalText && feedbackOriginalText !== nextContent) {
     await appendStyleFeedback({
       projectId: input.draftId,
       channel: input.channel,
@@ -126,9 +132,14 @@ export async function updateContentDraft(input: {
   return updatedDraft;
 }
 
+export class DraftConflictError extends Error {
+  constructor() { super("稿件已更新，请刷新后核对再保存；本次没有覆盖新的修改。"); }
+}
+
 export async function updateContentDraftReviewStatus(
   draftId: string,
   reviewStatus: DraftReviewStatus,
+  expectedUpdatedAt?: string,
 ): Promise<ContentDraft | null> {
   let updatedDraft: ContentDraft | null = null;
 
@@ -137,6 +148,7 @@ export async function updateContentDraftReviewStatus(
       if (project.id !== draftId) return project;
 
       const draft = normalizeDraft(project);
+      if (expectedUpdatedAt && draft.updatedAt !== expectedUpdatedAt) throw new DraftConflictError();
       if (draft.reviewStatus === reviewStatus) {
         updatedDraft = draft;
         return draft;

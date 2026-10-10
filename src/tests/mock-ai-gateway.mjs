@@ -60,6 +60,7 @@ const server = http.createServer(async (request, response) => {
   if (system.includes("写作风格分析师") && Number(process.env.MOCK_STYLE_DELAY_MS) > 0) {
     await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_STYLE_DELAY_MS)));
   }
+  if (system.includes("实拍素材顾问") && Number(process.env.MOCK_PHOTO_DELAY_MS) > 0) await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_PHOTO_DELAY_MS)));
   if (system.includes("企业内容策略规划师") && Number(process.env.MOCK_PLAN_DELAY_MS) > 0) {
     await new Promise((resolve) => setTimeout(resolve, Number(process.env.MOCK_PLAN_DELAY_MS)));
   }
@@ -76,6 +77,16 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 function mockCompletion(system, user, latestUser) {
+  if (system.includes("实拍素材顾问")) {
+    const input = JSON.parse(user);
+    return { photoSuggestions: [{ purpose: "说明花束服务", subject: "本次实际制作的花束", how: "用自然光拍摄主体", placement: "业务介绍段落旁", fallback: "没有实拍时先用文字介绍，不用AI图冒充实拍", sourceIds: [input.sources[0].id] }] };
+  }
+  if (system.includes("编辑") && system.includes('"photoSuggestions"') && user.includes("验收发布交付")) {
+    const sourceId = user.includes("验收非法实拍来源") ? "foreign-account-source" : user.match(/"sourceId":\s*"([^"]+)"/)?.[1];
+    return { title: "认识我们的花束服务", titleOptions: ["用鲜花介绍我们的业务", "先聊聊花束制作"], summary: "这是一段不复制进正文的摘要。", tags: ["花束", "花艺"],
+      content: "## 花束服务\n\n我们制作**鲜花花束**，提供花艺服务。\n\n欢迎提出你想了解的问题。",
+      photoSuggestions: [{ purpose: "介绍本次真实业务", subject: "本次实际制作的花束", how: "用自然光拍摄主体，背景简洁", placement: "业务介绍段落旁", fallback: "没有实拍先用文字介绍，不用AI图冒充实拍", sourceIds: [sourceId] }] };
+  }
   if (system.includes("成稿事实核验员")) {
     const payload = JSON.parse(user);
     const draft = payload.content;

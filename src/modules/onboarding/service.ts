@@ -45,11 +45,13 @@ export async function getOnboardingSnapshot(): Promise<OnboardingSnapshot> {
       styleProfile,
       serverKnowledgeCount: serverKnowledgeKeys.size,
       knowledgeProfileConfirmed: Boolean(knowledgeProfile),
+      businessProfile: knowledgeProfile,
     }),
     account,
     styleProfile,
     serverKnowledgeCount: serverKnowledgeKeys.size,
     knowledgeProfileConfirmed: Boolean(knowledgeProfile),
+    businessProfile: knowledgeProfile,
   };
 }
 
@@ -70,11 +72,11 @@ export async function updateOnboardingStatus(update: OnboardingUpdate) {
   const derived = deriveStatus(nextBase, snapshot);
 
   if (update.action === "complete") {
-    const required: OnboardingStepId[] = ["business", "positioning", "primary_channel"];
+    const required: OnboardingStepId[] = ["business", "primary_channel"];
     const missingSteps = required.filter((step) => !derived.completedSteps.includes(step));
     if (missingSteps.length) {
       throw new OnboardingCompletionError(
-        "请先确认企业业务、账号定位和主渠道，再完成建档。",
+        "请先确认真实业务信息并选择主渠道；账号定位可以稍后确定。",
         missingSteps,
       );
     }
@@ -99,7 +101,7 @@ export async function updateOnboardingStatus(update: OnboardingUpdate) {
 
 function deriveStatus(
   stored: StoredOnboardingStatus,
-  snapshot: Pick<OnboardingSnapshot, "account" | "styleProfile" | "serverKnowledgeCount" | "knowledgeProfileConfirmed">,
+  snapshot: Pick<OnboardingSnapshot, "account" | "styleProfile" | "serverKnowledgeCount" | "knowledgeProfileConfirmed" | "businessProfile">,
 ): OnboardingStatus {
   const account = snapshot.account?.status === "confirmed" ? snapshot.account : null;
   const totalKnowledge = stored.localKnowledgeCount + snapshot.serverKnowledgeCount;
@@ -109,12 +111,7 @@ function deriveStatus(
   const completedSteps: OnboardingStepId[] = [];
 
   if (knowledgeReadiness !== "missing") completedSteps.push("knowledge");
-  if (
-    account?.business.trim()
-    && account.offer.trim()
-    && account.targetAudience.length
-    && account.conversionGoal.trim()
-  ) completedSteps.push("business");
+  if (account?.business.trim() || snapshot.businessProfile?.businessSummary.trim()) completedSteps.push("business");
   if (account?.accountPosition.trim() && account.contentPillars.length) {
     completedSteps.push("positioning");
   }
@@ -128,10 +125,10 @@ function deriveStatus(
     informationGaps.push("资料已连接，但还没有生成并确认企业知识档案。请先在知识库检查扫描结果，再带入账号定位。");
   }
   if (!completedSteps.includes("business")) {
-    informationGaps.push("企业业务、核心产品、目标客户或经营目标尚未完整确认，内容转化方向会不够明确。");
+    informationGaps.push("尚未确认真实业务信息。先告诉我们做什么生意，目标和客群可以稍后补充。");
   }
   if (!completedSteps.includes("positioning")) {
-    informationGaps.push("账号定位或内容支柱尚未确认，选题容易发散。");
+    informationGaps.push("账号方向尚未确认，可以先介绍真实业务，再根据使用和调研逐步确定。");
   }
   if (!completedSteps.includes("style")) {
     informationGaps.push("尚未确认写作风格。系统会先使用账号定位中的品牌语气，成稿可能需要更多口吻调整。");

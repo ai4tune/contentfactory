@@ -72,7 +72,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
   const [message, setMessage] = useState<string | null>(null);
   const totalKnowledgeCount = localKnowledgeCount + initialData.serverKnowledgeCount;
   const completionCount = status.completedSteps.length;
-  const canComplete = ["business", "positioning", "primary_channel"]
+  const canComplete = ["business", "primary_channel"]
     .every((step) => status.completedSteps.includes(step as OnboardingStepId));
 
   useEffect(() => {
@@ -81,8 +81,6 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
       try {
         if (!supportsDirectoryPicker()) {
           setLocalPermission("unsupported");
-          const next = await patchStatus({ action: "sync", localKnowledgeCount: 0 });
-          if (active) setStatus(next);
           return;
         }
         const cached = await loadLocalKnowledge();
@@ -91,8 +89,6 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
         const items = restored?.items ?? cached;
         setLocalKnowledgeCount(items.length);
         setLocalPermission(restored?.permission ?? "none");
-        const next = await patchStatus({ action: "sync", localKnowledgeCount: items.length });
-        if (active) setStatus(next);
       } catch {
         if (active) setMessage("本地知识库状态恢复失败，可前往知识库重新连接。");
       }
@@ -166,24 +162,25 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
     return (
       <SetupFrame>
         <div className="mx-auto max-w-3xl py-12 sm:py-20">
-          <p className="text-sm font-semibold text-emerald-800">首次企业建档</p>
+          <p className="text-sm font-semibold text-emerald-800">你的线上账号运营助手</p>
           <h1 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-            聊聊你的生意，开始写第一篇
+            帮你的生意做好公众号和小红书
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
-            告诉我们最近想宣传什么、希望内容帮你解决什么。系统会整理成经营信息，不用先准备知识库，也不用有历史账号。
+            想方向、做内容、看效果。可以先写完一篇，也可以先梳理业务与账号方向。视频渠道目前提供脚本。
           </p>
           <div className="mt-9 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
             <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
-                <h2 className="text-base font-semibold text-slate-900">先回答几个问题，资料可以后补</h2>
+                <h2 className="text-base font-semibold text-slate-900">先用真实业务写一篇，定位可以后补</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   资料不完整也可以开始。系统会明确标出缺口，不会替你编造企业事实。
                 </p>
               </div>
-              <button className={primaryButtonClass} disabled={busy !== null} onClick={start} type="button">
-                {busy === "start" ? "正在准备" : "聊聊我的生意"}
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <Link className={primaryButtonClass} href="/setup/first-content">先写一篇</Link>
+                <button className={secondaryButtonClass} disabled={busy !== null} onClick={start} type="button">{busy === "start" ? "正在准备" : "先梳理业务与方向"}</button>
+              </div>
             </div>
           </div>
           {completionCount ? (
@@ -214,7 +211,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
           </div>
           {visibleGaps.length ? <GapPanel gaps={visibleGaps} /> : null}
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link className={primaryButtonClass} href="/setup/first-content">选口吻，写第一篇</Link>
+            <Link className={primaryButtonClass} href="/setup/first-content">写第一篇</Link>
             <Link className={secondaryButtonClass} href="/plans">查看完整内容计划</Link>
             <Link className={secondaryButtonClass} href="/knowledge">补充企业资料</Link>
             <Link className={secondaryButtonClass} href="/brand">调整账号与风格</Link>
@@ -237,7 +234,7 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
           <p className="mt-3 text-sm leading-6 text-slate-600">
             已完成 {completionCount}/5 项。系统只记录建档进度，企业资料仍保存在原来的账号、知识库和风格模块中。
           </p>
-          <Link className={`${primaryButtonClass} mt-5`} href="/setup/interview">继续聊经营，整理内容方向</Link>
+          <div className="mt-5 flex flex-wrap gap-3"><Link className={primaryButtonClass} href="/setup/first-content">先写一篇</Link><Link className={secondaryButtonClass} href="/setup/interview">继续梳理业务与方向</Link></div>
         </header>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[290px_minmax(0,1fr)]">
@@ -298,10 +295,10 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
               ) : <p className="mt-2 text-sm text-emerald-800">关键资料已确认，可以生成内容计划。</p>}
             </div>
             <button className={primaryButtonClass} disabled={busy !== null || !canComplete} onClick={complete} type="button">
-              {busy === "complete" ? "正在完成建档" : "完成建档并进入计划"}
+              {busy === "complete" ? "正在完成建档" : "确认业务与渠道，开始写"}
             </button>
           </div>
-          {!canComplete ? <p className="mt-4 text-xs leading-5 text-amber-800">完成建档前，必须确认企业信息、账号定位和主渠道。知识与风格可以稍后补充。</p> : null}
+          {!canComplete ? <p className="mt-4 text-xs leading-5 text-amber-800">先确认真实业务信息和主渠道。账号方向、目标客群、资料和风格都可以继续完善。</p> : null}
         </div>
         {message ? <Message text={message} /> : null}
       </div>

@@ -117,7 +117,25 @@ export type ChannelDraft = {
   error?: string;
   review?: ChannelReview;
   visualAssets?: GeneratedVisualAsset[];
+  delivery?: PublicationDelivery;
+  photoPlan?: { suggestions: PhotoSuggestion[]; basedOnContentUpdatedAt: string; createdAt: string };
   updatedAt: string;
+};
+
+export type PublicationDelivery = {
+  title: string;
+  titleOptions: string[];
+  summary: string;
+  tags: string[];
+};
+
+export type PhotoSuggestion = {
+  purpose: string;
+  subject: string;
+  how: string;
+  placement: string;
+  fallback: string;
+  sourceIds: string[];
 };
 
 export type ContentProject = {
@@ -128,6 +146,7 @@ export type ContentProject = {
   topic: string;
   accountSnapshot: AccountContext | null;
   styleSnapshot: StyleContract | null;
+  temporaryStyleInstructions?: string[];
   knowledgeProfileVersion?: number;
   selectedKnowledgeRefs: ContentCitation[];
   brief: ContentBrief;

@@ -115,6 +115,7 @@ export async function generateQuickContent(input: QuickCreationInput) {
   let draft = project.channelDrafts.find((candidate) => candidate.channel === channel && candidate.status === "generated");
   if (!draft) {
     draft = await generateChannelDraft({
+      topic: project.topic,
       channel,
       brief: project.brief,
       sources: input.sources,

@@ -8,20 +8,25 @@ import {
 } from "@/modules/content/components/xiaohongshu-visual-card";
 import { channelLabels, contentChannels, type ContentChannel } from "@/modules/content/types";
 import type { ContentDraft } from "../types";
+import { publicationBody } from "@/modules/content/publication-delivery";
+import { renderWechatBodyHtml } from "../wechat-html";
+import { DraftPhotoPlan } from "./draft-photo-plan";
 
 export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
   const firstChannel = initialDraft.channelDrafts.find((item) => item.status === "generated")?.channel ?? contentChannels[0];
   const [draft, setDraft] = useState(initialDraft);
   const [activeChannel, setActiveChannel] = useState<ContentChannel>(firstChannel);
   const [edits, setEdits] = useState<Record<string, string>>(() => Object.fromEntries(initialDraft.channelDrafts.map((item) => [item.channel, item.content])));
-  const [busyAction, setBusyAction] = useState<"save" | "approve" | "channel" | "images" | null>(null);
+  const [titles, setTitles] = useState<Record<string, string>>(() => Object.fromEntries(initialDraft.channelDrafts.map((item) => [item.channel, item.delivery?.title ?? ""])));
+  const [busyAction, setBusyAction] = useState<"save" | "approve" | "channel" | "images" | "photos" | "review" | null>(null);
   const busy = busyAction !== null;
   const [message, setMessage] = useState<string | null>(null);
   const channelDraft = draft.channelDrafts.find((item) => item.channel === activeChannel);
   const content = edits[activeChannel] ?? "";
-  const changed = Boolean(channelDraft && content !== channelDraft.content);
+  const title = titles[activeChannel] ?? "";
+  const changed = Boolean(channelDraft && (content !== channelDraft.content || title !== (channelDraft.delivery?.title ?? "")));
   const hasUnsavedChanges = draft.channelDrafts.some(
-    (item) => (edits[item.channel] ?? item.content) !== item.content,
+    (item) => (edits[item.channel] ?? item.content) !== item.content || (titles[item.channel] ?? "") !== (item.delivery?.title ?? ""),
   );
   const hasGeneratedContent = draft.channelDrafts.some((item) => item.status === "generated");
   const versions = useMemo(() => draft.versions.filter((item) => item.channel === activeChannel).reverse(), [activeChannel, draft.versions]);
@@ -34,12 +39,13 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
       const response = await fetch(`/api/content-drafts/${encodeURIComponent(draft.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: activeChannel, content }),
+        body: JSON.stringify({ channel: activeChannel, content, ...(title || channelDraft.delivery ? { title } : {}), expectedUpdatedAt: channelDraft.updatedAt }),
       });
       const payload = (await response.json()) as { draft?: ContentDraft; error?: string };
       if (!response.ok || !payload.draft) throw new Error(payload.error ?? "草稿保存失败");
       setDraft(payload.draft);
       setEdits((current) => ({ ...current, [activeChannel]: payload.draft?.channelDrafts.find((item) => item.channel === activeChannel)?.content ?? content }));
+      setTitles((current) => ({ ...current, [activeChannel]: payload.draft?.channelDrafts.find((item) => item.channel === activeChannel)?.delivery?.title ?? "" }));
       setMessage("已保存，并保留上一版快照。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "草稿保存失败");
@@ -51,11 +57,23 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
   async function copy() {
     if (!content) return;
     try {
-      await navigator.clipboard.writeText(content);
-      setMessage(`已复制${channelLabels[activeChannel]}。`);
+      await navigator.clipboard.writeText(publicationBody({ channel: activeChannel, content, delivery: channelDraft?.delivery }));
+      setMessage(channelDraft?.delivery ? "已复制正文与本渠道话题。标题请单独复制，备选标题、摘要和实拍清单没有混入。" : "已复制原稿。旧稿未拆分标题和正文，请人工清理候选内容后发布。");
     } catch {
       setMessage("复制失败，请手工选择文本复制。");
     }
+  }
+
+  async function copyTitle() {
+    try { await navigator.clipboard.writeText(title); setMessage("已复制最终标题。"); }
+    catch { setMessage("复制失败，请选择标题手动复制。"); }
+  }
+
+  async function copyWechatHtml() {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([renderWechatBodyHtml(content)], { type: "text/html" }), "text/plain": new Blob([content], { type: "text/plain" }) })]);
+      setMessage("已复制排版正文。粘贴到公众号后台后请检查段落和强调，实拍图片仍需自行上传插入。");
+    } catch { setMessage("当前浏览器未能复制排版。可以下载公众号 HTML，或复制正文后在后台排版。"); }
   }
 
   async function approve() {
@@ -66,7 +84,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
       const response = await fetch(`/api/content-drafts/${encodeURIComponent(draft.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewStatus: "approved" }),
+        body: JSON.stringify({ reviewStatus: "approved", expectedUpdatedAt: draft.updatedAt }),
       });
       const payload = (await response.json()) as { draft?: ContentDraft; error?: string };
       if (!response.ok || !payload.draft) throw new Error(payload.error ?? "确认失败");
@@ -85,6 +103,31 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
     if (!response.ok || !payload.draft) throw new Error(payload.error ?? "草稿刷新失败");
     setDraft(payload.draft);
     setEdits(Object.fromEntries(payload.draft.channelDrafts.map((item) => [item.channel, item.content])));
+    setTitles(Object.fromEntries(payload.draft.channelDrafts.map((item) => [item.channel, item.delivery?.title ?? ""])));
+  }
+
+  async function review() {
+    if (busy || hasUnsavedChanges) return;
+    setBusyAction("review"); setMessage(null);
+    try {
+      const response = await fetch(`/api/content/projects/${encodeURIComponent(draft.id)}/channels/${activeChannel}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "审核未完成。");
+      await refreshDraft(); setMessage("审核结果已更新，请阅读结论并完成人工核对。");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "审核未完成。"); }
+    finally { setBusyAction(null); }
+  }
+
+  async function generatePhotos() {
+    if (busy || hasUnsavedChanges || !channelDraft) return;
+    setBusyAction("photos"); setMessage(null);
+    try {
+      const response = await fetch(`/api/content/projects/${encodeURIComponent(draft.id)}/channels/${activeChannel}/photos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedUpdatedAt: channelDraft.updatedAt }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "实拍清单准备失败。");
+      await refreshDraft(); setMessage("实拍建议已保存，请核对本店实际条件后准备素材。");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "实拍清单准备失败。"); }
+    finally { setBusyAction(null); }
   }
 
   async function generateChannel() {
@@ -147,7 +190,13 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
               {activeChannel === "xiaohongshu_note" && channelDraft?.status === "generated" && !channelDraft.visualAssets?.length ? (
                 <button className={primaryButtonClass} disabled={busy || hasUnsavedChanges} onClick={() => generateImages()} type="button">{busyAction === "images" ? "正在生成配图…" : "生成小红书配图"}</button>
               ) : null}
-              <button className={secondaryButtonClass} disabled={!content} onClick={copy} type="button">复制</button>
+              <button className={secondaryButtonClass} disabled={!content} onClick={copy} type="button">{channelDraft?.delivery ? "复制正文" : "复制原稿"}</button>
+              {title ? <button className={secondaryButtonClass} onClick={copyTitle} type="button">复制标题</button> : null}
+              {channelDraft?.status === "generated" ? <button className={secondaryButtonClass} disabled={busy || hasUnsavedChanges} onClick={review} type="button">{busyAction === "review" ? "正在审核…" : "重新审核标题与正文"}</button> : null}
+              {activeChannel === "wechat_article" && channelDraft?.status === "generated" ? <>
+                <button className={secondaryButtonClass} disabled={draft.reviewStatus !== "approved" || hasUnsavedChanges || busy} onClick={copyWechatHtml} type="button">复制公众号排版</button>
+                {draft.reviewStatus === "approved" && !hasUnsavedChanges ? <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export?channel=wechat_article&format=html`}>下载公众号 HTML</a> : null}
+              </> : null}
               {channelDraft?.status === "generated" ? <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export?channel=${activeChannel}`}>下载本渠道正文</a> : null}
               <a className={secondaryButtonClass} href={`/api/content-drafts/${encodeURIComponent(draft.id)}/export`}>下载项目资料（含简报）</a>
             </div>
@@ -155,11 +204,19 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
 
           {channelDraft?.status === "generated" ? (
             <>
+              <label className="mt-5 block text-sm font-semibold" htmlFor="final-title">最终标题<input id="final-title" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-base font-normal" maxLength={200} value={title} placeholder="旧稿请先核对原稿，再填写最终标题" onChange={(event) => setTitles((current) => ({ ...current, [activeChannel]: event.target.value }))} /></label>
+              {channelDraft.delivery?.titleOptions.length ? <details className="mt-3 text-xs leading-5 text-slate-600"><summary className="cursor-pointer">查看备选标题</summary><div className="mt-2 grid gap-2">{channelDraft.delivery.titleOptions.map((option) => <button className="rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-emerald-700" type="button" key={option} onClick={() => setTitles((current) => ({ ...current, [activeChannel]: option }))}>{option}</button>)}</div></details> : null}
+              {channelDraft.delivery?.summary ? <details className="mt-3 text-xs leading-5 text-slate-600"><summary className="cursor-pointer">摘要（单独填写，不复制进正文）</summary><p className="mt-2">{channelDraft.delivery.summary}</p></details> : null}
+              {!channelDraft.delivery ? <p className="mt-3 text-xs leading-5 text-amber-800">这是旧版原稿，可能包含备选标题、摘要或写作标签。旧内容保持原样，请在下面手动清理后保存；不会自动删改你的内容。</p> : null}
+              <label className="mt-5 block text-sm font-semibold" htmlFor="final-body">{activeChannel === "short_video_script" ? "最终拍摄脚本" : "最终正文"}</label>
               <textarea
-                className="mt-5 min-h-[560px] w-full resize-y rounded-xl border border-slate-300 px-4 py-4 text-sm leading-7 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
+                id="final-body" className="mt-2 min-h-[560px] w-full resize-y rounded-xl border border-slate-300 px-4 py-4 text-sm leading-7 outline-none focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10"
                 onChange={(event) => setEdits((current) => ({ ...current, [activeChannel]: event.target.value }))}
                 value={content}
               />
+              {channelDraft.delivery?.tags.length ? <p className="mt-3 text-xs text-slate-500">话题建议：{channelDraft.delivery.tags.map((tag) => `#${tag}`).join(" ")}</p> : null}
+              {activeChannel === "wechat_article" ? <p className="mt-3 text-xs leading-5 text-slate-500">确认内容可发布后，可复制公众号排版。标题单独粘贴；实拍图片请在后台上传插入。</p> : null}
+              <DraftPhotoPlan draft={channelDraft} disabled={busy || hasUnsavedChanges} busy={busyAction === "photos"} onGenerate={generatePhotos} />
               {activeChannel === "xiaohongshu_note" ? channelDraft.visualAssets?.length ? (
                 <DraftVisualAssets
                   assets={channelDraft.visualAssets}
@@ -171,7 +228,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
               ) : (
                 <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                   <p className="text-sm font-semibold text-emerald-950">还没有小红书配图</p>
-                  <p className="mt-1 text-xs leading-5 text-emerald-800">先保存文案修改，再点击页面上方的“生成小红书配图”：生成 1 张 AI 封面背景和可下载的正文图文内页。</p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-800">可先准备上方的真实照片，也可生成 AI 示意封面与文字卡片作为补充；它们不能当作本店实拍。保存文案后点击“生成小红书配图”。</p>
                 </div>
               ) : null}
             </>
@@ -223,7 +280,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
             )}
           </div>
         </InfoCard>
-        {channelDraft?.review ? <DraftReviewCard content={content} review={channelDraft.review} /> : null}
+        {channelDraft?.review ? <DraftReviewCard content={content} title={title} review={channelDraft.review} /> : null}
         <InfoCard title="统一内容简报">
           <InfoRow label="目标受众" value={draft.brief.targetAudience} /><InfoRow label="内容目标" value={draft.brief.contentGoal} /><InfoRow label="核心观点" value={draft.brief.coreMessage} /><InfoRow label="行动引导" value={draft.brief.callToAction} />
           <ListBlock label="关键论点" items={draft.brief.keyPoints} />
@@ -257,7 +314,7 @@ export function DraftDetail({ initialDraft }: { initialDraft: ContentDraft }) {
           {draft.brief.citations.length ? <div className="grid gap-3">{draft.brief.citations.map((citation) => <article className="rounded-xl bg-slate-50 p-3" key={`${citation.sourceId}:${citation.excerpt}`}><p className="text-xs font-semibold text-slate-800">{citation.sourceTitle}</p><p className="mt-2 text-xs leading-5 text-slate-600">“{citation.excerpt}”</p><p className="mt-2 text-[11px] text-slate-400">用途：{citation.purpose}</p></article>)}</div> : <p className="text-xs text-slate-400">暂无引用。</p>}
         </InfoCard>
         <InfoCard title={`历史版本 · ${versions.length}`}>
-          {versions.length ? <div className="grid gap-2">{versions.map((version, index) => <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700" key={version.id} onClick={() => setEdits((current) => ({ ...current, [activeChannel]: version.content }))} type="button"><p className="text-xs font-semibold text-slate-700">历史版本 {versions.length - index}</p><p className="mt-1 text-[11px] text-slate-400">{formatDate(version.createdAt)} · 点击载入编辑器</p></button>)}</div> : <p className="text-xs leading-5 text-slate-400">首次修改保存后，这里会保留上一版内容。</p>}
+          {versions.length ? <div className="grid gap-2">{versions.map((version, index) => <button className="rounded-xl border border-slate-200 p-3 text-left hover:border-emerald-700" key={version.id} onClick={() => { setEdits((current) => ({ ...current, [activeChannel]: version.content })); if (version.delivery) setTitles((current) => ({ ...current, [activeChannel]: version.delivery!.title })); }} type="button"><p className="text-xs font-semibold text-slate-700">历史版本 {versions.length - index}</p><p className="mt-1 text-[11px] text-slate-400">{formatDate(version.createdAt)} · 点击载入编辑器</p></button>)}</div> : <p className="text-xs leading-5 text-slate-400">首次修改保存后，这里会保留上一版内容。</p>}
         </InfoCard>
       </aside>
     </div>
@@ -336,9 +393,9 @@ function DraftVisualAssets({
 }
 
 function InfoCard({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold text-slate-900">{title}</h2><div className="mt-4">{children}</div></section>; }
-function DraftReviewCard({ content, review }: { content: string; review: NonNullable<ContentDraft["channelDrafts"][number]["review"]> }) {
+function DraftReviewCard({ content, title, review }: { content: string; title: string; review: NonNullable<ContentDraft["channelDrafts"][number]["review"]> }) {
   const openIssues = review.issues.filter((issue) => issue.status === "open");
-  const stale = review.reviewedContent !== content;
+  const stale = review.reviewedContent !== content || (review.reviewedTitle !== undefined && review.reviewedTitle !== title);
   return (
     <InfoCard title="AI 审核结果">
       <div className="flex flex-wrap items-center gap-2">

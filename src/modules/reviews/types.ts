@@ -24,6 +24,7 @@ export type ChannelReview = {
   issues: ReviewIssue[];
   humanWritingQa: boolean;
   reviewedContent: string;
+  reviewedTitle?: string;
   reviewedAt: string;
 };
 

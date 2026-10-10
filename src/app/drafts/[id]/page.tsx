@@ -14,9 +14,9 @@ export default async function DraftDetailPage({ params }: { params: Promise<{ id
   return (
     <AppShell active="/drafts">
       <PageHeader
-        eyebrow="CONTINUE EDITING"
+        eyebrow="创作选题"
         title={draft.topic}
-        description="查看已确认简报和引用，继续编辑各渠道内容。每次保存都会保留上一版快照。"
+        description="在下方核对各渠道的最终标题和正文。每次保存都会保留上一版快照，发布由你手动完成。"
         actions={<Link className={secondaryButtonClass} href="/drafts">← 返回草稿历史</Link>}
       />
       <DraftDetail initialDraft={draft} />

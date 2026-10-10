@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { getOnboardingSnapshot } from "@/modules/onboarding/service";
 import {
   SetupWorkspace,
@@ -9,9 +8,6 @@ export const dynamic = "force-dynamic";
 
 export default async function SetupPage() {
   const snapshot = await getOnboardingSnapshot();
-  if (snapshot.status.state === "in_progress" && snapshot.account?.status !== "confirmed") {
-    redirect("/setup/interview");
-  }
   const initialData: SetupWorkspaceData = {
     status: snapshot.status,
     serverKnowledgeCount: snapshot.serverKnowledgeCount,
@@ -24,6 +20,13 @@ export default async function SetupPage() {
       offer: snapshot.account.offer,
       platforms: snapshot.account.platforms,
       targetAudience: snapshot.account.targetAudience,
+    } : snapshot.businessProfile ? {
+      accountName: snapshot.businessProfile.name,
+      business: snapshot.businessProfile.businessSummary,
+      offer: snapshot.businessProfile.offers.map((offer) => offer.name).join("、"),
+      conversionGoal: snapshot.businessProfile.businessGoals.join("、"),
+      targetAudience: snapshot.businessProfile.targetCustomers,
+      accountPosition: "", contentPillars: [], platforms: [],
     } : null,
     styleProfile: snapshot.styleProfile ? {
       name: snapshot.styleProfile.name,
