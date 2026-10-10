@@ -85,10 +85,12 @@ function mockCompletion(system, user, latestUser) {
   }
   if (system.includes("经营访谈内容顾问")) {
     const answers = JSON.parse(user);
+    if (user.includes("验收访谈空方向")) return { accountPosition: "", contentPillars: [] };
     return {
       accountPosition: `围绕${answers.goal}介绍${answers.offer}`,
       targetAudience: [answers.audience || "附近顾客（待验证）"],
-      contentPillars: ["产品介绍", "到店场景", "日常经营"],
+      contentPillars: user.includes("验收访谈对象方向") ? [{ title: "产品介绍", description: "介绍本次真实服务" }, { title: "到店场景" }]
+        : user.includes("验收访谈文本方向") ? "产品介绍\n到店场景\n日常经营" : ["产品介绍", "到店场景", "日常经营"],
       contentAngles: ["从本次目标出发"], recommendedTopics: ["先认识这家店", "本周主推产品", "什么情况下适合来"],
       questionsToConfirm: answers.audience ? [] : ["哪些顾客真的会因为内容到店？"],
     };

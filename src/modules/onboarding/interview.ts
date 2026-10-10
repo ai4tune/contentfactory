@@ -51,3 +51,9 @@ export function asRecord(value: unknown): Record<string, unknown> {
 export function interviewList(value: unknown, limit = 12): string[] {
   return Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 500)).filter(Boolean))].slice(0, limit) : [];
 }
+
+export function interviewAnswersMatch(saved: InterviewAnswers, input: InterviewAnswers) {
+  return interviewFields.every((field) => saved[field].trim() === input[field].trim())
+    && saved.primaryChannel === input.primaryChannel
+    && (saved.industry ?? "general") === (input.industry ?? "general");
+}
