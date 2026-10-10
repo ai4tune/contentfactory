@@ -6,6 +6,7 @@ import { useState } from "react";
 import { primaryButtonClass, secondaryButtonClass } from "@/components/app-shell";
 import { channelLabels, contentChannels } from "@/modules/content/types";
 import type { InterviewField, InterviewState } from "../interview";
+import { interviewAnswersMatch } from "../interview";
 
 const questions: Array<{ title: string; description: string; fields: Array<{ id: InterviewField; label: string; placeholder: string; optional?: boolean }> }> = [
   { title: "先认识一下你的生意", description: "用平时向客人介绍的方式说就好。", fields: [
@@ -55,6 +56,10 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
         }),
       });
       const payload = await response.json() as { interview?: InterviewState; error?: string };
+      if (!response.ok && payload.interview && interviewAnswersMatch(payload.interview.answers, answers)) {
+        setState(payload.interview);
+        if (action === "preview") setShowPreview(false);
+      }
       if (!response.ok || !payload.interview) throw new Error(payload.error ?? "保存失败，请重试。");
       const next = payload.interview;
       setState(next);
@@ -66,7 +71,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
         setShowPreview(true);
       } else if (action === "save") {
         setShowPreview(false);
-        if (exitAfterSave) router.push("/");
+        if (exitAfterSave) router.push("/setup");
         else setMessage("回答已保存，可以稍后回来继续。");
       }
     } catch (error) {
@@ -76,7 +81,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
         const response = await fetch("/api/onboarding/interview", { cache: "no-store" });
         if (response.ok) {
           const payload = await response.json() as { interview: InterviewState };
-          if (JSON.stringify(payload.interview.answers) === JSON.stringify(answers)
+          if (interviewAnswersMatch(payload.interview.answers, answers)
             && (action !== "confirm" || payload.interview.preview?.id === state.preview?.id)) {
             setState(payload.interview);
             if (action === "preview") setShowPreview(false);
@@ -139,7 +144,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
           </fieldset>
         )}
         {message ? <p className="mt-4 text-sm leading-6 text-emerald-900" role="status">{message}</p> : null}
-        {!complete ? <p className="mt-5 text-xs leading-5 text-slate-500">“保存并退出”会保存已填回答并返回首页，下次从当前步骤继续。回答确认后才会成为正式经营资料。</p> : null}
+        {!complete ? <p className="mt-5 text-xs leading-5 text-slate-500">“保存并退出”会保存已填回答并返回建档概览，下次可以从当前步骤继续。回答确认后才会成为正式经营资料。</p> : null}
       </div>
     </main>
   );

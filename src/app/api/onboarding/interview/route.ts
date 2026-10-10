@@ -10,6 +10,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  let previewRequested = false;
   try {
     const body = asRecord(await request.json().catch(() => ({})));
     const revision = parseInterviewRevision(body.revision);
@@ -19,7 +20,9 @@ export async function POST(request: Request) {
       if (!Number.isInteger(step) || step < 0 || step > 5) throw new InterviewError("访谈步骤无效。");
       interview = await saveInterviewAnswers(parseInterviewAnswers(body.answers), revision, step);
     } else if (body.action === "preview") {
-      interview = await previewInterview(parseInterviewAnswers(body.answers, true), revision);
+      const answers = parseInterviewAnswers(body.answers, true);
+      previewRequested = true;
+      interview = await previewInterview(answers, revision);
     } else if (body.action === "confirm") {
       interview = await confirmInterview(revision, body.previewId, body.edits);
     } else {
@@ -27,6 +30,9 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ interview });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "访谈处理失败，已保存的回答会保留。" }, { status: error instanceof InterviewError ? error.status : 500 });
+    const interview = previewRequested && !(error instanceof InterviewError)
+      ? await getInterviewInitialState().catch(() => undefined)
+      : undefined;
+    return NextResponse.json({ error: error instanceof Error ? error.message : "访谈处理失败，已保存的回答会保留。", ...(interview ? { interview } : {}) }, { status: error instanceof InterviewError ? error.status : 500 });
   }
 }

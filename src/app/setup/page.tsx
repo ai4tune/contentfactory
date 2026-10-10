@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { getOnboardingSnapshot } from "@/modules/onboarding/service";
 import {
   SetupWorkspace,
@@ -9,9 +8,6 @@ export const dynamic = "force-dynamic";
 
 export default async function SetupPage() {
   const snapshot = await getOnboardingSnapshot();
-  if (snapshot.status.state === "in_progress" && snapshot.account?.status !== "confirmed") {
-    redirect("/setup/interview");
-  }
   const initialData: SetupWorkspaceData = {
     status: snapshot.status,
     serverKnowledgeCount: snapshot.serverKnowledgeCount,

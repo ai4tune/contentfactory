@@ -3,6 +3,7 @@ import { chatCompletionJson, parseJsonObject, type PositioningResult } from "@/l
 import { saveMaterial } from "@/lib/store";
 import type { BriefKnowledgeSource } from "@/modules/content/types";
 import { channelLabels } from "@/modules/content/types";
+import { normalizeBriefList } from "@/modules/content/server/normalize-brief-list";
 import { getConfirmedKnowledgeProfile, saveKnowledgeProfile } from "@/modules/knowledge-profile/repository";
 import type { EnterpriseKnowledgeProfileInput } from "@/modules/knowledge-profile/types";
 import { confirmAccountContext, getCurrentAccountContext } from "@/modules/positioning/repository";
@@ -38,6 +39,7 @@ export async function previewInterview(answers: InterviewAnswers, revision: numb
   const content = await chatCompletionJson([
     { role: "system", content: [
       "你是经营访谈内容顾问。只输出 JSON，包含 accountPosition, targetAudience, contentPillars, contentAngles, recommendedTopics, questionsToConfirm。",
+      '格式：{"accountPosition":"内容方向","targetAudience":["建议顾客"],"contentPillars":["方向一","方向二","方向三"],"contentAngles":["表达角度"],"recommendedTopics":["选题"],"questionsToConfirm":["待验证问题"]}。accountPosition 必须是非空字符串，其余字段是字符串数组；没有内容时返回空数组。',
       "依据老板本次目标建议未来内容方向，不需要历史账号。accountPosition 是简短内容方向，不得新增价格、营业时间、服务承诺或已发生的经营效果。",
       "contentPillars 给出 3 个可执行方向，recommendedTopics 给出 3～5 个选题；它们是建议，不能把假设当事实。",
       "受众或特点未提供、不确定时，targetAudience 可给出待验证的建议，并在 questionsToConfirm 明确标记需要验证。不得用旧资料覆盖本次经营目标。",
@@ -47,10 +49,10 @@ export async function previewInterview(answers: InterviewAnswers, revision: numb
   ], { timeoutMs: 60_000 });
   const result = asRecord(parseJsonObject(content));
   const accountPosition = typeof result.accountPosition === "string" ? result.accountPosition.trim().slice(0, 2000) : "";
-  const contentPillars = interviewList(result.contentPillars, 5);
+  const contentPillars = aiInterviewList(result.contentPillars, 5);
   if (!accountPosition || !contentPillars.length) throw new Error("AI 没有整理出可用的内容方向。回答已保存，请重试。");
-  const targetAudience = interviewList(result.targetAudience);
-  const informationGaps = interviewList(result.questionsToConfirm);
+  const targetAudience = aiInterviewList(result.targetAudience);
+  const informationGaps = aiInterviewList(result.questionsToConfirm);
   if (!answers.audience || /不确定|不知道/.test(answers.audience)) informationGaps.unshift("目标顾客尚待验证，AI 建议不能当作已确认的客户画像。");
   const input = {
     accountName: answers.accountName, business: answers.business, offer: answers.offer,
@@ -59,13 +61,17 @@ export async function previewInterview(answers: InterviewAnswers, revision: numb
   };
   const suggestion: PositioningResult = {
     accountPosition, targetAudience: targetAudience.length ? targetAudience : [answers.audience || "目标顾客待验证"], contentPillars,
-    contentAngles: interviewList(result.contentAngles), recommendedTopics: interviewList(result.recommendedTopics, 5),
+    contentAngles: aiInterviewList(result.contentAngles), recommendedTopics: aiInterviewList(result.recommendedTopics, 5),
     keywordSeeds: [], benchmarkAccounts: [], brandVoice: [answers.tone || "自然亲切，使用日常表达"],
     preferredPhrases: [], bannedPhrases: answers.boundaries ? [answers.boundaries] : [],
     analysisEvidence: ["依据本次经营访谈；内容方向和选题是供老板核对的建议。"], questionsToConfirm: informationGaps, nextActions: [],
   };
   const account = createAccountContextDraft(input, suggestion);
   return updateInterviewState(saved.revision, (state) => ({ ...state, preview: { id: randomUUID(), account } }));
+}
+
+function aiInterviewList(value: unknown, limit = 12) {
+  return interviewList(normalizeBriefList(typeof value === "string" ? value.split(/\r?\n+/) : value), limit);
 }
 
 export async function confirmInterview(revision: number, previewId: unknown, edits: unknown) {

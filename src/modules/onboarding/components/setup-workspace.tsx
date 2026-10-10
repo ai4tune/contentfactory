@@ -81,8 +81,6 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
       try {
         if (!supportsDirectoryPicker()) {
           setLocalPermission("unsupported");
-          const next = await patchStatus({ action: "sync", localKnowledgeCount: 0 });
-          if (active) setStatus(next);
           return;
         }
         const cached = await loadLocalKnowledge();
@@ -91,8 +89,6 @@ export function SetupWorkspace({ initialData }: { initialData: SetupWorkspaceDat
         const items = restored?.items ?? cached;
         setLocalKnowledgeCount(items.length);
         setLocalPermission(restored?.permission ?? "none");
-        const next = await patchStatus({ action: "sync", localKnowledgeCount: items.length });
-        if (active) setStatus(next);
       } catch {
         if (active) setMessage("本地知识库状态恢复失败，可前往知识库重新连接。");
       }
