@@ -34,6 +34,7 @@ let readOnlyGuard = false, blockedMutations = 0;
 let failInvitation = false, failGrant = false;
 const invitations = [];
 const stateReads = [];
+const mapRequests = [];
 
 function jwt(id) {
   return [Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url"), Buffer.from(JSON.stringify({ sub: id, exp: expiresAt })).toString("base64url"), "synthetic-signature"].join(".");
@@ -74,8 +75,35 @@ before(async () => {
       return respond(response, 200, user);
     }
     if (url.pathname === "/auth/v1/admin/users") return respond(response, 200, { users: [...users.values()], aud: "authenticated" });
+    if (url.pathname === "/res/v1/web/search") return respond(response, 200, { type: "search", web: { results: [{ title: url.searchParams.get("q"), url: "https://example.org/peer", description: url.searchParams.get("q") }] } });
+    if (url.pathname.startsWith("/v5/place/")) {
+      mapRequests.push(url.pathname);
+      return respond(response, 200, { status: "1", infocode: "10000", pois: [{ id: "B_ISOLATED", name: url.searchParams.get("keywords"), location: "117.2,39.12", cityname: "天津市", address: "合成验收地址" }] });
+    }
     if (url.pathname === "/v1/chat/completions") {
       await delay(500);
+      if (body.tools) {
+        const calls = body.messages.flatMap((message) => message.tool_calls ?? []).map((call) => call.function.name);
+        const source = JSON.parse(body.messages[0].content.match(/本次选中的本地文件：(\[[^\n]*\])/)?.[1] ?? "[]")[0];
+        const latest = body.messages.findLast((message) => message.role === "user")?.content ?? "";
+        if (latest.includes("隔离地图")) {
+          const tool = latest.includes("越权") ? "search_nearby_places" : "search_places";
+          const name = !calls.includes(tool) ? tool : null;
+          const input = tool === "search_places" ? { query: latest, city: "天津市" } : { centerSourceId: latest.match(/source=([^\s]+)/)?.[1], query: "咖啡", radiusMeters: 3000 };
+          return respond(response, 200, { id: "synthetic-map", model: "synthetic", object: "chat.completion", created: 1, choices: [{ index: 0, finish_reason: name ? "tool_calls" : "stop", message: { role: "assistant", content: name ? "" : "地点候选已保存，等待用户选择。", ...(name ? { tool_calls: [{ id: "map-call", type: "function", function: { name, arguments: JSON.stringify(input) } }] } : {}) } }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+        }
+        if (latest.includes("隔离调研")) {
+          const name = latest.includes("越权") ? !calls.includes("read_research") ? "read_research" : null : !calls.includes("search_web") ? "search_web" : null;
+          const input = name === "read_research" ? { researchId: latest.match(/research_\w+/)?.[0] } : { query: latest, freshness: "any", limit: 1 };
+          return respond(response, 200, { id: "synthetic-research", model: "synthetic", object: "chat.completion", created: 1, choices: [{ index: 0, finish_reason: name ? "tool_calls" : "stop", message: { role: "assistant", content: name ? "" : "已保存本账号调研来源。", ...(name ? { tool_calls: [{ id: "research-call", type: "function", function: { name, arguments: JSON.stringify(input) } }] } : {}) } }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+        }
+        const name = !calls.includes("get_business_context") ? "get_business_context" : !calls.includes("search_knowledge") ? "search_knowledge" : !calls.includes("read_knowledge") && source ? "read_knowledge" : null;
+        const input = name === "search_knowledge" ? { query: "" } : name === "read_knowledge" ? { sourceId: source.id } : {};
+        return respond(response, 200, { id: "synthetic-agent", model: "synthetic", object: "chat.completion", created: 1,
+          choices: [{ index: 0, finish_reason: name ? "tool_calls" : "stop", message: { role: "assistant", content: name ? "" : "已读取本账号资料。",
+            ...(name ? { tool_calls: [{ id: `call-${calls.length}`, type: "function", function: { name, arguments: JSON.stringify(input) } }] } : {}) } }],
+          usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+      }
       const organization = body.messages[0].content.includes("summary 和 assignments");
       const result = organization ? { summary: "独立整理", assignments: [{ sourceId: "private-source", folderId: "brand", reason: "资料" }] }
         : { name: "私有档案", businessSummary: "私人业务", targetCustomers: [], offers: [], strengths: [], businessGoals: [], preferredTopics: [], forbiddenClaims: [], gaps: [], facts: [{ category: "业务", statement: "账号资料", confidence: "confirmed", sourceIds: ["private-source"] }] };
@@ -115,6 +143,8 @@ before(async () => {
     NEXT_PUBLIC_SUPABASE_URL: serviceUrl, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic", SUPABASE_SECRET_KEY: "sb_secret_synthetic", CONTENT_FACTORY_WORKSPACE_ID: shared,
     CONTENT_FACTORY_CAPTURE_TOKEN: "synthetic-capture-signing-key", CONTENT_FACTORY_DATA_DIR: directory,
     AI_BASE_URL: `${serviceUrl}/v1`, AI_API_KEY: "synthetic", AI_MODEL: "synthetic",
+    AMAP_API_KEY: "synthetic-amap", AMAP_BASE_URL: serviceUrl,
+    BRAVE_API_KEY: "synthetic-brave", BRAVE_SEARCH_BASE_URL: serviceUrl,
     WORKFLOW_TARGET_WORLD: "local", WORKFLOW_LOCAL_DATA_DIR: path.join(directory, "workflow"), WORKFLOW_LOCAL_BASE_URL: base,
   }, stdio: ["ignore", "pipe", "pipe"] });
   app.stdout.on("data", (chunk) => { logs += chunk; });
@@ -302,6 +332,93 @@ test("delivery project and photo preparation cannot be accessed by guessing anot
   assert.deepEqual(rows.content_factory_state.filter((row) => row.workspace_id === bobWorkspace), bobBefore);
 });
 
+test("chat, memories, selected files and background tools remain owned by the authenticated account", { timeout: 30_000 }, async () => {
+  const before = structuredClone(rows.content_factory_state);
+  assert.deepEqual((await (await request(alice, "/api/agent/chat")).json()).conversations, []);
+  assert.deepEqual(rows.content_factory_state, before, "empty chat reads cannot create a cloud row");
+  const inputs = ["Alice-only-knowledge", "Bob-only-knowledge"].map((text) => ({ requestId: "same-request-id", content: `读取资料 ${text}`, sources: [{ id: "local:selected", title: "本地素材", source: "local", text }] }));
+  const results = await Promise.all([request(alice, "/api/agent/chat", inputs[0]), request(bob, "/api/agent/chat", inputs[1])]);
+  assert.ok(results.every((response) => response.status === 202));
+  const turns = await Promise.all(results.map(async (response) => (await response.json()).turn));
+  assert.notEqual(turns[0].id, turns[1].id);
+  let states;
+  for (let index = 0; index < 100; index++) {
+    states = await Promise.all([alice, bob].map(async (id) => (await (await request(id, "/api/agent/chat")).json())));
+    if (states.every((state) => state.turns[0]?.status === "completed")) break;
+    await delay(150);
+  }
+  assert.ok(states.every((state) => state.turns[0].status === "completed"), JSON.stringify(states) + logs.slice(-2000));
+  for (const [index, id] of [alice, bob].entries()) {
+    const state = states[index];
+    assert.equal(state.workspaceId, index ? bobWorkspace : aliceWorkspace);
+    assert.equal(state.turns[0].tools.find((tool) => tool.name === "read_knowledge").output.text, inputs[index].sources[0].text);
+    assert.doesNotMatch(JSON.stringify(state), new RegExp(inputs[1 - index].sources[0].text));
+    assert.equal((await request(id, "/api/agent/chat", { ...inputs[index], requestId: "forged-conversation", conversationId: turns[1 - index].conversationId })).status, 404);
+    assert.equal((await request(id, `/api/agent/chat/turns/${turns[1 - index].id}`, { action: "continue" })).status, 404);
+    assert.equal((await request(id, `/api/agent/chat/turns/${turns[1 - index].id}`, { action: "pause" })).status, 404);
+    assert.equal((await request(id, "/api/agent/chat/memories/shared-memory", { sourceMessageId: states[1 - index].conversations[0].messages[0].id, content: "他人的记忆" }, "PATCH")).status, 404);
+  }
+  const sourceMessageId = states[0].conversations[0].messages[0].id;
+  assert.equal((await request(alice, "/api/agent/chat/memories/voice", { sourceMessageId, content: "Alice 私有表达偏好" }, "PATCH")).status, 200);
+  assert.deepEqual((await (await request(bob, "/api/agent/chat")).json()).memories, []);
+  const own = await (await request(alice, "/api/agent/chat", undefined, "GET", { "x-workspace-id": bobWorkspace })).json();
+  assert.equal(own.memories[0].content, "Alice 私有表达偏好");
+  assert.equal(own.conversations[0].messages.length, 2, "another client restores the same complete history");
+  const businessRows = (state) => state.filter((row) => !["json:agent-chat.local.json", "db:provider-call-logs"].includes(row.store_key));
+  assert.deepEqual(businessRows(rows.content_factory_state), businessRows(before));
+  assert.equal(rows.content_factory_state.some((row) => row.workspace_id === shared && row.store_key === "json:agent-chat.local.json"), false);
+});
+
+test("research snapshots follow the owner and reject guessed foreign record IDs", { timeout: 30_000 }, async () => {
+  const wait = async (user, id) => {
+    for (let i = 0; i < 100; i++) {
+      const turn = (await (await request(user, "/api/agent/chat")).json()).turns.find((item) => item.id === id);
+      if (["completed", "failed"].includes(turn?.status)) return turn;
+      await delay(100);
+    }
+    throw new Error("Research did not finish");
+  };
+  const results = await Promise.all([alice, bob].map((user, index) => request(user, "/api/agent/chat", { requestId: "same-research-request", content: `隔离调研 private-${index}` })));
+  const turns = await Promise.all(results.map(async (response, index) => { assert.equal(response.status, 202); return wait([alice, bob][index], (await response.json()).turn.id); }));
+  const records = turns.map((turn) => { assert.equal(turn.status, "completed"); return turn.tools.find((tool) => tool.name === "search_web").output.research; });
+  const a = await (await request(alice, "/api/agent/chat", undefined, "GET", { "x-workspace-id": bobWorkspace })).json();
+  assert.match(JSON.stringify(a), /private-0/); assert.doesNotMatch(JSON.stringify(a), /private-1/);
+  const foreign = await request(bob, "/api/agent/chat", { requestId: "foreign-research", content: `隔离调研越权 ${records[0].id}` });
+  const failed = await wait(bob, (await foreign.json()).turn.id);
+  assert.equal(failed.status, "failed"); assert.match(failed.tools[0].error, /当前账号/);
+  assert.equal(rows.content_factory_state.some((row) => row.workspace_id === shared && row.store_key === "json:agent-chat.local.json"), false);
+});
+
+test("map center confirmation and nearby queries enforce owner isolation without altering business data", { timeout: 30_000 }, async () => {
+  const beforeBusiness = structuredClone(rows.content_factory_state.filter((row) => !["json:agent-chat.local.json", "db:provider-call-logs"].includes(row.store_key)));
+  async function wait(user, id) {
+    for (let i = 0; i < 100; i++) {
+      const turn = (await (await request(user, "/api/agent/chat")).json()).turns.find((item) => item.id === id);
+      if (["completed", "failed"].includes(turn?.status)) return turn;
+      await delay(100);
+    }
+    throw new Error("Map task did not finish");
+  }
+  const response = await request(alice, "/api/agent/chat", { requestId: "map-alice", content: "隔离地图 Alice 地点" });
+  assert.equal(response.status, 202);
+  const turn = await wait(alice, (await response.json()).turn.id);
+  assert.equal(turn.status, "completed");
+  const sourceId = turn.tools[0].output.research.sources[0].id;
+  assert.equal((await request(bob, "/api/agent/chat/location", { sourceId })).status, 404);
+  assert.equal((await request(alice, "/api/agent/chat/location", { sourceId }, "POST", { "x-workspace-id": bobWorkspace })).status, 200);
+  const a = await (await request(alice, "/api/agent/chat")).json(), b = await (await request(bob, "/api/agent/chat")).json();
+  assert.equal(a.researchLocation.sourceId, sourceId); assert.equal(b.researchLocation, undefined);
+  const queries = mapRequests.length;
+  const forged = await request(bob, "/api/agent/chat", { requestId: "map-forged", content: `隔离地图越权 source=${sourceId}` });
+  const failed = await wait(bob, (await forged.json()).turn.id);
+  assert.equal(failed.status, "failed"); assert.match(failed.tools[0].error, /确认调研中心/);
+  assert.equal(mapRequests.length, queries);
+  const foreignWeb = rows.content_factory_state.find((row) => row.workspace_id === bobWorkspace && row.store_key === "json:agent-chat.local.json").payload.turns
+    .flatMap((turn) => turn.tools).find((tool) => tool.name === "search_web").output.research.sources[0].id;
+  assert.equal((await request(bob, "/api/agent/chat/location", { sourceId: foreignWeb })).status, 404);
+  assert.deepEqual(rows.content_factory_state.filter((row) => !["json:agent-chat.local.json", "db:provider-call-logs"].includes(row.store_key)), beforeBusiness);
+});
+
 test("existing v1 customer spaces load through the upgrade without any write or payload change", async () => {
   for (const id of [alice, bob]) {
     for (let index = 0; index < 40; index++) {
@@ -325,7 +442,7 @@ test("existing v1 customer spaces load through the upgrade without any write or 
   readOnlyGuard = true;
   try {
     for (const [id, workspace] of [[alice, aliceWorkspace], [bob, bobWorkspace]]) {
-      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/onboarding/status", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
+      for (const url of ["/api/agent/chat", "/", "/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/onboarding/status", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
         const response = await request(id, url);
         assert.equal(response.status, 200, url + " " + await response.clone().text());
         if (url === "/api/onboarding/first-content") {

@@ -11,25 +11,31 @@
     "test:extension": "node --test src/tests/extension-*.test.mjs",
     "test:guardrails": "node --test src/tests/production-guardrails.test.mjs src/tests/data-maintenance.test.mjs src/tests/json-file-store.test.mjs src/tests/knowledge-local-*.test.mjs src/tests/knowledge-account-index.test.mjs src/tests/image-market-reliability.test.mjs src/tests/market-search-filters.test.mjs",
     "test:v2": "npm run build && node --test src/tests/v2-handoff.test.mjs",
-    "test:acceptance": "npm run lint && npm run test:guardrails && npm run test:extension && npm run test:api && node --test src/tests/v2-handoff.test.mjs && node --test src/tests/knowledge-import.test.mjs && node --test src/tests/knowledge-tasks.test.mjs && node --test src/tests/account-isolation.test.mjs && node --test src/tests/onboarding-interview.test.mjs src/tests/onboarding-recovery.test.mjs && node --test src/tests/first-content.test.mjs src/tests/first-content-start.test.mjs src/tests/publication-delivery.test.mjs",
+    "test:acceptance": "npm run lint && npm run test:guardrails && npm run test:extension && npm run test:api && node --test src/tests/v2-handoff.test.mjs && node --test src/tests/knowledge-import.test.mjs && node --test src/tests/knowledge-tasks.test.mjs && node --test src/tests/account-isolation.test.mjs && node --test src/tests/onboarding-interview.test.mjs src/tests/onboarding-recovery.test.mjs && node --test src/tests/first-content.test.mjs src/tests/first-content-start.test.mjs src/tests/publication-delivery.test.mjs && node --test src/tests/agent-chat.test.mjs && node --test src/tests/agent-research-policy.test.mjs src/tests/agent-research.test.mjs && node --test src/tests/agent-amap.test.mjs",
     "test:interview": "npm run build && node --test src/tests/onboarding-interview.test.mjs src/tests/onboarding-recovery.test.mjs",
     "data:backup": "node ops/data-maintenance.mjs backup",
     "data:restore": "node ops/data-maintenance.mjs restore",
     "data:delete": "node ops/data-maintenance.mjs delete",
     "data:migrate:supabase": "node ops/migrate-local-data-to-supabase.mjs",
     "test:knowledge-tasks": "npm run build && node --test src/tests/knowledge-import.test.mjs && node --test src/tests/knowledge-tasks.test.mjs",
-    "test:account-isolation": "npm run build && node --test src/tests/account-isolation.test.mjs"
+    "test:account-isolation": "npm run build && node --test src/tests/account-isolation.test.mjs",
+    "test:agent-chat": "npm run build && node --test src/tests/agent-chat.test.mjs src/tests/account-isolation.test.mjs",
+    "test:agent-research": "npm run build && node --test src/tests/agent-research-policy.test.mjs src/tests/agent-research.test.mjs src/tests/agent-chat.test.mjs src/tests/account-isolation.test.mjs",
+    "test:agent-amap": "npm run build && node --test src/tests/agent-amap.test.mjs src/tests/agent-research-policy.test.mjs src/tests/agent-research.test.mjs src/tests/agent-chat.test.mjs src/tests/account-isolation.test.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.67",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
+    "ai": "^7.0.137",
     "better-sqlite3": "^11.0.0",
     "mammoth": "^1.13.0",
     "next": "16.3.5",
     "pdfjs-dist": "^6.3.289",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "workflow": "5.0.1"
+    "workflow": "5.0.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

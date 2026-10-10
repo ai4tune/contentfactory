@@ -95,7 +95,7 @@ export function createRedFoxProvider(config: ProviderConfig) {
     const configuredCost = marketRequestCost();
 
     // 检查缓存
-    const cached = await getProviderCache(cacheKey);
+    const cached = config.cache?.enabled === false ? null : await getProviderCache(cacheKey);
     if (cached) {
       const ttl = CACHE_TTL[endpoint] || CACHE_TTL.default;
       const cachedAt = new Date(`${String(cached.updated_at).replace(" ", "T")}Z`).getTime();
@@ -121,7 +121,7 @@ export function createRedFoxProvider(config: ProviderConfig) {
       const data = await callRedFoxApi(endpoint, params, method);
 
       // 缓存响应
-      await setProviderCache(cacheKey, "redfox", endpoint, JSON.stringify(data));
+      if (config.cache?.enabled !== false) await setProviderCache(cacheKey, "redfox", endpoint, JSON.stringify(data));
 
       // 记录调用
       await saveProviderCallLog({

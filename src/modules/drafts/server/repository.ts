@@ -230,7 +230,7 @@ function normalizeDraft(project: ContentProject & Partial<ContentDraft>): Conten
   return {
     ...project,
     styleSnapshot: project.styleSnapshot ?? null,
-    brief: normalizedBrief ?? {
+    brief: normalizedBrief ? { ...normalizedBrief, ideaContext: project.brief.ideaContext } : {
       ...project.brief,
       keyPoints: normalizeBriefList(project.brief.keyPoints),
       outline: normalizeBriefList(project.brief.outline),
