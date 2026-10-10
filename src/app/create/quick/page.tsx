@@ -22,7 +22,7 @@ export default async function QuickCreatePage({
     getConfirmedStyleProfile(),
   ]);
 
-  if (!plan || plan.status !== "confirmed") redirect("/plans");
+  if (!plan || plan.status !== "confirmed") redirect(values.planId || values.planItemId ? "/plans" : "/setup/first-content");
   const item = values.planItemId
     ? plan.items.find((candidate) => candidate.id === values.planItemId)
     : plan.items

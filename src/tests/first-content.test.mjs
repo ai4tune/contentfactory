@@ -53,7 +53,7 @@ test("three examples share actual facts; draft and stale requests cannot replace
   assert.equal(snapshot.options.length, 3); assert.equal(snapshot.topics.length, 3);
   for (const url of ["/setup/first-content", "/setup/interview"]) {
     const html = await (await fetch(base + url, { headers: { authorization } })).text();
-    assert.doesNotMatch(html, /<select|贝尔咖啡|一家独立咖啡店|木板 \/ 地板装修/);
+    assert.doesNotMatch(html, /贝尔咖啡|一家独立咖啡店|木板 \/ 地板装修/);
   }
   for (const option of snapshot.options) { assert.match(option.sample, /晨光设计工作室|提供品牌视觉设计服务/); assert.doesNotMatch(option.sample, /咖啡|地板|果香|坚果|昨天|朋友问|最低价/); }
   style = (await call("/api/onboarding/first-content", { action: "preview_style", voice: "chat", adjustments: "更口语一点，少用感叹号", version: 0 })).body.profile;

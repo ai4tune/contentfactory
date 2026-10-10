@@ -36,6 +36,7 @@ export async function saveContentProject(input: {
   contentPlanItemId?: string;
   accountSnapshot: AccountContext | null;
   styleSnapshot?: StyleContract | null;
+  temporaryStyleInstructions?: string[];
   knowledgeProfileVersion?: number;
   channels?: ContentChannel[];
   channelDrafts?: ChannelDraft[];
@@ -49,6 +50,7 @@ export async function saveContentProject(input: {
     contentPlanItemId: input.contentPlanItemId,
     accountSnapshot: input.accountSnapshot,
     styleSnapshot: input.styleSnapshot ?? null,
+    temporaryStyleInstructions: input.temporaryStyleInstructions,
     knowledgeProfileVersion: input.knowledgeProfileVersion,
     selectedKnowledgeRefs: input.brief.citations,
     brief: input.brief,
@@ -153,6 +155,17 @@ export async function saveChannelVisualAssets(
   }));
 
   return updatedProject;
+}
+
+export async function saveChannelPhotoPlan(projectId: string, channel: ContentChannel, photoPlan: NonNullable<ChannelDraft["photoPlan"]>) {
+  return updateJsonFile<ProjectStore>(projectStorePath, emptyStore, (store) => ({
+    ...store, projects: store.projects.map((project) => {
+      if (project.id !== projectId) return project;
+      const draft = project.channelDrafts.find((item) => item.channel === channel);
+      if (!draft || draft.updatedAt !== photoPlan.basedOnContentUpdatedAt) throw new Error("正文已更新，实拍建议尚未保存，请基于新正文重试。");
+      return { ...project, channelDrafts: project.channelDrafts.map((item) => item.channel === channel ? { ...item, photoPlan } : item), updatedAt: photoPlan.createdAt };
+    }),
+  }));
 }
 
 function getProjectStatus(drafts: ChannelDraft[]): ContentProject["status"] {

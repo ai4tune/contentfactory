@@ -22,11 +22,12 @@ export async function saveChannelReview(
   review: ChannelReview,
 ) {
   return updateChannel(projectId, channel, (project, draft) => {
+    if (review.reviewedContent !== draft.content || (review.reviewedTitle !== undefined && review.reviewedTitle !== draft.delivery?.title)) throw new ReviewUpdateError("稿件已更新，请重新审核；本次没有保存过期审核结果。", 409);
     const now = new Date().toISOString();
     return {
       ...project,
       channelDrafts: project.channelDrafts.map((item) => item.channel === channel
-        ? { ...draft, review, updatedAt: now }
+        ? { ...draft, review, updatedAt: now, ...(draft.photoPlan?.basedOnContentUpdatedAt === draft.updatedAt ? { photoPlan: { ...draft.photoPlan, basedOnContentUpdatedAt: now } } : {}) }
         : item),
       updatedAt: now,
     };
@@ -79,7 +80,7 @@ export async function applyReviewIssue(
     const issue = review?.issues.find((item) => item.id === issueId);
     if (!review || !issue) throw new ReviewUpdateError("Review issue not found", 404);
     if (issue.status === "applied") return project;
-    if (review.reviewedContent !== draft.content) {
+    if (review.reviewedContent !== draft.content || (review.reviewedTitle !== undefined && review.reviewedTitle !== draft.delivery?.title)) {
       throw new ReviewUpdateError("The draft has changed. Run the review again before applying this suggestion", 409);
     }
     if (!issue.autoFixable || !issue.originalText || !issue.suggestedText) {
@@ -148,7 +149,7 @@ export async function ignoreReviewIssue(
     const issue = review?.issues.find((item) => item.id === issueId);
     if (!review || !issue) throw new ReviewUpdateError("Review issue not found", 404);
     if (issue.status !== "open") return project;
-    if (review.reviewedContent !== draft.content) {
+    if (review.reviewedContent !== draft.content || (review.reviewedTitle !== undefined && review.reviewedTitle !== draft.delivery?.title)) {
       throw new ReviewUpdateError("The draft has changed. Run the review again before ignoring this issue", 409);
     }
     ignoredIssueId = issue.id;

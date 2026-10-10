@@ -24,7 +24,9 @@ export async function POST(request: Request) {
     if (body.action === "compare_style") return NextResponse.json(await compareStarterStyle({ industry: body.industry, voice: body.voice, adjustments: body.adjustments ?? "", version }));
     if (body.action === "preview_style") return NextResponse.json({ profile: await previewStarterStyle({ industry: body.industry, voice: body.voice, adjustments: body.adjustments ?? "", version }) });
     if (body.action === "confirm_style") return NextResponse.json({ profile: await confirmStarterStyle(version) });
-    if (body.action === "generate") return NextResponse.json(await generateFirstContent(body.topicId, version));
+    if (body.action === "generate") return NextResponse.json(await generateFirstContent(body.topicId, version, {
+      topic: body.topic, channel: body.channel, useDefaultStyle: body.useDefaultStyle === true, temporaryStyleInstructions: body.temporaryStyleInstructions,
+    }));
     throw new InterviewError("请选择预览口吻、确认口吻或创作。");
   } catch (error) { return failure(error); }
 }

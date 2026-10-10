@@ -14,10 +14,10 @@ const questions: Array<{ title: string; description: string; fields: Array<{ id:
     { id: "business", label: "你主要做什么生意？", placeholder: "用一句话说明你提供什么产品、服务或内容" },
   ] },
   { title: "这次最想让内容帮你解决什么？", description: "先选一个近期目标，不用一次想清楚所有事情。", fields: [
-    { id: "goal", label: "最近最想改善什么？", placeholder: "例如：收到更多咨询，或让已有客户了解新产品" },
+    { id: "goal", label: "最近最想改善什么？", placeholder: "例如：收到更多咨询，或让已有客户了解新产品；不确定可后补", optional: true },
   ] },
   { title: "先宣传哪一件事？", description: "可以是一款产品、一项服务，也可以是最近想让客人知道的事情。", fields: [
-    { id: "offer", label: "这周最想宣传什么？", placeholder: "写一个具体产品或服务；有已确认的价格和活动可以一起写" },
+    { id: "offer", label: "这周最想宣传什么？", placeholder: "写一个具体产品或服务；有已确认的价格和活动可以一起写", optional: true },
   ] },
   { title: "客人为什么来找你？", description: "说说你见过的客人和真实细节。不清楚也没关系。", fields: [
     { id: "audience", label: "客人一般在什么情况下来？", placeholder: "描述客户的真实需求或使用场景；不知道也可以留空", optional: true },
@@ -44,7 +44,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
   const question = questions[step];
   const complete = Boolean(state.preview?.confirmedAt && showPreview);
 
-  async function submit(action: "save" | "preview" | "confirm", nextStep = step, exitAfterSave = false) {
+  async function submit(action: "save" | "preview" | "confirm" | "confirm_business", nextStep = step, exitAfterSave = false) {
     setBusy(true);
     setMessage(null);
     try {
@@ -64,7 +64,9 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
       const next = payload.interview;
       setState(next);
       setStep(next.step);
-      if (action === "preview" && next.preview) {
+      if (action === "confirm_business") {
+        router.push("/setup/first-content");
+      } else if (action === "preview" && next.preview) {
         setPosition(next.preview.account.accountPosition);
         setAudience(next.preview.account.targetAudience.join("\n"));
         setPillars(next.preview.account.contentPillars.join("\n"));
@@ -125,7 +127,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
                   <AnswerInput id="suggested-pillars" label="建议持续写的几个方向（每行一个）" value={pillars} onChange={setPillars} />
                 </div>
                 {state.preview?.account.informationGaps.length ? <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p className="font-semibold">以后继续确认</p><ul className="mt-2 list-disc pl-5">{state.preview.account.informationGaps.map((gap) => <li key={gap}>{gap}</li>)}</ul></div> : null}
-                <div className="mt-7 flex flex-wrap gap-3"><button className={secondaryButtonClass} type="button" onClick={() => { setShowPreview(false); setStep(0); }}>返回修改回答</button><button className={primaryButtonClass} type="button" onClick={() => void submit("confirm")}>{busy ? "正在保存…" : "确认，保存经营信息"}</button></div>
+                <div className="mt-7 flex flex-wrap gap-3"><button className={secondaryButtonClass} type="button" onClick={() => { setShowPreview(false); setStep(0); }}>返回修改回答</button><button className={primaryButtonClass} type="button" onClick={() => void submit("confirm")}>{busy ? "正在保存…" : "确认业务并采纳这些方向"}</button><button className={secondaryButtonClass} type="button" onClick={() => void submit("confirm_business")}>只确认业务，方向稍后再定</button></div>
               </>
             ) : (
               <>
@@ -137,6 +139,7 @@ export function InterviewWorkspace({ initialState }: { initialState: InterviewSt
                 <div className="mt-7 flex flex-wrap gap-3">
                   {step > 0 ? <button className={secondaryButtonClass} type="button" onClick={() => setStep(step - 1)}>上一步</button> : null}
                   <button className={primaryButtonClass} type="button" disabled={question.fields.some((field) => !field.optional && !answers[field.id].trim()) || (step === 5 && !answers.primaryChannel)} onClick={() => void submit(step === 5 ? "preview" : "save", Math.min(step + 1, 5))}>{busy ? step === 5 ? "正在整理，回答已保存…" : "正在保存…" : step === 5 ? "帮我整理内容方向" : "保存并继续"}</button>
+                  {step === 5 ? <button className={secondaryButtonClass} type="button" disabled={!answers.accountName.trim() || !answers.business.trim() || !answers.primaryChannel} onClick={() => void submit("confirm_business")}>确认业务，先写一篇</button> : null}
                   <button className="px-2 py-2 text-sm text-slate-600 underline underline-offset-4" type="button" onClick={() => void submit("save", step, true)}>保存并退出</button>
                 </div>
               </>

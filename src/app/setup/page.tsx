@@ -20,6 +20,13 @@ export default async function SetupPage() {
       offer: snapshot.account.offer,
       platforms: snapshot.account.platforms,
       targetAudience: snapshot.account.targetAudience,
+    } : snapshot.businessProfile ? {
+      accountName: snapshot.businessProfile.name,
+      business: snapshot.businessProfile.businessSummary,
+      offer: snapshot.businessProfile.offers.map((offer) => offer.name).join("、"),
+      conversionGoal: snapshot.businessProfile.businessGoals.join("、"),
+      targetAudience: snapshot.businessProfile.targetCustomers,
+      accountPosition: "", contentPillars: [], platforms: [],
     } : null,
     styleProfile: snapshot.styleProfile ? {
       name: snapshot.styleProfile.name,

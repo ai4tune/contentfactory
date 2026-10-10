@@ -263,6 +263,45 @@ test("background jobs retain the submitting account after the browser switches i
 });
 
 
+test("business-only confirmation is private and leaves the existing positioning and style intact", async () => {
+  const account = (await (await request(alice, "/api/positioning/current")).json()).context;
+  const styleBefore = structuredClone(rows.content_factory_state.find((row) => row.workspace_id === aliceWorkspace && row.store_key === "json:style-profiles.local.json"));
+  const bobBefore = structuredClone(rows.content_factory_state.filter((row) => row.workspace_id === bobWorkspace));
+  const state = (await (await request(alice, "/api/onboarding/interview")).json()).interview;
+  const answers = { ...state.answers, accountName: "Alice 最新业务", business: "用户这次明确确认的新业务", offer: "新服务", primaryChannel: "wechat_article" };
+  const response = await request(alice, "/api/onboarding/interview", { action: "confirm_business", revision: state.revision, answers, accountId: bob });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.deepEqual((await (await request(alice, "/api/positioning/current")).json()).context, account);
+  assert.deepEqual(rows.content_factory_state.find((row) => row.workspace_id === aliceWorkspace && row.store_key === "json:style-profiles.local.json"), styleBefore);
+  assert.deepEqual(rows.content_factory_state.filter((row) => row.workspace_id === bobWorkspace), bobBefore);
+  const snapshot = (await (await request(alice, "/api/onboarding/first-content")).json());
+  assert.equal(snapshot.accountName, answers.accountName);
+  assert.equal(snapshot.business, answers.business);
+  assert.equal(snapshot.offer, answers.offer);
+  assert.equal(snapshot.positioningConfirmed, false, "a different business must not inherit the previous business's confirmed direction");
+  const other = (await (await request(bob, "/api/onboarding/interview")).json()).interview;
+  assert.notEqual(other.confirmedBusiness?.answers.accountName, answers.accountName);
+});
+
+test("delivery project and photo preparation cannot be accessed by guessing another account's id", async () => {
+  const bobBefore = structuredClone(rows.content_factory_state.filter((row) => row.workspace_id === bobWorkspace));
+  const response = await request(alice, "/api/content/projects", { topic: "Alice 私有交付项目", temporaryStyleInstructions: ["只用于这篇"], brief: {
+    targetAudience: "本账号读者", contentGoal: "介绍业务", coreMessage: "本账号资料", keyPoints: [], outline: ["介绍"], callToAction: "欢迎提问", openQuestions: [],
+    citations: [{ sourceId: "alice-private-source", sourceTitle: "Alice 用户原话", sourceType: "upload", excerpt: "Alice 的私有业务", purpose: "业务依据" }],
+  } });
+  assert.equal(response.status, 201, await response.clone().text());
+  const project = (await response.json()).project;
+  assert.deepEqual(project.temporaryStyleInstructions, ["只用于这篇"]);
+  assert.equal((await request(alice, `/api/content-drafts/${project.id}`)).status, 200);
+  for (const [url, method, body] of [
+    [`/api/content-drafts/${project.id}`, "GET"],
+    [`/api/content-drafts/${project.id}/export?channel=wechat_article&format=html`, "GET"],
+    [`/api/content/projects/${project.id}/channels/wechat_article/photos`, "POST", { expectedUpdatedAt: project.updatedAt }],
+    [`/api/content-drafts/${project.id}`, "PATCH", { channel: "wechat_article", content: "跨账户覆盖", title: "猜ID" }],
+  ]) assert.equal((await request(bob, url, body, method)).status, 404, url);
+  assert.deepEqual(rows.content_factory_state.filter((row) => row.workspace_id === bobWorkspace), bobBefore);
+});
+
 test("existing v1 customer spaces load through the upgrade without any write or payload change", async () => {
   for (const id of [alice, bob]) {
     for (let index = 0; index < 40; index++) {
@@ -286,7 +325,7 @@ test("existing v1 customer spaces load through the upgrade without any write or 
   readOnlyGuard = true;
   try {
     for (const [id, workspace] of [[alice, aliceWorkspace], [bob, bobWorkspace]]) {
-      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
+      for (const url of ["/api/onboarding/first-content", "/api/onboarding/first-content?industry=coffee", "/api/onboarding/first-content?industry=flooring", "/api/onboarding/interview", "/api/onboarding/status", "/api/positioning/current", "/api/style-profile/current", "/api/content-drafts", "/api/materials", "/setup", "/setup/first-content", "/setup/interview", "/brand", "/brand?step=positioning", "/brand?step=style", "/style-profile", "/knowledge/profile"]) {
         const response = await request(id, url);
         assert.equal(response.status, 200, url + " " + await response.clone().text());
         if (url === "/api/onboarding/first-content") {

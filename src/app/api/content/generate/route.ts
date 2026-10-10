@@ -54,9 +54,10 @@ export async function POST(request: Request) {
             temporaryInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
           }),
         ]);
+    const temporaryStyleInstructions = existingProject?.temporaryStyleInstructions ?? normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions);
     const settled = await Promise.allSettled(
       channels.map((channel) =>
-        generateChannelDraft({ channel, brief, sources, accountContext, styleContract: styleSnapshot }),
+        generateChannelDraft({ topic, channel, brief, sources, accountContext, styleContract: styleSnapshot, temporaryStyleInstructions }),
       ),
     );
     const now = new Date().toISOString();
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
           topic,
           accountSnapshot: accountContext,
           styleSnapshot,
+          temporaryStyleInstructions,
           knowledgeProfileVersion: brief.enterpriseKnowledgeProfileVersion,
           brief,
           channels,

@@ -89,7 +89,7 @@ test("save and exit reaches the overview, and returning to the interview keeps t
   assert.equal(saved.status, 200); state = saved.data.interview;
   const before = await files(); const overview = await fetch(base + "/setup", { headers });
   assert.equal(overview.status, 200); const html = await overview.text();
-  assert.ok(html.includes("继续聊经营，整理内容方向")); assert.ok(!html.includes('NEXT_REDIRECT;replace;/setup/interview'));
+  assert.ok(html.includes('href="/setup/interview"')); assert.ok(!html.includes('NEXT_REDIRECT;replace;/setup/interview'));
   const restored = (await call("/api/onboarding/interview")).data.interview;
   assert.equal(restored.step, 5); assert.deepEqual(restored.answers, answers);
   assert.deepEqual(await files(), before, "viewing saved answers and the overview must not write");
@@ -100,6 +100,23 @@ test("invalid and unauthenticated requests do not change saved answers", async (
   assert.equal((await fetch(base + "/api/onboarding/interview")).status, 401);
   const invalid = await call("/api/onboarding/interview", { action: "preview", revision: state.revision, answers: {} });
   assert.equal(invalid.status, 400); assert.equal(invalid.data.interview, undefined);
+  assert.deepEqual(await files(), before);
+});
+
+test("after an AI failure, explicit business confirmation can start creation without adopting AI directions", async () => {
+  const failed = await call("/api/onboarding/interview", { action: "preview", revision: state.revision, answers: { ...answers, goal: "验收访谈空方向" } });
+  assert.equal(failed.status, 500);
+  state = failed.data.interview;
+  const confirmed = await call("/api/onboarding/interview", { action: "confirm_business", revision: state.revision, answers: state.answers });
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.data));
+  assert.ok(confirmed.data.interview.confirmedBusiness.confirmedAt);
+  assert.equal(confirmed.data.interview.preview, null);
+  assert.equal((await call("/api/positioning/current")).data.context, null);
+  assert.equal((await call("/api/onboarding/status")).data.status.state, "completed");
+  const before = await files();
+  const page = await fetch(base + "/setup/first-content", { headers });
+  assert.equal(page.status, 200);
+  assert.ok((await page.text()).includes("先完成一篇，口吻可以再调整"));
   assert.deepEqual(await files(), before);
 });
 

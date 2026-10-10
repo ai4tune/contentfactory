@@ -121,13 +121,13 @@ function resolveCommand(
     return { href: "/articles" };
   }
   if (normalized === "我有一个新的选题" || normalized === "新选题") {
-    return { href: context.hasConfirmedPlan ? "/create" : "/plans" };
+    return { href: "/setup/first-content" };
   }
   if (containsAny(normalized, ["写", "创作", "初稿", "文案", "文章"])) {
     return {
       href: context.hasConfirmedPlan
         ? `/create?title=${encodeURIComponent(input)}`
-        : "/plans",
+        : `/setup/first-content?topic=${encodeURIComponent(input)}`,
     };
   }
   if (containsAny(normalized, ["计划", "选题", "本周", "下周", "30天", "30 天"])) {

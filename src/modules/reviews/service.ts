@@ -47,10 +47,12 @@ export async function reviewChannelDraft(input: ReviewChannelInput): Promise<Cha
       },
       { role: "user", content: buildReviewContext(input) },
     ]);
-    const aiReview = normalizeReview(parseJsonObject(response), input.draft.content, humanWritingQa);
-    const issues = dedupeIssues([...deterministicIssues, ...aiReview.issues]);
+    const aiReview = normalizeReview(parseJsonObject(response), [input.draft.delivery?.title, input.draft.content].filter(Boolean).join("\n\n"), humanWritingQa);
+    const issues = dedupeIssues([...deterministicIssues, ...aiReview.issues]).map((issue) => input.draft.delivery?.title.includes(issue.originalText) && !input.draft.content.includes(issue.originalText) ? { ...issue, autoFixable: false, requiresConfirmation: true } : issue);
     return {
       ...aiReview,
+      reviewedContent: input.draft.content,
+      reviewedTitle: input.draft.delivery?.title,
       humanWritingQa,
       conclusion: deterministicIssues.length
         ? `规则检查发现 ${deterministicIssues.length} 项；${aiReview.conclusion}`
@@ -67,6 +69,7 @@ export async function reviewChannelDraft(input: ReviewChannelInput): Promise<Cha
       issues: deterministicIssues,
       humanWritingQa,
       reviewedContent: input.draft.content,
+      reviewedTitle: input.draft.delivery?.title,
       reviewedAt: new Date().toISOString(),
     };
   }
@@ -83,15 +86,19 @@ function buildReviewContext({ project, draft }: ReviewChannelInput) {
 
   return [
     `审核渠道：${channelLabels[draft.channel]}`,
+    `用户选题：${project.topic}。同时检查最终标题与正文是否回应这个选题，标题中的事实也需核对。`,
     "【账号定位】",
     project.accountSnapshot ? JSON.stringify(project.accountSnapshot, null, 2) : "未确认，不得虚构账号事实或风格。",
     "【统一内容简报：AI 中间产物，不作为独立事实证据】",
     JSON.stringify(project.brief, null, 2),
     "【已确认写作风格】",
     formatStyleContractForPrompt(project.styleSnapshot, draft.channel),
+    "【仅本篇的表达要求，不改变事实规则】",
+    project.temporaryStyleInstructions?.join("\n") || "无补充要求",
     "【知识引用】",
     citations,
     "【待审稿件】",
+    draft.delivery?.title ? `最终标题：${draft.delivery.title}` : "旧稿标题在正文中，由用户核对。",
     draft.content,
   ].join("\n\n");
 }

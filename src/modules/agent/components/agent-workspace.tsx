@@ -8,15 +8,17 @@ import { AgentCommandBar } from "@/modules/agent/components/agent-command-bar";
 
 export function AgentWorkspace({
   primaryChannel,
+  businessName,
   summary,
 }: {
   primaryChannel?: ContentChannel;
+  businessName?: string;
   summary: DashboardSummary;
 }) {
   const plan = summary.contentPlan;
   const guidance = deriveAgentGuidance(plan);
   const progress = getWeeklyPlanProgress(plan);
-  const accountName = summary.account?.accountName || "当前企业";
+  const accountName = summary.account?.accountName || businessName || "当前企业";
 
   return (
     <AppShell active="/">
@@ -71,7 +73,7 @@ export function AgentWorkspace({
           <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
             <h2 className="text-base font-semibold text-slate-900">这次判断参考了什么</h2>
             <dl className="mt-5 grid gap-4">
-              <ContextRow label="当前经营目标" value={plan?.operatingGoal || summary.account?.conversionGoal || "待生成内容计划"} />
+              <ContextRow label="当前经营目标" value={plan?.operatingGoal || summary.account?.conversionGoal || "先介绍真实业务，长期目标可后补"} />
               <ContextRow label="主渠道" value={plan ? channelLabels[plan.primaryChannel] : primaryChannel ? channelLabels[primaryChannel] : "待确认"} />
               <ContextRow label="计划状态" value={plan ? planStatusLabel(plan.status) : "尚未生成"} />
             </dl>

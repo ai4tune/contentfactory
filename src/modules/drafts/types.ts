@@ -1,4 +1,4 @@
-import type { ContentChannel, ContentProject } from "@/modules/content/types";
+import type { ContentChannel, ContentProject, PublicationDelivery } from "@/modules/content/types";
 
 export type DraftReviewStatus = "draft" | "editing" | "approved";
 
@@ -6,6 +6,7 @@ export type DraftVersion = {
   id: string;
   channel: ContentChannel;
   content: string;
+  delivery?: PublicationDelivery;
   createdAt: string;
 };
 

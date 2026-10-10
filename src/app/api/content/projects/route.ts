@@ -59,6 +59,7 @@ export async function POST(request: Request) {
       contentPlanItemId: contentPlanItemId || undefined,
       accountSnapshot,
       styleSnapshot,
+      temporaryStyleInstructions: normalizeTemporaryStyleInstructions(body.temporaryStyleInstructions),
       knowledgeProfileVersion: brief.enterpriseKnowledgeProfileVersion,
     });
     if (contentPlanId && contentPlanItemId) {
