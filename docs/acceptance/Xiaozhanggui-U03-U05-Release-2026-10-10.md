@@ -35,7 +35,14 @@ node --test src/tests/agent-amap.test.mjs src/tests/home-plan-calendar.test.mjs 
 
 ## 部署结果
 
-发布进行中，等待实际 main 提交、部署 ID、Target、Ready、aliases 与公开接口只读检查。历史发布记录保留在其他验收文档，本文件不沿用以前发布授权。
+- main 功能发布提交：`77035bf2ca930eb56789138884d4801c89d1d3cb`，已推送 origin/main；所有本轮 feature 提交均是 main 的祖先。
+- Git 生产构建：`Branch: main, Commit: 77035bf`；创建于 2026-10-10 19:29:02（Asia/Shanghai）。GitHub Vercel 状态 success。
+- 部署：`dpl_6fCJwkCJQFATfs7Q1dQViGAcrnX8`，Target `production`，最终状态 **Ready**；[构建地址](https://contentfactory-9o9hsbl5m-xkceshi-gmailcoms-projects.vercel.app)。
+- 正式域名：[nrgc.xingren.me](https://nrgc.xingren.me) 在 aliases 中，19:32 CLI 查询直接解析到上述部署。原 `contentfactory-orpin.vercel.app` 及 main / 项目 aliases 保留。
+- 公开只读验收：`/api/health` 200，`ready=true`、environment=production、AI / Supabase Auth / Persistence 配置正常且 missingRequired 为空；`/login` 200。无登录凭据的 `/api/agent/chat`、`/api/agent/chat/location` 与 `/api/content-plans` 均 401。
+- [脱敏生产检查快照](artifacts/release-u03-u05-production-checks-2026-10-10.json)。未调用客户登录后的写入工具，也未代客户确认中心或生成内容。
+
+本文件记录功能发布的实际快照；后续仅文档同步提交如触发 Git 构建，不改变已验收的应用代码，最新生产部署须即时查询。发布前 Ready 基线仍可回溯。历史记录不提供以后发布的授权。
 
 ## 尚待完成
 

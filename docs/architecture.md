@@ -1,6 +1,6 @@
 # 内容工厂当前架构
 
-更新日期：2026-10-10（Asia/Shanghai）。整合快照：发布分支 `d143355`，包含 U03 日期计划、U04 账户对话、U05 Brave / RedFox / 高德与恢复限制；237 项检查通过。发布前生产基线为 `main@28ef6d3`，本次发布记录见 [整合验收](acceptance/Xiaozhanggui-U03-U05-Release-2026-10-10.md)。
+更新日期：2026-10-10（Asia/Shanghai）。已发布应用代码：`main@77035bf`（整合代码 `d143355`），包含 U03 日期计划、U04 账户对话、U05 Brave / RedFox / 高德与恢复限制；237 项检查通过。本次生产构建与正式域名已核对 Ready，发布前基线为 `main@28ef6d3`；实际部署快照见 [整合验收](acceptance/Xiaozhanggui-U03-U05-Release-2026-10-10.md)。
 
 本页说明已实现的结构和模块边界，供新会话快速恢复上下文。最新完成状态与下一步见 [progress.md](progress.md)，开发与发布约束始终遵守 [AGENTS.md](../AGENTS.md)。详细规格和路线文档保留其编写时的快照，不能把其中的目标直接当作现有能力。
 
